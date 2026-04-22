@@ -4,7 +4,7 @@ name: monitoring
 #   OTel Collector  →  ingestion gateway (OTLP gRPC 4317 / HTTP 4318)
 #   Loki            →  logs
 #   Tempo           →  traces  (OTLP-native; Grafana has first-class support)
-#   Prometheus      →  metrics (native OTLP remote-write receiver)
+#   Prometheus      →  metrics (native OTLP remote-write-receiver)
 #   Grafana         →  UI
 #
 # Projects ship telemetry to this host via OTLP. Do NOT publish :4317/:4318
@@ -20,66 +20,79 @@ x-logging: &default-logging
 
 services:
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.116.0
+    image: otel/opentelemetry-collector-contrib:0.150.1
     restart: unless-stopped
-    command: ["--config=/etc/otelcol/config.yaml"]
+    depends_on: [ loki, tempo, prometheus ]
+    ports:
+      - "127.0.0.1:4317:4317" # OTLP gRPC
+      - "127.0.0.1:4318:4318" # OTLP HTTP
     volumes:
       - ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro
-    ports:
-      - "127.0.0.1:4317:4317"  # OTLP gRPC
-      - "127.0.0.1:4318:4318"  # OTLP HTTP
-    depends_on: [loki, tempo, prometheus]
+    command: [ "--config=/etc/otelcol/config.yaml" ]
     logging: *default-logging
+    platform: linux/amd64
 
   loki:
-    image: grafana/loki:3.3.2
+    image: grafana/loki:3.6.10
     restart: unless-stopped
-    command: ["-config.file=/etc/loki/loki.yaml"]
     volumes:
       - ./config/loki.yaml:/etc/loki/loki.yaml:ro
       - loki_data:/loki
+    command: [ "-config.file=/etc/loki/loki.yaml" ]
     logging: *default-logging
 
   tempo:
-    image: grafana/tempo:2.7.1
+    image: grafana/tempo:2.10.4
     restart: unless-stopped
-    command: ["-config.file=/etc/tempo/tempo.yaml"]
     volumes:
       - ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro
       - tempo_data:/var/tempo
+    command: [ "-config.file=/etc/tempo/tempo.yaml" ]
     logging: *default-logging
 
   prometheus:
-    image: prom/prometheus:v3.1.0
+    image: prom/prometheus:v3.11.2
     restart: unless-stopped
+    volumes:
+      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - prometheus_data:/prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yaml
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=30d
       - --web.enable-remote-write-receiver
       - --enable-feature=native-histograms,otlp-write-receiver,exemplar-storage
-    volumes:
-      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
-      - prometheus_data:/prometheus
     logging: *default-logging
 
   grafana:
-    image: grafana/grafana:11.4.0
+    image: grafana/grafana:13.0.1
     restart: unless-stopped
-    environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
-      GF_USERS_ALLOW_SIGN_UP: "false"
-      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
-      GF_FEATURE_TOGGLES_ENABLE: traceqlEditor,metricsSummary,traceToProfiles
+    depends_on: [ loki, tempo, prometheus ]
+    ports:
+      - "127.0.0.1:3000:3000"
     volumes:
       - ./config/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
       - ./config/grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
       - ./dashboards:/var/lib/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
-    ports:
-      - "127.0.0.1:3000:3000"
-    depends_on: [loki, tempo, prometheus]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
+      GF_FEATURE_TOGGLES_ENABLE: traceqlEditor,metricsSummary,traceToProfiles
     logging: *default-logging
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    depends_on: [ grafana, otel-collector ]
+    # Token-based tunnel: routes are configured in the Cloudflare Zero Trust dashboard.
+    # Create a tunnel at dash.cloudflare.com → Zero Trust → Networks → Tunnels,
+    # then set the public hostnames there (e.g. grafana.example.com → http://grafana:3000,
+    # otlp.example.com → http://otel-collector:4318).
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in .env}
+    logging: *default-logging
+    pull_policy: always
 
 volumes:
   loki_data:
