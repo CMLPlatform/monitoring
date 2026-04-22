@@ -1,0 +1,49 @@
+# Single-binary Loki with filesystem storage. Swap `common.storage.filesystem`
+# for `s3:` (B2 / R2 / Hetzner / MinIO) when you outgrow local disk.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9095
+  log_level: info
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2025-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  retention_period: 30d
+  allow_structured_metadata: true
+  volume_enabled: true
+  # Most log lines under ~100KB. Bump if you log large payloads.
+  max_line_size: 256kb
+  # Keep ingestion generous for a single-tenant homelab.
+  ingestion_rate_mb: 16
+  ingestion_burst_size_mb: 32
+
+compactor:
+  working_directory: /loki/compactor
+  delete_request_store: filesystem
+  retention_enabled: true
+
+analytics:
+  reporting_enabled: false

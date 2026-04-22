@@ -1,0 +1,88 @@
+name: monitoring
+
+# Central observability stack.
+#   OTel Collector  →  ingestion gateway (OTLP gRPC 4317 / HTTP 4318)
+#   Loki            →  logs
+#   Tempo           →  traces  (OTLP-native; Grafana has first-class support)
+#   Prometheus      →  metrics (native OTLP remote-write receiver)
+#   Grafana         →  UI
+#
+# Projects ship telemetry to this host via OTLP. Do NOT publish :4317/:4318
+# directly to the public internet — expose via Cloudflare Tunnel, Tailscale,
+# WireGuard, or similar. The port bindings below are bound to 127.0.0.1 so
+# they are only reachable from the host / tunnel sidecar.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.116.0
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "127.0.0.1:4317:4317"  # OTLP gRPC
+      - "127.0.0.1:4318:4318"  # OTLP HTTP
+    depends_on: [loki, tempo, prometheus]
+    logging: *default-logging
+
+  loki:
+    image: grafana/loki:3.3.2
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ./config/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki_data:/loki
+    logging: *default-logging
+
+  tempo:
+    image: grafana/tempo:2.7.1
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    logging: *default-logging
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yaml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --web.enable-remote-write-receiver
+      - --enable-feature=native-histograms,otlp-write-receiver,exemplar-storage
+    volumes:
+      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - prometheus_data:/prometheus
+    logging: *default-logging
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
+      GF_FEATURE_TOGGLES_ENABLE: traceqlEditor,metricsSummary,traceToProfiles
+    volumes:
+      - ./config/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+      - ./config/grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
+      - ./dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on: [loki, tempo, prometheus]
+    logging: *default-logging
+
+volumes:
+  loki_data:
+  tempo_data:
+  prometheus_data:
+  grafana_data:

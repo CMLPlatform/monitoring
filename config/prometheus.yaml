@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+  external_labels:
+    origin: monitoring-host
+
+# Apps push metrics via OTLP (through the collector). Scrape only infra we host.
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: otel-collector
+    static_configs:
+      - targets: ["otel-collector:8888"]
