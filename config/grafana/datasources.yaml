@@ -46,5 +46,3 @@ datasources:
         enabled: true
       search:
         hide: false
-      streamingEnabled:
-        search: true
