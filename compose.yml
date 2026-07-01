@@ -20,7 +20,7 @@ x-logging: &default-logging
 
 services:
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.150.1
+    image: otel/opentelemetry-collector-contrib:0.155.0
     restart: unless-stopped
     depends_on: [ loki, tempo, prometheus ]
     ports:
@@ -33,7 +33,7 @@ services:
     platform: linux/amd64
 
   loki:
-    image: grafana/loki:3.6.10
+    image: grafana/loki:3.7.3
     restart: unless-stopped
     volumes:
       - ./config/loki.yaml:/etc/loki/loki.yaml:ro
@@ -42,7 +42,7 @@ services:
     logging: *default-logging
 
   tempo:
-    image: grafana/tempo:2.10.4
+    image: grafana/tempo:3.0.2
     restart: unless-stopped
     volumes:
       - ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro
@@ -51,7 +51,7 @@ services:
     logging: *default-logging
 
   prometheus:
-    image: prom/prometheus:v3.11.2
+    image: prom/prometheus:v3.13.0
     restart: unless-stopped
     volumes:
       - ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
@@ -65,7 +65,7 @@ services:
     logging: *default-logging
 
   grafana:
-    image: grafana/grafana:13.0.1
+    image: grafana/grafana:13.1.0
     restart: unless-stopped
     depends_on: [ loki, tempo, prometheus ]
     ports:
