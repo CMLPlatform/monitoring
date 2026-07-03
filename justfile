@@ -58,6 +58,7 @@ fmt:
 # paused during the copy (seconds), so the backup is crash-consistent.
 backup:
     mkdir -p backups
+    -docker compose unpause grafana prometheus loki tempo alertmanager 2>/dev/null
     docker compose pause grafana prometheus loki tempo alertmanager
     docker run --rm -v monitoring_grafana_data:/data/grafana -v monitoring_prometheus_data:/data/prometheus -v monitoring_loki_data:/data/loki -v monitoring_tempo_data:/data/tempo -v monitoring_alertmanager_data:/data/alertmanager -v ./backups:/backups alpine:3.24 tar czf /backups/monitoring-$(date +%Y%m%d-%H%M%S).tar.gz -C /data .
     docker compose unpause grafana prometheus loki tempo alertmanager

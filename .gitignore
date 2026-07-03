@@ -1,3 +1,4 @@
 .env
 *.local.yml
 *.local.yaml
+backups/
