@@ -19,9 +19,9 @@ route:
 receivers:
   - name: webhook
     webhook_configs:
-      - url_file: /alertmanager/webhook_url
+      - url_file: /run/am/webhook_url
 
   - name: heartbeat
     webhook_configs:
-      - url_file: /alertmanager/heartbeat_url
+      - url_file: /run/am/heartbeat_url
         send_resolved: false

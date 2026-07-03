@@ -30,9 +30,8 @@ services:
       - ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro
     command: [ "--config=/etc/otelcol/config.yaml" ]
     environment:
-      OTLP_AUTH_TOKEN: ${OTLP_AUTH_TOKEN:-local-dev-token}
+      OTLP_AUTH_TOKEN: ${OTLP_AUTH_TOKEN:?set OTLP_AUTH_TOKEN in .env}
     logging: *default-logging
-    platform: linux/amd64
 
   loki:
     image: grafana/loki:3.7.3
@@ -85,12 +84,15 @@ services:
       ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
       HEARTBEAT_URL: ${HEARTBEAT_URL:-}
     # Alertmanager can't expand env vars in its config; write the webhook
-    # URLs to the url_file paths the config points at, then start.
+    # URLs to the url_file paths the config points at, then start. tmpfs on
+    # purpose: the URLs often carry secrets and must not end up in the
+    # persistent volume (which `just backup` archives).
+    tmpfs: [ /run/am ]
     entrypoint: [ "/bin/sh", "-c" ]
     command:
       - |
-        printf '%s' "$$ALERT_WEBHOOK_URL" > /alertmanager/webhook_url
-        printf '%s' "$$HEARTBEAT_URL" > /alertmanager/heartbeat_url
+        printf '%s' "$$ALERT_WEBHOOK_URL" > /run/am/webhook_url
+        printf '%s' "$$HEARTBEAT_URL" > /run/am/heartbeat_url
         exec /bin/alertmanager --config.file=/etc/alertmanager/alertmanager.yaml --storage.path=/alertmanager
     logging: *default-logging
 
@@ -101,6 +103,8 @@ services:
     pid: host
     volumes:
       # No rslave: unsupported on Docker Desktop; only affects mounts added after start.
+      # No network_mode:host either, so node_network_* describes the container
+      # veth, not host NICs — fine while nothing alerts on network metrics.
       - /:/host:ro
     logging: *default-logging
 
@@ -119,7 +123,6 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
-      GF_FEATURE_TOGGLES_ENABLE: traceqlEditor,metricsSummary,traceToProfiles
     logging: *default-logging
 
 volumes:

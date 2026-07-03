@@ -69,7 +69,8 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "monitoring" {
 
 resource "cloudflare_dns_record" "grafana" {
   zone_id = var.zone_id
-  name    = "grafana"
+  # Provider v5 requires the full hostname (terraform-provider-cloudflare#5620).
+  name    = "grafana.${var.domain}"
   type    = "CNAME"
   content = "${cloudflare_zero_trust_tunnel_cloudflared.monitoring.id}.cfargotunnel.com"
   proxied = true
@@ -78,7 +79,7 @@ resource "cloudflare_dns_record" "grafana" {
 
 resource "cloudflare_dns_record" "otlp" {
   zone_id = var.zone_id
-  name    = "otlp"
+  name    = "otlp.${var.domain}"
   type    = "CNAME"
   content = "${cloudflare_zero_trust_tunnel_cloudflared.monitoring.id}.cfargotunnel.com"
   proxied = true
