@@ -22,7 +22,5 @@ jobs:
       - uses: actions/checkout@v7
       - uses: extractions/setup-just@v4
       - run: cp .env.example .env
-      - run: just up
-      - name: Wait for Grafana to report healthy
-        run: timeout 120 sh -c 'until curl -sf http://localhost:3000/api/health; do sleep 3; done'
+      - run: just smoke
       - run: just down

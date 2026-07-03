@@ -52,3 +52,9 @@ check:
 # Format YAML in place (needs yamlfmt on the host; optional).
 fmt:
     yamlfmt .
+
+# Boot the core stack and wait until Grafana reports healthy. Used by CI.
+smoke:
+    docker compose up -d
+    n=0; until curl -sf http://localhost:3000/api/health >/dev/null; do n=$((n+3)); [ $n -ge 120 ] && { echo "Grafana not healthy after 120s" >&2; exit 1; }; sleep 3; done
+    @echo "Grafana healthy"
