@@ -2,13 +2,23 @@
 # appropriate backend. Keep this config dumb — do shaping/enrichment at the
 # app edge (per-project collector) where it has context.
 
+# All senders must present "Authorization: Bearer <OTLP_AUTH_TOKEN>". The
+# OTLP hostnames are public behind the tunnel, so ingestion needs auth.
+extensions:
+  bearertokenauth:
+    token: ${env:OTLP_AUTH_TOKEN}
+
 receivers:
   otlp:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
+        auth:
+          authenticator: bearertokenauth
       http:
         endpoint: 0.0.0.0:4318
+        auth:
+          authenticator: bearertokenauth
 
 processors:
   memory_limiter:
@@ -34,6 +44,7 @@ exporters:
     endpoint: http://prometheus:9090/api/v1/otlp
 
 service:
+  extensions: [bearertokenauth]
   pipelines:
     logs:
       receivers: [otlp]

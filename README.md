@@ -100,6 +100,9 @@ Point your app (or its local OTel Collector) at this host's OTLP endpoints:
 - gRPC: `<host>:4317`
 - HTTP: `<host>:4318`
 
+Ingestion requires a bearer token (`OTLP_AUTH_TOKEN` in this host's `.env`);
+senders set `OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <token>"`.
+
 Do **not** publish those ports to the public internet. Expose the monitoring
 host via Cloudflare Tunnel, Tailscale, or WireGuard — the compose file binds
 them to `127.0.0.1` to make that the obvious path.

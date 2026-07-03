@@ -43,8 +43,8 @@ check:
     docker compose config -q
     CLOUDFLARE_TUNNEL_TOKEN=dummy docker compose -f compose.yml -f compose.tunnel.yml config -q
     docker compose -f compose.yml -f compose.demo.yml config -q
-    docker run --rm -v ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro -v ./config/alerts:/etc/prometheus/alerts:ro --entrypoint promtool prom/prometheus:v3.11.2 check config /etc/prometheus/prometheus.yaml
-    docker run --rm -v ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro otel/opentelemetry-collector-contrib:0.150.1 validate --config=/etc/otelcol/config.yaml
+    docker run --rm -v ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro -v ./config/alerts:/etc/prometheus/alerts:ro --entrypoint promtool prom/prometheus:v3.13.0 check config /etc/prometheus/prometheus.yaml
+    docker run --rm -e OTLP_AUTH_TOKEN=dummy -v ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro otel/opentelemetry-collector-contrib:0.155.0 validate --config=/etc/otelcol/config.yaml
     docker run --rm -v .:/code:ro pipelinecomponents/yamllint:0.35.13 yamllint -d relaxed .
     docker run --rm -v .:/repo:ro -w /repo rhysd/actionlint:1.7.12 -color
     jq empty dashboards/*.json

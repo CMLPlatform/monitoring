@@ -29,6 +29,8 @@ services:
     volumes:
       - ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro
     command: [ "--config=/etc/otelcol/config.yaml" ]
+    environment:
+      OTLP_AUTH_TOKEN: ${OTLP_AUTH_TOKEN:-local-dev-token}
     logging: *default-logging
     platform: linux/amd64
 
