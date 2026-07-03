@@ -44,7 +44,11 @@ services:
     logging: *default-logging
 
   tempo:
-    image: grafana/tempo:3.0.2
+    # Held at 2.x: Tempo 3.0 is a re-architecture (ingester/compactor removed,
+    # metrics-generator changed) needing a real config migration — see
+    # https://grafana.com/docs/tempo/latest/set-up-for-tracing/setup-tempo/migrate-to-3/
+    # Dependabot ignores 3.x majors until that migration is done deliberately.
+    image: grafana/tempo:2.10.4
     restart: unless-stopped
     volumes:
       - ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro
