@@ -32,7 +32,7 @@
 #              secret_key: ${S3_SECRET_ACCESS_KEY}
 #
 #   2. Uncomment the overlay below and run:
-#        docker compose -f compose.yml -f compose.storage.s3.yml up -d
+#        docker compose -f compose.yml -f compose.storage-s3.yml up -d
 #
 # services:
 #   loki:

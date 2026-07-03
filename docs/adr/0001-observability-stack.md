@@ -43,6 +43,6 @@ endpoints via Cloudflare Tunnel; bind everything else to `127.0.0.1`.
   fire-and-forget) and the stack rebuilds from this repo in minutes.
 - Local disk bounds retention (30d logs/metrics, 7d traces). The escape hatch,
   reached before any move to distributed ingest, is S3-compatible storage for
-  Loki and Tempo — see `compose.storage.s3.yml`.
+  Loki and Tempo — see `compose.storage-s3.yml`.
 - Every image is pinned and validated by `just check` in CI, so the stack
   stays reproducible.
