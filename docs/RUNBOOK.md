@@ -4,6 +4,12 @@ Operational procedures for this stack. Commands run from the repo root on
 the monitoring host. `just ps` and the **Stack Health** dashboard are the
 first stop for anything.
 
+![Stack Health dashboard](img/stack-health.png)
+
+(That capture is honest: the red export-failure spike is a Tempo outage
+after a bad major-version bump, and the ingest gap is a backup/restore
+drill — both procedures below.)
+
 ## A service is down / misbehaving
 
 ```sh
