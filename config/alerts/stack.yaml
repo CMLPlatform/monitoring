@@ -17,15 +17,28 @@ groups:
           description: "Prometheus cannot scrape {{ $labels.instance }} (job {{ $labels.job }}) for 2 minutes."
 
       - alert: OtelExportFailures
-        expr: sum by (exporter) (rate(otelcol_exporter_send_failed_spans_total[5m])) > 0
-          or sum by (exporter) (rate(otelcol_exporter_send_failed_metric_points_total[5m])) > 0
-          or sum by (exporter) (rate(otelcol_exporter_send_failed_log_records_total[5m])) > 0
+        expr: sum by (exporter) (rate(otelcol_exporter_send_failed_spans[5m])) > 0
+          or sum by (exporter) (rate(otelcol_exporter_send_failed_metric_points[5m])) > 0
+          or sum by (exporter) (rate(otelcol_exporter_send_failed_log_records[5m])) > 0
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "OTel Collector failing to export via {{ $labels.exporter }}"
           description: "The collector has been failing to deliver telemetry to a backend for 5 minutes. Check `just logs otel-collector`."
+
+  - name: capacity
+    rules:
+      - alert: HostDiskSpaceLow
+        expr: >
+          (node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay"}
+          / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay"}) < 0.2
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Filesystem {{ $labels.mountpoint }} is over 80% full"
+          description: "Loki and Tempo have no total-size cap, so this alert is the storage backstop. Free space or lower retention (see RUNBOOK)."
 
   - name: service-red
     rules:

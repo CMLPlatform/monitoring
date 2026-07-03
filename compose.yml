@@ -67,6 +67,18 @@ services:
       # Prometheus 3.x: OTLP ingestion is its own flag, no longer a feature flag.
       - --web.enable-otlp-receiver
       - --enable-feature=native-histograms,exemplar-storage
+      # Whichever hits first wins; the disk-space alert is the backstop.
+      - --storage.tsdb.retention.size=15GB
+    logging: *default-logging
+
+  node-exporter:
+    image: prom/node-exporter:v1.11.1
+    restart: unless-stopped
+    command: [ "--path.rootfs=/host" ]
+    pid: host
+    volumes:
+      # No rslave: unsupported on Docker Desktop; only affects mounts added after start.
+      - /:/host:ro
     logging: *default-logging
 
   grafana:
