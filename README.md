@@ -1,8 +1,8 @@
 # Observability stack
 
-Central Grafana + Loki + Tempo + Prometheus + OTel Collector, wired together
-with logs ↔ traces ↔ metrics correlation. Meant to run on one host and
-receive telemetry from multiple projects over OTLP.
+One host running Grafana, Loki, Tempo, Prometheus, and an OpenTelemetry
+Collector, wired so logs, traces, and metrics cross-link. Point any number of
+projects at it over OTLP and their telemetry lands in one place.
 
 ```mermaid
 flowchart LR
@@ -42,7 +42,7 @@ Tear it down with `just demo-down`.
 
 ## Layout
 
-```
+```sh
 compose.yml             # core services
 compose.tunnel.yml      # production overlay: Cloudflare Tunnel
 compose.demo.yml        # demo overlay: sample telemetry source
@@ -130,13 +130,16 @@ Everything persists to local Docker volumes (`loki_data`, `tempo_data`,
 
 ## Design decisions
 
-Everything enters through **one OTLP gateway** (the collector), so projects
-configure a single endpoint and the backends can be swapped without touching
-any app. The stack is **single-host by design** — CML's telemetry volume
-doesn't justify distributed ingest, and one compose file is auditable — with
-a documented scale-out path (S3-backed Loki/Tempo above) when it stops
-fitting. Logs keep **label cardinality low** (`service`, `env`, `host` only;
-everything else is query-time filtering) because high-cardinality labels are
-how Loki installs fall over. RED metrics are **derived from traces** by
-Tempo's metrics generator, so any service that sends traces gets the
-Service Health dashboard for free, instrumented or not.
+Everything enters through one gateway — the collector — so a project
+configures a single OTLP endpoint, and a backend can be swapped without
+touching any app. It runs on one host on purpose: CML's telemetry is a handful
+of services at single-digit requests per second, so distributed ingest would
+add operational weight for no gain, while one compose file stays auditable by a
+single person. When local disk runs short, S3-backed Loki and Tempo (above)
+are the documented way out.
+
+Logs carry only low-cardinality labels — `service`, `env`, `host` — and
+everything else is a query-time filter; high-cardinality labels are the usual
+way a Loki install falls over. And because Tempo's metrics generator derives
+RED metrics from spans, any service that sends traces gets the Service Health
+dashboard whether or not it emits metrics of its own.
