@@ -75,6 +75,7 @@ config/
   grafana/              # provisioned datasources + dashboard loader
 dashboards/             # drop JSON dashboards here; Grafana auto-loads them
 docs/                   # runbook, onboarding templates, ADRs, screenshots
+infra/                  # OpenTofu: Cloudflare tunnel, ingress routes, DNS
 ```
 
 ## Run
@@ -86,6 +87,11 @@ just up-tunnel          # core stack + Cloudflare Tunnel (needs CLOUDFLARE_TUNNE
 ```
 
 Grafana: <http://localhost:3000> (admin / whatever you set).
+
+The Cloudflare side of the tunnel (hostnames, DNS, the tunnel itself) is
+code too: `infra/` holds a small OpenTofu config whose output is the
+`CLOUDFLARE_TUNNEL_TOKEN` the overlay needs — bootstrap instructions in
+[infra/main.tf](infra/main.tf).
 
 `just check` validates everything (compose files, Prometheus config and
 alert rules, collector config, YAML, workflows, dashboard JSON) in pinned

@@ -2,3 +2,6 @@
 *.local.yml
 *.local.yaml
 backups/
+infra/.terraform/
+infra/terraform.tfstate*
+infra/*.tfvars

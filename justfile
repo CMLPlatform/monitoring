@@ -48,7 +48,12 @@ check:
     docker run --rm -v ./config/alertmanager.yaml:/etc/alertmanager/alertmanager.yaml:ro --entrypoint /bin/amtool prom/alertmanager:v0.33.0 check-config /etc/alertmanager/alertmanager.yaml
     docker run --rm -v .:/code:ro pipelinecomponents/yamllint:0.35.13 yamllint -d relaxed .
     docker run --rm -v .:/repo:ro -w /repo rhysd/actionlint:1.7.12 -color
+    docker run --rm -v ./infra:/infra:ro -w /infra ghcr.io/opentofu/opentofu:1.12.3 fmt -check
     jq empty dashboards/*.json
+
+# Full OpenTofu validation (downloads the provider, so not part of `check`).
+infra-validate:
+    docker run --rm --entrypoint sh -v ./infra:/infra -w /infra ghcr.io/opentofu/opentofu:1.12.3 -c 'tofu init -backend=false -input=false >/dev/null && tofu validate'
 
 # Format YAML in place (needs yamlfmt on the host; optional).
 fmt:
