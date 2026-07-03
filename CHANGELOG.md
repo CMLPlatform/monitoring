@@ -3,6 +3,38 @@
 Notable changes to this stack. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+Reliability hardening: the stack becomes operable, not just runnable.
+
+### Added
+
+- Bearer-token auth on OTLP ingestion (`OTLP_AUTH_TOKEN`); senders use
+  `OTEL_EXPORTER_OTLP_HEADERS`.
+- Host self-monitoring: node-exporter, `HostDiskSpaceLow` alert (the
+  storage backstop — Loki/Tempo have no total-size cap), **Stack Health**
+  dashboard.
+- Alert delivery: Alertmanager routes to `ALERT_WEBHOOK_URL`; an
+  always-firing `Watchdog` heartbeats to `HEARTBEAT_URL` (dead man's
+  switch).
+- `just backup` / `just restore` — crash-consistent volume snapshots,
+  exercised end-to-end.
+- `docs/RUNBOOK.md` and `docs/ONBOARDING.md` with verified telemetry
+  templates (zero-code Python, plain OTLP, Loki Docker driver, Grafana
+  Alloy).
+- `infra/`: OpenTofu for the Cloudflare tunnel, ingress routes, and DNS.
+
+### Changed
+
+- Prometheus storage now bounded by size as well as time
+  (`--storage.tsdb.retention.size=15GB`).
+
+### Fixed
+
+- Tempo held at 2.x: a routine bump to 3.0 crash-looped on the 2.x config
+  (3.0 is a re-architecture). Dependabot now skips Tempo majors so the
+  migration happens deliberately.
+
 ## [0.1.0] - 2026-07-03
 
 First tagged release: the stack is runnable, demoable, and validated in CI.
