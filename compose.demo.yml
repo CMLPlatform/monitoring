@@ -21,6 +21,10 @@ services:
       # Ship Python log records via OTLP with trace context attached.
       OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED: "true"
       OTEL_METRIC_EXPORT_INTERVAL: "10000"
+      # Emit the *stable* HTTP semconv (http.server.request.duration in seconds,
+      # http.route) rather than the legacy names. Stable metric names are frozen,
+      # so the Service Health dashboard's app-SDK panel survives library bumps.
+      OTEL_SEMCONV_STABILITY_OPT_IN: http
     logging:
       driver: json-file
       options:
