@@ -25,6 +25,12 @@ datasources:
           matcherRegex: "[tT]race[_-]?[iI][dD][\"=:\\s]+([A-Fa-f0-9]+)"
           url: "$${__value.raw}"
           datasourceUid: tempo
+        # Same, for OTLP logs where trace_id is structured metadata, not body text.
+        - name: trace_id (otlp)
+          matcherType: label
+          matcherRegex: trace_id
+          url: "$${__value.raw}"
+          datasourceUid: tempo
 
   - name: Tempo
     type: tempo
