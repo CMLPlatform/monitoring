@@ -4,6 +4,9 @@ global:
   external_labels:
     origin: monitoring-host
 
+rule_files:
+  - /etc/prometheus/alerts/*.yaml
+
 # Apps push metrics via OTLP (through the collector). Scrape only infra we host.
 scrape_configs:
   - job_name: prometheus
