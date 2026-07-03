@@ -21,6 +21,9 @@ First tagged release: the stack is runnable, demoable, and validated in CI.
   error rate.
 - README: architecture diagram, demo quickstart, screenshot, design
   decisions.
+- ADR 0001 recording the single-host OTLP-native architecture, and a
+  commented `compose.storage.s3.yml` stub documenting the storage
+  scale-out path.
 
 ### Changed
 

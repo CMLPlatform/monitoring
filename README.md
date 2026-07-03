@@ -124,7 +124,9 @@ someone.
 
 Everything persists to local Docker volumes (`loki_data`, `tempo_data`,
 `prometheus_data`, `grafana_data`). Swap Loki / Tempo storage to S3-compatible
-(Backblaze B2, Cloudflare R2, Hetzner, MinIO) when you outgrow local disk.
+(Backblaze B2, Cloudflare R2, Hetzner, MinIO) when you outgrow local disk —
+`compose.storage.s3.yml` documents the concrete shape of that change, and
+`docs/adr/0001-observability-stack.md` records the architecture rationale.
 
 ## Design decisions
 
