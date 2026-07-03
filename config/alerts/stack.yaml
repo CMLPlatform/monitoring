@@ -5,6 +5,18 @@
 # Validated by `just check` (promtool check rules).
 
 groups:
+  - name: meta
+    rules:
+      # Always firing on purpose: its arrival at the heartbeat receiver is
+      # the proof the whole alerting pipeline works. Silence = broken.
+      - alert: Watchdog
+        expr: vector(1)
+        labels:
+          severity: none
+        annotations:
+          summary: "Alerting-pipeline heartbeat (always firing)"
+          description: "Route this to a dead man's switch; investigate if pings stop."
+
   - name: stack-health
     rules:
       - alert: TargetDown

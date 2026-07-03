@@ -7,6 +7,11 @@ global:
 rule_files:
   - /etc/prometheus/alerts/*.yaml
 
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
 # Apps push metrics via OTLP (through the collector). Scrape only infra we host.
 scrape_configs:
   - job_name: prometheus

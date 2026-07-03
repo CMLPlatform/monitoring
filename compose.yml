@@ -71,6 +71,25 @@ services:
       - --storage.tsdb.retention.size=15GB
     logging: *default-logging
 
+  alertmanager:
+    image: prom/alertmanager:v0.33.0
+    restart: unless-stopped
+    volumes:
+      - ./config/alertmanager.yaml:/etc/alertmanager/alertmanager.yaml:ro
+      - alertmanager_data:/alertmanager
+    environment:
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      HEARTBEAT_URL: ${HEARTBEAT_URL:-}
+    # Alertmanager can't expand env vars in its config; write the webhook
+    # URLs to the url_file paths the config points at, then start.
+    entrypoint: [ "/bin/sh", "-c" ]
+    command:
+      - |
+        printf '%s' "$$ALERT_WEBHOOK_URL" > /alertmanager/webhook_url
+        printf '%s' "$$HEARTBEAT_URL" > /alertmanager/heartbeat_url
+        exec /bin/alertmanager --config.file=/etc/alertmanager/alertmanager.yaml --storage.path=/alertmanager
+    logging: *default-logging
+
   node-exporter:
     image: prom/node-exporter:v1.11.1
     restart: unless-stopped
@@ -104,3 +123,4 @@ volumes:
   tempo_data:
   prometheus_data:
   grafana_data:
+  alertmanager_data:
