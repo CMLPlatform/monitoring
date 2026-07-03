@@ -4,18 +4,36 @@ One host running Grafana, Loki, Tempo, Prometheus, and an OpenTelemetry
 Collector, wired so logs, traces, and metrics cross-link. Point any number of
 projects at it over OTLP and their telemetry lands in one place.
 
+## Architecture
+
+Everything enters through one gateway — the OTel Collector — so a project
+configures a single OTLP endpoint and a backend can be swapped without
+touching any app. Tempo derives RED metrics from spans, so a service that
+only sends traces still gets dashboards and error alerting. It all runs on
+one host on purpose: at CML's telemetry volume, distributed ingest would add
+operational weight for no gain. Rationale and alternatives:
+[ADR 0001](docs/adr/0001-observability-stack.md).
+
 ```mermaid
 flowchart LR
-    apps["Project apps<br/>(OTLP gRPC 4317 / HTTP 4318)"] --> otel["OTel Collector<br/>(ingestion gateway)"]
-    otel -- logs --> loki[Loki]
-    otel -- traces --> tempo[Tempo]
-    otel -- metrics --> prom[Prometheus]
-    tempo -- "span metrics (RED)" --> prom
-    loki --> grafana[Grafana]
-    tempo --> grafana
-    prom --> grafana
-    grafana --- cf["Cloudflare Tunnel<br/>(optional overlay)"]
+    apps["Project apps"] -->|"OTLP<br/>gRPC :4317 · HTTP :4318"| cf["Cloudflare Tunnel<br/>(production, optional)"]
+    user["Browser"] -->|HTTPS| cf
+    cf --> otel
+    cf --> grafana
+
+    subgraph host["Monitoring host — Docker Compose, ports bound to 127.0.0.1"]
+        otel["OTel Collector<br/>(ingestion gateway)"]
+        otel -->|logs| loki["Loki"]
+        otel -->|traces| tempo["Tempo"]
+        otel -->|metrics| prom["Prometheus"]
+        tempo -->|"span metrics (RED)"| prom
+        grafana["Grafana"] -. queries .-> loki & tempo & prom
+    end
 ```
+
+Solid arrows are the write path; dotted arrows are Grafana reading at query
+time. Locally (`just up` / `just demo`) there is no tunnel — everything
+talks over the compose network and Grafana is on `localhost:3000`.
 
 ## Demo: see it work in one command
 
@@ -125,21 +143,4 @@ someone.
 Everything persists to local Docker volumes (`loki_data`, `tempo_data`,
 `prometheus_data`, `grafana_data`). Swap Loki / Tempo storage to S3-compatible
 (Backblaze B2, Cloudflare R2, Hetzner, MinIO) when you outgrow local disk —
-`compose.storage-s3.yml` documents the concrete shape of that change, and
-`docs/adr/0001-observability-stack.md` records the architecture rationale.
-
-## Design decisions
-
-Everything enters through one gateway — the collector — so a project
-configures a single OTLP endpoint, and a backend can be swapped without
-touching any app. It runs on one host on purpose: CML's telemetry is a handful
-of services at single-digit requests per second, so distributed ingest would
-add operational weight for no gain, while one compose file stays auditable by a
-single person. When local disk runs short, S3-backed Loki and Tempo (above)
-are the documented way out.
-
-Logs carry only low-cardinality labels — `service`, `env`, `host` — and
-everything else is a query-time filter; high-cardinality labels are the usual
-way a Loki install falls over. And because Tempo's metrics generator derives
-RED metrics from spans, any service that sends traces gets the Service Health
-dashboard whether or not it emits metrics of its own.
+`compose.storage-s3.yml` documents the concrete shape of that change.
