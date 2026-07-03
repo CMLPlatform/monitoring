@@ -7,6 +7,7 @@ import time
 
 from fastapi import FastAPI, HTTPException
 
+logging.basicConfig(level=logging.INFO)  # root logger defaults to WARNING; we want the INFO lines too
 log = logging.getLogger("demo-api")
 app = FastAPI()
 
