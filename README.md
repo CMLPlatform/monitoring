@@ -16,7 +16,7 @@ operational weight for no gain. Rationale and alternatives:
 
 ```mermaid
 flowchart LR
-    apps["Project apps"] -->|"OTLP<br/>gRPC :4317 · HTTP :4318"| cf["Cloudflare Tunnel<br/>(production, optional)"]
+    apps["Project apps"] -->|"OTLP over HTTPS<br/>(gRPC/HTTP direct on private nets)"| cf["Cloudflare Tunnel<br/>(production, optional)"]
     user["Browser"] -->|HTTPS| cf
     cf --> otel
     cf --> grafana

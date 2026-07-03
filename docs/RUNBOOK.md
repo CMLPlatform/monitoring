@@ -49,16 +49,20 @@ just up
 ```
 
 Backups are crash-consistent (equivalent to a power loss; every component
-recovers via its WAL). Copy tarballs off-host — a backup on the disk it
+recovers via its WAL). Tarballs are mode 0600 and contain secrets (Grafana
+DB); copy them off-host over a private channel — a backup on the disk it
 protects is a decoration. RPO = however often you run it; a daily cron on
-the host is the intended setup.
+the host is the intended setup. During the pause the collector keeps
+accepting telemetry and retries for ~5 minutes; a backup that takes longer
+than that will drop data, so on large volumes run it at a quiet hour.
 
 ## Rotating secrets
 
 - **OTLP token:** new value for `OTLP_AUTH_TOKEN` in `.env` →
   `docker compose up -d otel-collector` → update every sender's
   `OTEL_EXPORTER_OTLP_HEADERS`. Senders with the old token get 401s (visible
-  as their export errors) until updated.
+  as their export errors) until updated. That includes a running demo
+  overlay — re-run `just demo` to recreate it with the new token.
 - **Tunnel token:** rotate in Cloudflare Zero Trust → new
   `CLOUDFLARE_TUNNEL_TOKEN` in `.env` → `just up-tunnel`.
 - **Grafana admin password:** `GRAFANA_ADMIN_PASSWORD` in `.env` →
@@ -81,6 +85,8 @@ alertmanager`.
 ## Upgrading images
 
 Dependabot PRs bump the pins. For each: CI runs `just check`; after merge,
-on the host: `git pull && just pull && just up`. The `just check` validator
-pins (promtool, otelcol, amtool images) must match `compose.yml` — CI fails
-loudly when config syntax drifts between versions, which is the point.
+on the host: `git pull && just pull && just up`. The `just check` validators
+(promtool, otelcol, amtool) read their image versions from `compose.yml`, so
+every bump is validated with the exact binaries the stack will run — CI
+fails loudly when config syntax drifts between versions, which is the point.
+Tempo majors are deliberately held back (see the comment in `compose.yml`).

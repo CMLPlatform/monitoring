@@ -7,12 +7,14 @@ matches how your project runs.
 
 | | |
 | --- | --- |
-| OTLP gRPC | `<host>:4317` |
-| OTLP HTTP | `<host>:4318` |
+| Production (via tunnel) | `https://otlp.<domain>` — OTLP **HTTP** (`http/protobuf`) only |
+| Private network / same host | `<host>:4317` (gRPC) or `<host>:4318` (HTTP) |
 | Auth | `Authorization: Bearer <OTLP_AUTH_TOKEN>` (ask the stack operator) |
 
-In production `<host>` is the tunnel hostname (e.g. `otlp.example.org`,
-HTTPS); never expose 4317/4318 directly.
+The tunnel routes only HTTPS to the collector's HTTP receiver — there is no
+public gRPC path, so set `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf` when
+sending through it. gRPC works only on private paths (VPN/WireGuard, same
+Docker network). Never expose 4317/4318 directly.
 
 ## The conventions
 
@@ -39,7 +41,6 @@ export OTEL_RESOURCE_ATTRIBUTES=env=prod
 export OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.example.org
 export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <token>"
-export OTEL_TRACES_EXPORTER=otlp OTEL_METRICS_EXPORTER=otlp OTEL_LOGS_EXPORTER=otlp
 export OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true
 export OTEL_SEMCONV_STABILITY_OPT_IN=http
 
@@ -64,9 +65,10 @@ OTEL_RESOURCE_ATTRIBUTES=env=prod
 ## Template 3 — Docker container logs (Loki driver)
 
 For shipping container stdout/stderr without touching the app. Requires a
-Loki push URL, which is only safe on a private network path (VPN/WireGuard,
-or a Cloudflare Access service token in front of the tunnel hostname) —
-Loki itself has no auth. If in doubt, use the OTLP log path above instead.
+Loki push URL, which **this stack does not expose by default** — Loki has no
+auth, so a push hostname must first be added to `infra/main.tf` and protected
+(Cloudflare Access service token), or reached over a private network path
+(VPN/WireGuard). If in doubt, use the OTLP log path above instead.
 
 ```sh
 # once per host
