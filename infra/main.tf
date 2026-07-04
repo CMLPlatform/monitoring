@@ -39,6 +39,11 @@ variable "domain" {
   description = "Apex domain, e.g. example.org → grafana.example.org, otlp.example.org."
 }
 
+variable "grafana_allowed_emails" {
+  type        = list(string)
+  description = "Email addresses allowed through Cloudflare Access to Grafana (one-time PIN)."
+}
+
 resource "cloudflare_zero_trust_tunnel_cloudflared" "monitoring" {
   account_id = var.account_id
   name       = "monitoring"
@@ -84,6 +89,33 @@ resource "cloudflare_dns_record" "otlp" {
   content = "${cloudflare_zero_trust_tunnel_cloudflared.monitoring.id}.cfargotunnel.com"
   proxied = true
   ttl     = 1
+}
+
+# Cloudflare Access in front of Grafana: email one-time-PIN at the edge, so
+# the public hostname never reaches Grafana's login page unauthenticated.
+# The OTLP hostname is NOT behind Access — machines authenticate with the
+# bearer token instead.
+resource "cloudflare_zero_trust_access_application" "grafana" {
+  account_id       = var.account_id
+  name             = "Grafana (monitoring)"
+  domain           = "grafana.${var.domain}"
+  type             = "self_hosted"
+  session_duration = "24h"
+
+  policies = [{
+    id         = cloudflare_zero_trust_access_policy.grafana_emails.id
+    precedence = 1
+  }]
+}
+
+resource "cloudflare_zero_trust_access_policy" "grafana_emails" {
+  account_id = var.account_id
+  name       = "monitoring: allowed emails"
+  decision   = "allow"
+
+  include = [for email in var.grafana_allowed_emails : {
+    email = { email = email }
+  }]
 }
 
 data "cloudflare_zero_trust_tunnel_cloudflared_token" "monitoring" {
