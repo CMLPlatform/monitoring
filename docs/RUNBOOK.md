@@ -89,4 +89,3 @@ on the host: `git pull && just pull && just up`. The `just check` validators
 (promtool, otelcol, amtool) read their image versions from `compose.yml`, so
 every bump is validated with the exact binaries the stack will run — CI
 fails loudly when config syntax drifts between versions, which is the point.
-Tempo majors are deliberately held back (see the comment in `compose.yml`).
