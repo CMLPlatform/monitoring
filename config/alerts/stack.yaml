@@ -1,10 +1,22 @@
 # Prometheus alert rules for the stack itself plus RED-style alerts on the
-# span metrics Tempo derives from traces. Evaluated by Prometheus; visible in
-# Grafana under Alerting → Alert rules (Prometheus datasource).
-# No Alertmanager: single-host stack, alerts are surfaced in Grafana.
-# Validated by `just check` (promtool check rules).
+# span metrics Tempo derives from traces. Evaluated by Prometheus, delivered
+# by Alertmanager (config/alertmanager.yaml → ALERT_WEBHOOK_URL/HEARTBEAT_URL),
+# and visible in Grafana under Alerting → Alert rules.
+# Validated by `just check` (promtool check config, which loads these rules).
 
 groups:
+  - name: meta
+    rules:
+      # Always firing on purpose: its arrival at the heartbeat receiver is
+      # the proof the whole alerting pipeline works. Silence = broken.
+      - alert: Watchdog
+        expr: vector(1)
+        labels:
+          severity: none
+        annotations:
+          summary: "Alerting-pipeline heartbeat (always firing)"
+          description: "Route this to a dead man's switch; investigate if pings stop."
+
   - name: stack-health
     rules:
       - alert: TargetDown
@@ -17,15 +29,28 @@ groups:
           description: "Prometheus cannot scrape {{ $labels.instance }} (job {{ $labels.job }}) for 2 minutes."
 
       - alert: OtelExportFailures
-        expr: sum by (exporter) (rate(otelcol_exporter_send_failed_spans_total[5m])) > 0
-          or sum by (exporter) (rate(otelcol_exporter_send_failed_metric_points_total[5m])) > 0
-          or sum by (exporter) (rate(otelcol_exporter_send_failed_log_records_total[5m])) > 0
+        expr: sum by (exporter) (rate(otelcol_exporter_send_failed_spans[5m])) > 0
+          or sum by (exporter) (rate(otelcol_exporter_send_failed_metric_points[5m])) > 0
+          or sum by (exporter) (rate(otelcol_exporter_send_failed_log_records[5m])) > 0
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "OTel Collector failing to export via {{ $labels.exporter }}"
           description: "The collector has been failing to deliver telemetry to a backend for 5 minutes. Check `just logs otel-collector`."
+
+  - name: capacity
+    rules:
+      - alert: HostDiskSpaceLow
+        expr: >
+          (node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay"}
+          / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay"}) < 0.2
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Filesystem {{ $labels.mountpoint }} is over 80% full"
+          description: "Loki and Tempo have no total-size cap, so this alert is the storage backstop. Free space or lower retention (see RUNBOOK)."
 
   - name: service-red
     rules:

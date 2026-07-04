@@ -29,8 +29,9 @@ services:
     volumes:
       - ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro
     command: [ "--config=/etc/otelcol/config.yaml" ]
+    environment:
+      OTLP_AUTH_TOKEN: ${OTLP_AUTH_TOKEN:?set OTLP_AUTH_TOKEN in .env}
     logging: *default-logging
-    platform: linux/amd64
 
   loki:
     image: grafana/loki:3.7.3
@@ -42,7 +43,11 @@ services:
     logging: *default-logging
 
   tempo:
-    image: grafana/tempo:3.0.2
+    # Held at 2.x: Tempo 3.0 is a re-architecture (ingester/compactor removed,
+    # metrics-generator changed) needing a real config migration — see
+    # https://grafana.com/docs/tempo/latest/set-up-for-tracing/setup-tempo/migrate-to-3/
+    # Dependabot ignores 3.x majors until that migration is done deliberately.
+    image: grafana/tempo:2.10.4
     restart: unless-stopped
     volumes:
       - ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro
@@ -65,6 +70,42 @@ services:
       # Prometheus 3.x: OTLP ingestion is its own flag, no longer a feature flag.
       - --web.enable-otlp-receiver
       - --enable-feature=native-histograms,exemplar-storage
+      # Whichever hits first wins; the disk-space alert is the backstop.
+      - --storage.tsdb.retention.size=15GB
+    logging: *default-logging
+
+  alertmanager:
+    image: prom/alertmanager:v0.33.0
+    restart: unless-stopped
+    volumes:
+      - ./config/alertmanager.yaml:/etc/alertmanager/alertmanager.yaml:ro
+      - alertmanager_data:/alertmanager
+    environment:
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      HEARTBEAT_URL: ${HEARTBEAT_URL:-}
+    # Alertmanager can't expand env vars in its config; write the webhook
+    # URLs to the url_file paths the config points at, then start. tmpfs on
+    # purpose: the URLs often carry secrets and must not end up in the
+    # persistent volume (which `just backup` archives).
+    tmpfs: [ /run/am ]
+    entrypoint: [ "/bin/sh", "-c" ]
+    command:
+      - |
+        printf '%s' "$$ALERT_WEBHOOK_URL" > /run/am/webhook_url
+        printf '%s' "$$HEARTBEAT_URL" > /run/am/heartbeat_url
+        exec /bin/alertmanager --config.file=/etc/alertmanager/alertmanager.yaml --storage.path=/alertmanager
+    logging: *default-logging
+
+  node-exporter:
+    image: prom/node-exporter:v1.11.1
+    restart: unless-stopped
+    command: [ "--path.rootfs=/host" ]
+    pid: host
+    volumes:
+      # No rslave: unsupported on Docker Desktop; only affects mounts added after start.
+      # No network_mode:host either, so node_network_* describes the container
+      # veth, not host NICs — fine while nothing alerts on network metrics.
+      - /:/host:ro
     logging: *default-logging
 
   grafana:
@@ -82,7 +123,6 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
-      GF_FEATURE_TOGGLES_ENABLE: traceqlEditor,metricsSummary,traceToProfiles
     logging: *default-logging
 
 volumes:
@@ -90,3 +130,4 @@ volumes:
   tempo_data:
   prometheus_data:
   grafana_data:
+  alertmanager_data:

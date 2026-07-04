@@ -1,0 +1,27 @@
+# Alert routing. Webhook URLs are supplied at runtime via url_file (written
+# from ALERT_WEBHOOK_URL / HEARTBEAT_URL by the compose entrypoint) because
+# Alertmanager does not expand env vars in its config. With the env vars
+# unset, delivery fails with a logged error and nothing else — the stack
+# runs fine without them.
+
+route:
+  receiver: webhook
+  group_by: [alertname]
+  routes:
+    # Watchdog is always firing; its delivery is the heartbeat. Wire
+    # HEARTBEAT_URL to a dead man's switch (e.g. healthchecks.io) that
+    # alerts when pings STOP arriving.
+    - matchers: [ 'alertname = "Watchdog"' ]
+      receiver: heartbeat
+      group_wait: 0s
+      repeat_interval: 5m
+
+receivers:
+  - name: webhook
+    webhook_configs:
+      - url_file: /run/am/webhook_url
+
+  - name: heartbeat
+    webhook_configs:
+      - url_file: /run/am/heartbeat_url
+        send_resolved: false

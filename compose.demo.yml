@@ -1,23 +1,28 @@
 # Demo overlay: a tiny auto-instrumented FastAPI service plus a load
 # generator, so the stack has real traces, metrics, and correlated logs
-# to show. Not for production.
+# to show. Not for production — no restart-across-reboots on purpose.
 #
 #   just demo        # core stack + this overlay
-#   just demo-down
+#   just demo-down   # remove just the demo services
+
+x-demo-logging: &demo-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
   demo-api:
     build: ./demo
-    restart: unless-stopped
+    restart: on-failure
     depends_on: [ otel-collector ]
     environment:
       OTEL_SERVICE_NAME: demo-api
       OTEL_RESOURCE_ATTRIBUTES: env=demo
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
-      OTEL_TRACES_EXPORTER: otlp
-      OTEL_METRICS_EXPORTER: otlp
-      OTEL_LOGS_EXPORTER: otlp
+      OTEL_EXPORTER_OTLP_HEADERS: Authorization=Bearer ${OTLP_AUTH_TOKEN:?set OTLP_AUTH_TOKEN in .env}
+      # Traces/metrics/logs exporters all default to otlp via opentelemetry-distro.
       # Ship Python log records via OTLP with trace context attached.
       OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED: "true"
       OTEL_METRIC_EXPORT_INTERVAL: "10000"
@@ -25,15 +30,11 @@ services:
       # http.route) rather than the legacy names. Stable metric names are frozen,
       # so the Service Health dashboard's app-SDK panel survives library bumps.
       OTEL_SEMCONV_STABILITY_OPT_IN: http
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+    logging: *demo-logging
 
   demo-load:
     image: curlimages/curl:8.21.0
-    restart: unless-stopped
+    restart: on-failure
     depends_on: [ demo-api ]
     command:
       - sh
@@ -44,8 +45,4 @@ services:
           curl -s -o /dev/null demo-api:8000/work
           sleep 1
         done
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+    logging: *demo-logging
