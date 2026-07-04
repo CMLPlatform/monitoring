@@ -47,7 +47,7 @@ services:
     # metrics-generator changed) needing a real config migration — see
     # https://grafana.com/docs/tempo/latest/set-up-for-tracing/setup-tempo/migrate-to-3/
     # Dependabot ignores 3.x majors until that migration is done deliberately.
-    image: grafana/tempo:2.10.4
+    image: grafana/tempo:2.10.7
     restart: unless-stopped
     volumes:
       - ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro
