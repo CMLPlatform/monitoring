@@ -1,0 +1,26 @@
+# Thin wrapper around the `just` contract: everything CI runs, you can run
+# locally with the same command.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: extractions/setup-just@v4
+      - run: cp .env.example .env
+      - run: just check
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: extractions/setup-just@v4
+      - run: cp .env.example .env
+      - run: just smoke
+      - run: just down
