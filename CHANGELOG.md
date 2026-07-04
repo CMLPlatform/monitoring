@@ -22,18 +22,20 @@ Reliability hardening: the stack becomes operable, not just runnable.
 - `docs/RUNBOOK.md` and `docs/ONBOARDING.md` with verified telemetry
   templates (zero-code Python, plain OTLP, Loki Docker driver, Grafana
   Alloy).
-- `infra/`: OpenTofu for the Cloudflare tunnel, ingress routes, and DNS.
+- `infra/`: OpenTofu for the Cloudflare tunnel, ingress routes, and DNS,
+  plus Cloudflare Access (email one-time PIN) in front of Grafana.
+- **Logs Overview** dashboard for OTLP-ingested logs (volume by service
+  and level, errors, live tail); Stack Health gains an Active Alerts
+  table and becomes the Grafana home dashboard.
 
 ### Changed
 
 - Prometheus storage now bounded by size as well as time
   (`--storage.tsdb.retention.size=15GB`).
-
-### Fixed
-
-- Tempo held at 2.x: a routine bump to 3.0 crash-looped on the 2.x config
-  (3.0 is a re-architecture). Dependabot now skips Tempo majors so the
-  migration happens deliberately.
+- **Tempo migrated to 3.0** (after a routine bump initially crash-looped on
+  the 2.x config): ingester/compactor blocks removed per the monolithic
+  migration guide, retention moved under overrides, verified in place
+  against live traffic.
 
 ## [0.1.0] - 2026-07-03
 

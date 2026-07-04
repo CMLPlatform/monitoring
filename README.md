@@ -49,8 +49,8 @@ Grafana at <http://localhost:3000> (admin / change-me):
 - **Dashboards → Service Health (RED)** — request rate, error rate, and
   latency for the demo service. Latency dots are exemplars: click one to
   open that exact trace in Tempo.
-- **Explore → Loki** — `{service_name="demo-api"}`; expand an error line
-  and follow its `trace_id` to the trace.
+- **Dashboards → Logs Overview** — log volume by service and level,
+  errors, and a live tail for everything the stack ingests over OTLP.
 - **Alerting → Alert rules** — stack-health and error-rate rules,
   evaluated by Prometheus.
 
@@ -88,8 +88,9 @@ just up-tunnel          # core stack + Cloudflare Tunnel (needs CLOUDFLARE_TUNNE
 
 Grafana: <http://localhost:3000> (admin / whatever you set).
 
-The Cloudflare side of the tunnel (hostnames, DNS, the tunnel itself) is
-code too: `infra/` holds a small OpenTofu config whose output is the
+The Cloudflare side of the tunnel (hostnames, DNS, the tunnel itself, and
+Cloudflare Access gating Grafana behind email one-time-PIN) is code too:
+`infra/` holds a small OpenTofu config whose output is the
 `CLOUDFLARE_TUNNEL_TOKEN` the overlay needs — bootstrap instructions in
 [infra/main.tf](infra/main.tf).
 
