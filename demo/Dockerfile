@@ -1,5 +1,5 @@
 FROM python:3.14-slim AS builder
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /bin/
 WORKDIR /app
 COPY pyproject.toml .
 RUN uv pip install --system --no-cache -r pyproject.toml
