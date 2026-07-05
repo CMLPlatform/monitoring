@@ -96,7 +96,7 @@
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
-          "expr": "{service_name=~\"$service\", detected_level=~\"(?i)(error|critical|fatal)\"}",
+          "expr": "{service_name=~\"$service\"} | detected_level=~\"(?i)(error|critical|fatal)\"",
           "refId": "A"
         }
       ],

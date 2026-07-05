@@ -86,7 +86,7 @@
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
-          "expr": "{service_name=\"relab-api\", detected_level=~\"error|critical\"}",
+          "expr": "{service_name=\"relab-api\"} | detected_level=~\"error|critical\"",
           "refId": "A"
         }
       ],
