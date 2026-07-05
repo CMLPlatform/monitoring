@@ -18,12 +18,12 @@ endpoints via Cloudflare Tunnel; bind everything else to `127.0.0.1`.
 
 - **OTLP-native:** one endpoint, one protocol. Swap a backend or move it to a
   hosted equivalent without touching any application.
-- **Single-host:** one compose file one person can audit and rebuild.
+- **Single-host:** one compose file that one person can audit and rebuild.
   Distributed ingest (Kubernetes, Mimir, multi-tenant Loki) would add operational
   overhead for no benefit at this volume.
 - **Traces as the primary signal:** Tempo's metrics generator derives RED
-  metrics and a service graph from spans, so a service that only sends traces
-  still gets dashboards and error-rate alerting.
+  metrics (request rate, errors, duration) and a service graph from spans, so a
+  service that only sends traces still gets dashboards and error-rate alerting.
 
 ## Alternatives considered
 

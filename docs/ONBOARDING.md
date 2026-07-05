@@ -1,7 +1,10 @@
 # Sending telemetry from your project
 
-One endpoint, one token, three conventions — then pick the template that
-matches how your project runs.
+This stack collects logs, traces, and metrics from CML projects and shows
+them side by side in one Grafana. Getting your project in takes an
+endpoint, a token, and a couple of naming conventions. Then pick the
+template that matches how your project runs — if it's a Python/FastAPI
+service, Template 1 needs no code changes at all.
 
 ## The endpoint
 
@@ -11,23 +14,27 @@ matches how your project runs.
 | Private network / same host | `<host>:4317` (gRPC) or `<host>:4318` (HTTP) |
 | Auth | `Authorization: Bearer <OTLP_AUTH_TOKEN>` (ask the stack operator) |
 
-The tunnel routes only HTTPS to the collector's HTTP receiver — there is no
-public gRPC path, so set `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf` when
-sending through it. gRPC works only on private paths (VPN/WireGuard, same
-Docker network). Never expose 4317/4318 directly.
+The tunnel only routes HTTPS to the collector's HTTP receiver; there is no
+public gRPC path. When sending through it, set
+`OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`. gRPC works on private paths
+only (VPN/WireGuard, or the same Docker network). Never expose 4317/4318
+directly.
 
 ## The conventions
 
-- **`service.name`** — required; one stable name per deployable unit
-  (`relab-api`, not `relab-api-prod-2`). This is what dashboards key on.
-- **`env`** — `prod`, `staging`, `dev`, set via resource attributes.
-- **Keep label cardinality low** — no user IDs, request IDs, or timestamps
-  in resource attributes or log labels; those belong in log lines and span
-  attributes, where they're query-time filters.
+- **`service.name`** is required: one stable name per deployable unit
+  (`relab-api`, not `relab-api-prod-2`). Dashboards key on it.
+- **`env`** is `prod`, `staging`, or `dev`, set as a resource attribute.
+- **Keep labels low-cardinality.** Loki and Prometheus index labels, and
+  every distinct value creates a new stream or series. User IDs, request
+  IDs, and timestamps therefore don't belong in resource attributes or log
+  labels. Put them in the log line or in span attributes instead — you can
+  still filter on them at query time, without the storage blowing up.
 
-Any service that sends **traces** automatically gets RED metrics, the
-Service Health dashboard, and error-rate alerting — Tempo derives them from
-spans. Send traces first; everything else is a bonus.
+Traces are the most valuable signal to send. Tempo derives request-rate,
+error-rate, and duration ("RED") metrics from them, so a service that
+sends only traces already gets the Service Health dashboard and error
+alerting. Start with traces; everything else is a bonus.
 
 ## Template 1 — Python/FastAPI, zero code changes
 
@@ -47,13 +54,14 @@ export OTEL_SEMCONV_STABILITY_OPT_IN=http
 opentelemetry-instrument uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
-Traces, RED metrics, and logs with trace context — no OTel code in the app.
-The living example is this repo's own [`demo/`](../demo/) +
+That's the whole integration: traces, RED metrics, and logs that carry
+their trace context, without a line of OTel code in the app. The working
+example is this repo's own [`demo/`](../demo/) service plus
 [`compose.demo.yml`](../compose.demo.yml).
 
 ## Template 2 — any language, plain OTLP
 
-Every OTel SDK understands the same four env vars:
+Every OpenTelemetry SDK understands the same four environment variables:
 
 ```sh
 OTEL_SERVICE_NAME=my-service
@@ -64,11 +72,12 @@ OTEL_RESOURCE_ATTRIBUTES=env=prod
 
 ## Template 3 — Docker container logs (Loki driver)
 
-For shipping container stdout/stderr without touching the app. Requires a
-Loki push URL, which **this stack does not expose by default** — Loki has no
-auth, so a push hostname must first be added to `infra/main.tf` and protected
-(Cloudflare Access service token), or reached over a private network path
-(VPN/WireGuard). If in doubt, use the OTLP log path above instead.
+This ships container stdout/stderr without touching the app. It needs a
+Loki push URL, which **this stack does not expose by default**: Loki has
+no authentication of its own, so a push hostname must first be added to
+`infra/main.tf` and protected with a Cloudflare Access service token, or
+reached over a private network path (VPN/WireGuard). If in doubt, use the
+OTLP log path from Templates 1–2 instead.
 
 ```sh
 # once per host
@@ -84,12 +93,13 @@ logging:
     loki-external-labels: service={{.Name}},env=prod,host=myhost
 ```
 
-RELab's `compose.logging.loki.yml` overlay (auto-included when `LOKI_URL`
-is set) is the reference implementation of this pattern.
+RELab's `compose.logging.loki.yml` overlay, auto-included when `LOKI_URL`
+is set, is the reference implementation of this pattern.
 
 ## Template 4 — host or file logs (Grafana Alloy)
 
-For log files outside containers (Promtail is EOL; Alloy is its successor):
+For log files that live outside containers. (Promtail is end-of-life;
+Alloy is its successor.)
 
 ```alloy
 // alloy/config.alloy
@@ -120,4 +130,5 @@ alloy:
     - /var/log/myapp:/var/log/myapp:ro
 ```
 
-Same caveat as Template 3: the Loki push URL needs a protected network path.
+The same caveat as Template 3 applies: the Loki push URL needs a protected
+network path.

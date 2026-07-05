@@ -134,6 +134,43 @@
         },
         "overrides": []
       }
+    },
+    {
+      "type": "table",
+      "title": "Active Alerts",
+      "description": "Pending and firing alerts (Watchdog excluded — it fires by design).",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 16 },
+      "id": 6,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "ALERTS{alertname!=\"Watchdog\"}",
+          "instant": true,
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "Value": true, "__name__": true },
+            "indexByName": { "alertname": 0, "alertstate": 1, "severity": 2 }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "alertstate" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+              { "id": "mappings", "value": [{ "type": "value", "options": { "firing": { "color": "red" }, "pending": { "color": "orange" } } }] }
+            ]
+          }
+        ]
+      }
     }
   ]
 }

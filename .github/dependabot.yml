@@ -8,11 +8,6 @@ updates:
       monitoring-stack-updates:
         patterns:
           - "*"
-    ignore:
-      # Tempo 3.x is a re-architecture requiring a config migration; upgrade
-      # deliberately, not via a routine bump. See comment in compose.yml.
-      - dependency-name: "grafana/tempo"
-        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "docker"
     directory: "/demo"

@@ -1,5 +1,8 @@
-# Tempo accepts OTLP directly. We only forward traces *from* the collector
+# Tempo 3.x single-binary. Traces arrive only from the collector
 # (collector → tempo:4317) so external apps never talk to Tempo directly.
+# Migrated from 2.x: the ingester/compactor blocks and the local-blocks
+# processor are gone (handled internally by the live-store/backend worker);
+# block retention now lives under overrides.
 
 server:
   http_listen_port: 3200
@@ -12,13 +15,6 @@ distributor:
         grpc:
           endpoint: 0.0.0.0:4317
 
-ingester:
-  max_block_duration: 5m
-
-compactor:
-  compaction:
-    block_retention: 168h  # 7 days — traces are bulky, tune to disk budget
-
 storage:
   trace:
     backend: local
@@ -28,7 +24,7 @@ storage:
       path: /var/tempo/blocks
 
 # Derive RED metrics (requests/errors/duration) + a service graph from traces.
-# These land in Prometheus and power Grafana's built-in Service Graph panel.
+# These land in Prometheus and power the Service Health dashboard.
 metrics_generator:
   registry:
     external_labels:
@@ -38,13 +34,13 @@ metrics_generator:
     remote_write:
       - url: http://prometheus:9090/api/v1/write
         send_exemplars: true
-  traces_storage:
-    path: /var/tempo/generator/traces
 
 overrides:
   defaults:
     metrics_generator:
-      processors: [service-graphs, span-metrics, local-blocks]
+      processors: [service-graphs, span-metrics]
+    compaction:
+      block_retention: 168h  # 7 days — traces are bulky, tune to disk budget
 
 usage_report:
   reporting_enabled: false
