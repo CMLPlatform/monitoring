@@ -1,17 +1,23 @@
 # Observability stack
 
-One host running Grafana, Loki, Tempo, Prometheus, and an OpenTelemetry
-Collector, wired so logs, traces, and metrics cross-link. Point any number of
-projects at it over OTLP and their telemetry lands in one place.
+Central monitoring for CML's research software. One host runs Grafana,
+Loki, Tempo, Prometheus, and an OpenTelemetry Collector, wired together so
+logs, traces, and metrics cross-reference each other. Projects send their
+telemetry here over OTLP (the OpenTelemetry protocol) and it lands in one
+place, queryable side by side.
 
 ## Architecture
 
-Everything enters through one gateway — the OTel Collector — so a project
-configures a single OTLP endpoint and a backend can be swapped without
-touching any app. Tempo derives RED metrics from spans, so a service that
-only sends traces still gets dashboards and error alerting. It all runs on
-one host on purpose: at CML's telemetry volume, distributed ingest would add
-operational weight for no gain. Rationale and alternatives:
+Everything enters through a single gateway, the OpenTelemetry Collector. A
+project only ever configures one endpoint, and we can swap a storage
+backend later without touching any application. Tempo also derives
+request-rate, error-rate, and duration ("RED") metrics from the traces it
+receives, so a service that sends nothing but traces still gets a working
+dashboard and error alerting.
+
+The stack deliberately runs on a single host. At CML's telemetry volume,
+distributed ingestion would add operational weight for no gain. The
+reasoning, and the alternatives we considered, are recorded in
 [ADR 0001](docs/adr/0001-observability-stack.md).
 
 ```mermaid
@@ -31,9 +37,10 @@ flowchart LR
     end
 ```
 
-Solid arrows are the write path; dotted arrows are Grafana reading at query
-time. Locally (`just up` / `just demo`) there is no tunnel — everything
-talks over the compose network and Grafana is on `localhost:3000`.
+Solid arrows show telemetry being written; dotted arrows show Grafana
+reading at query time. Locally (`just up` or `just demo`) there is no
+tunnel involved: everything talks over the compose network and Grafana is
+at `localhost:3000`.
 
 ## Demo: see it work in one command
 
@@ -42,21 +49,24 @@ cp .env.example .env
 just demo
 ```
 
-This starts the full stack plus a small auto-instrumented FastAPI service
-under constant load (`compose.demo.yml`). Give it a minute, then open
-Grafana at <http://localhost:3000> (admin / change-me):
+This starts the full stack plus a small FastAPI service under constant
+artificial load (`compose.demo.yml`). The service is instrumented with
+OpenTelemetry auto-instrumentation and fails about one request in ten, on
+purpose. Give it a minute, then open Grafana at <http://localhost:3000>
+(admin / change-me) and look at:
 
 - **Dashboards → Service Health (RED)** — request rate, error rate, and
-  latency for the demo service. Latency dots are exemplars: click one to
-  open that exact trace in Tempo.
-- **Dashboards → Logs Overview** — log volume by service and level,
-  errors, and a live tail for everything the stack ingests over OTLP.
-- **Alerting → Alert rules** — stack-health and error-rate rules,
-  evaluated by Prometheus.
+  latency. The dots on the latency panel are exemplars: click one and
+  Grafana opens the exact trace behind that measurement.
+- **Dashboards → Logs Overview** — log volume by service and level, an
+  error feed, and a live tail of everything arriving over OTLP.
+- **Alerting → Alert rules** — the stack-health and error-rate rules
+  Prometheus is evaluating.
 
 ![Service Health (RED) dashboard](docs/img/service-health.png)
 
-Tear it down with `just demo-down`.
+`just demo-down` removes the demo services again; the rest of the stack
+keeps running.
 
 ## Layout
 
@@ -83,48 +93,57 @@ infra/                  # OpenTofu: Cloudflare tunnel, ingress routes, DNS
 ```sh
 cp .env.example .env    # set GRAFANA_ADMIN_PASSWORD
 just up                 # core stack, local only
-just up-tunnel          # core stack + Cloudflare Tunnel (needs CLOUDFLARE_TUNNEL_TOKEN)
+just up-tunnel          # production: core stack + Cloudflare Tunnel
 ```
 
 Grafana: <http://localhost:3000> (admin / whatever you set).
 
-The Cloudflare side of the tunnel (hostnames, DNS, the tunnel itself, and
-Cloudflare Access gating Grafana behind email one-time-PIN) is code too:
-`infra/` holds a small OpenTofu config whose output is the
-`CLOUDFLARE_TUNNEL_TOKEN` the overlay needs — bootstrap instructions in
-[infra/main.tf](infra/main.tf).
+In production the stack sits behind a Cloudflare Tunnel, and that edge is
+code too. The tunnel, its hostnames, DNS, and the Cloudflare Access rule
+that puts an email one-time-PIN in front of Grafana all live in `infra/`
+as a small OpenTofu configuration. Applying it produces the
+`CLOUDFLARE_TUNNEL_TOKEN` that `just up-tunnel` needs; bootstrap steps are
+at the top of [infra/main.tf](infra/main.tf).
 
-`just check` validates everything (compose files, Prometheus config and
-alert rules, collector config, YAML, workflows, dashboard JSON) in pinned
-containers — no host installs. CI runs the same command on every push and
-PR, plus a smoke test that boots the stack and waits for Grafana to report
-healthy.
+`just check` validates the whole repository: compose files, Prometheus
+config and alert rules, collector config, YAML, workflows, and dashboard
+JSON. Every validator runs in a pinned container, so nothing needs to be
+installed on the host. CI runs the same command on every push and pull
+request, plus a smoke test that boots the stack and waits for Grafana to
+come up healthy.
 
 ## Sending telemetry from a project
 
-One OTLP endpoint (`<host>:4317` gRPC / `:4318` HTTP), bearer-token auth
-(`OTLP_AUTH_TOKEN`), and three naming conventions. Copy-paste templates for
-every ingestion form — zero-code Python/FastAPI, plain OTLP env vars, the
-Loki Docker driver, and Grafana Alloy for file logs — live in
-**[docs/ONBOARDING.md](docs/ONBOARDING.md)**.
+You need three things: the OTLP endpoint, the bearer token
+(`OTLP_AUTH_TOKEN`), and a few naming conventions. Copy-paste templates
+for each route — zero-code Python/FastAPI, plain OTLP environment
+variables, the Loki Docker driver, and Grafana Alloy for log files — are
+in **[docs/ONBOARDING.md](docs/ONBOARDING.md)**.
 
-Never publish 4317/4318 directly; the compose file binds them to
-`127.0.0.1` and the tunnel is the exposure path.
+Never publish ports 4317/4318 to the internet. The compose file binds them
+to `127.0.0.1`; the tunnel is the way in.
 
 ## Alerting
 
-Prometheus evaluates the rules in `config/alerts/` (target down, OTel
-export failures, >5% span error rate, disk >80%); Alertmanager delivers
-them to any webhook via `ALERT_WEBHOOK_URL`, and the always-firing
-`Watchdog` posts to `HEARTBEAT_URL` every 5 minutes — point that at a dead
-man's switch so you hear about it when the monitoring host itself dies.
-Both are optional; unset means alerts are visible in Grafana only.
-Operations (rotating tokens, disk pressure, backup/restore):
-**[docs/RUNBOOK.md](docs/RUNBOOK.md)**.
+Prometheus evaluates the rules in `config/alerts/`: scrape target down,
+OTel export failures, error rate above 5%, disk above 80%. Alertmanager
+delivers them to whatever webhook you set in `ALERT_WEBHOOK_URL` (ntfy,
+Slack, and so on).
+
+One rule, `Watchdog`, fires permanently by design and posts to
+`HEARTBEAT_URL` every five minutes. Point that at a dead man's switch such
+as healthchecks.io — a service that alerts when the pings *stop* — and you
+will also hear about the one failure the host cannot report itself: its own
+death. Both variables are optional; leave them unset and alerts are simply
+visible in Grafana.
+
+Day-to-day operations (rotating tokens, disk pressure, backup and restore)
+are covered in **[docs/RUNBOOK.md](docs/RUNBOOK.md)**.
 
 ## Storage
 
 Everything persists to local Docker volumes (`loki_data`, `tempo_data`,
-`prometheus_data`, `grafana_data`). Swap Loki / Tempo storage to S3-compatible
-(Backblaze B2, Cloudflare R2, Hetzner, MinIO) when you outgrow local disk —
-`compose.storage-s3.yml` documents the concrete shape of that change.
+`prometheus_data`, `grafana_data`). When local disk stops fitting, Loki
+and Tempo can move to any S3-compatible object store (Backblaze B2,
+Cloudflare R2, Hetzner, MinIO); `compose.storage-s3.yml` documents the
+concrete shape of that change.
