@@ -43,6 +43,10 @@ variable "domain" {
 variable "grafana_allowed_emails" {
   type        = list(string)
   description = "Email addresses allowed through Cloudflare Access to Grafana (one-time PIN)."
+  validation {
+    condition     = length(var.grafana_allowed_emails) > 0
+    error_message = "Set at least one email, or Cloudflare Access locks everyone out of Grafana."
+  }
 }
 
 resource "cloudflare_zero_trust_tunnel_cloudflared" "monitoring" {
