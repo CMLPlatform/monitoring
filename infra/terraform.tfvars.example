@@ -1,0 +1,15 @@
+# Copy to terraform.tfvars (gitignored) and fill in. The Cloudflare API token
+# is NOT set here — export it: `export CLOUDFLARE_API_TOKEN=...`
+# (needs Tunnel:Edit, DNS:Edit, and Access: Apps and Policies:Edit).
+
+# Cloudflare account ID (dash.cloudflare.com → any domain → overview sidebar).
+account_id = "your-account-id"
+
+# Zone ID of the domain the hostnames live under (same overview sidebar).
+zone_id = "your-zone-id"
+
+# Apex domain → grafana.<domain>, otlp.<domain>.
+domain = "example.org"
+
+# Emails allowed through Cloudflare Access to Grafana (one-time PIN).
+grafana_allowed_emails = ["you@example.org"]

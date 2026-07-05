@@ -3,7 +3,8 @@
 # click-ops in the Zero Trust dashboard.
 #
 # Bootstrap (owner-run, once):
-#   export CLOUDFLARE_API_TOKEN=...   # needs Tunnel:Edit, DNS:Edit
+#   cp terraform.tfvars.example terraform.tfvars   # then fill it in
+#   export CLOUDFLARE_API_TOKEN=...   # needs Tunnel:Edit, DNS:Edit, Access:Edit
 #   cd infra && tofu init && tofu apply
 #   tofu output -raw tunnel_token     # → CLOUDFLARE_TUNNEL_TOKEN in ../.env
 #
