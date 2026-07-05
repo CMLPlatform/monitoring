@@ -71,7 +71,7 @@ services:
     logging: *default-logging
 
   alertmanager:
-    image: prom/alertmanager:v0.33.0
+    image: prom/alertmanager:v0.33.1
     restart: unless-stopped
     volumes:
       - ./config/alertmanager.yaml:/etc/alertmanager/alertmanager.yaml:ro
