@@ -20,7 +20,7 @@ x-logging: &default-logging
 
 services:
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.155.0
+    image: otel/opentelemetry-collector-contrib:0.156.0
     restart: unless-stopped
     depends_on: [ loki, tempo, prometheus ]
     ports:
