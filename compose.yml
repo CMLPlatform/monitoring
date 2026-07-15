@@ -52,7 +52,7 @@ services:
     logging: *default-logging
 
   prometheus:
-    image: prom/prometheus:v3.13.0
+    image: prom/prometheus:v3.13.1
     restart: unless-stopped
     volumes:
       - ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
@@ -93,7 +93,7 @@ services:
     logging: *default-logging
 
   node-exporter:
-    image: prom/node-exporter:v1.11.1
+    image: prom/node-exporter:v1.12.1
     restart: unless-stopped
     command: [ "--path.rootfs=/host" ]
     pid: host
