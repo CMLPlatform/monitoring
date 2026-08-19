@@ -59,6 +59,8 @@ write-ahead log. Two practical notes:
 - The tarball is mode 0600 and contains secrets (the Grafana database
   among them). Copy it off-host over a private channel — a backup on the
   disk it protects is a decoration.
+- The tarball covers the docker volumes and nothing else. The OpenTofu
+  state for the Cloudflare edge is not in it — see below.
 - During the pause the collector keeps accepting telemetry and buffers it
   for about five minutes. A backup that takes longer than that will drop
   data, so on large volumes run it at a quiet hour.
@@ -74,7 +76,13 @@ the host is the intended setup.
   (visible as export errors on their side) until they're updated. A
   running demo overlay counts as a sender: re-run `just demo` to recreate
   it with the new token.
-- **Tunnel token:** rotate in Cloudflare Zero Trust, set the new
+- **Tunnel token:** the tunnel is OpenTofu-managed, so read the token back
+  from there rather than copying it out of the dashboard. Rotate the tunnel
+  secret in Cloudflare Zero Trust, then `cd infra && tofu apply` (which
+  refreshes the token data source) and `tofu output -raw tunnel_token`. To
+  rotate entirely from code instead, `tofu apply -replace=cloudflare_zero_trust_tunnel_cloudflared.monitoring`
+  builds a new tunnel and repoints both CNAMEs at it — ingestion and Grafana
+  are unreachable for the minute or so that takes. Either way: new token into
   `CLOUDFLARE_TUNNEL_TOKEN` in `.env`, then `just up-tunnel`.
 - **Grafana admin password:** change `GRAFANA_ADMIN_PASSWORD` in `.env`,
   then `docker compose up -d grafana`.
@@ -95,6 +103,34 @@ notify error per cycle (expected, harmless), and alerts remain visible in
 Grafana. After changing either variable, `docker compose up -d
 alertmanager`.
 
+## Changing the Cloudflare edge
+
+The tunnel, its ingress rules, both DNS records, and the Cloudflare Access
+policy that fronts Grafana are all OpenTofu in `infra/`. Change them there,
+not in the Zero Trust dashboard: the next apply reverts anything clicked in
+by hand.
+
+```sh
+just infra-validate                 # tofu init + validate, in a container
+cd infra && tofu plan               # needs CLOUDFLARE_API_TOKEN exported
+cd infra && tofu apply
+```
+
+- **Granting or revoking Grafana access:** edit `grafana_allowed_emails` in
+  `infra/terraform.tfvars` and apply. That list is the entire allowlist. A
+  removed address keeps working until their Access session expires (24h),
+  so for an urgent revocation also revoke the session in Zero Trust. At
+  least one address has to remain — the variable's validation rejects an
+  empty list, which would lock everyone out of Grafana.
+- **Adding a hostname:** add an `ingress` entry pointing at the service's
+  container port, plus a matching `cloudflare_dns_record`. The catch-all
+  `http_status:404` entry stays last, or it swallows everything after it.
+- **State lives on this host only.** `infra/terraform.tfstate` is gitignored
+  and `just backup` does not touch it. Copy it off-host next to the backups.
+  Losing it orphans the Cloudflare resources: they keep running, but the
+  next apply tries to create duplicates and you get them back only by hand
+  with `tofu import`.
+
 ## Upgrading images
 
 Dependabot opens PRs that bump the pinned versions, and CI runs `just
@@ -103,5 +139,12 @@ image versions from `compose.yml`, so every bump is checked with the exact
 binaries the stack will run — when a new version changes its config
 syntax, CI fails loudly before the change reaches the host. That is the
 point.
+
+Dependabot also watches the Cloudflare provider in `infra/`. Those PRs need
+one manual step: it bumps the constraint in `main.tf` but not the recorded
+hashes in `.terraform.lock.hcl`, so check the branch out and run
+`cd infra && tofu init -upgrade`, then `just infra-validate` and `tofu plan`
+against the real account — validation proves the syntax parses, only a plan
+proves the provider still maps the config to the same resources.
 
 After merging: on the host, `git pull && just pull && just up`.
