@@ -19,6 +19,13 @@ updates:
     schedule:
       interval: "monthly"
 
+  # Cloudflare provider for infra/. Dependabot bumps the constraint in
+  # main.tf but not the hashes in .terraform.lock.hcl — see the runbook.
+  - package-ecosystem: "terraform"
+    directory: "/infra"
+    schedule:
+      interval: "monthly"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
