@@ -75,7 +75,9 @@ everything talks over the compose network and Grafana is at `localhost:3000`.
 The stack deliberately runs on a single host. At CML's telemetry volume,
 distributed ingestion would add operational weight for no gain. The reasoning,
 and the alternatives we considered, are recorded in
-[ADR 0001](docs/adr/0001-observability-stack.md).
+[ADR 0001](docs/adr/0001-observability-stack.md). The hub-and-spoke target for
+serving multiple CML projects is [ADR 0002](docs/adr/0002-hub-and-spoke-observability.md),
+and the open migration work toward it lives in [docs/HANDOVER.md](docs/HANDOVER.md).
 
 ## Run it for real
 
