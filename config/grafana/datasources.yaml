@@ -10,7 +10,7 @@ datasources:
     jsonData:
       timeInterval: 30s
       exemplarTraceIdDestinations:
-        - name: trace_id
+        - name: traceID
           datasourceUid: tempo
 
   - name: Loki
@@ -50,5 +50,3 @@ datasources:
         datasourceUid: prometheus
       nodeGraph:
         enabled: true
-      search:
-        hide: false

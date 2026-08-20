@@ -41,7 +41,7 @@ services:
       - -c
       - |
         while true; do
-          curl -s -o /dev/null demo-api:8000/
+          curl -s -o /dev/null demo-api:8000/work
           curl -s -o /dev/null demo-api:8000/work
           sleep 1
         done

@@ -54,10 +54,13 @@ groups:
 
   - name: service-red
     rules:
+      # Server spans only, matching the Service Health dashboard. Without the
+      # span_kind filter, internal child spans inflate the denominator and the
+      # measured rate lands well under the true request error rate.
       - alert: HighErrorRate
         expr: >
-          sum by (service) (rate(traces_spanmetrics_calls_total{status_code="STATUS_CODE_ERROR"}[5m]))
-          / sum by (service) (rate(traces_spanmetrics_calls_total[5m])) > 0.05
+          sum by (service) (rate(traces_spanmetrics_calls_total{span_kind="SPAN_KIND_SERVER",status_code="STATUS_CODE_ERROR"}[5m]))
+          / sum by (service) (rate(traces_spanmetrics_calls_total{span_kind="SPAN_KIND_SERVER"}[5m])) > 0.05
         for: 5m
         labels:
           severity: warning

@@ -7,27 +7,16 @@
   "time": { "from": "now-1h", "to": "now" },
   "graphTooltip": 1,
   "tags": ["relab"],
+  "description": "Container logs via OTLP ingest. This stack's Loki index carries only the service_name label (everything else, service_instance_id included, is structured metadata); there is no env/service docker-driver label path exposed here, so filtering is by service_name only.",
   "templating": {
     "list": [
-      {
-        "name": "env",
-        "label": "Environment",
-        "type": "custom",
-        "query": "staging,prod",
-        "current": { "text": "staging", "value": "staging" },
-        "options": [
-          { "text": "staging", "value": "staging", "selected": true },
-          { "text": "prod", "value": "prod", "selected": false }
-        ],
-        "hide": 0
-      },
       {
         "name": "service",
         "label": "Service",
         "type": "query",
         "datasource": { "type": "loki", "uid": "loki" },
-        "definition": "label_values({env=\"$env\"}, service)",
-        "query": { "type": "labelValues", "label": "service", "stream": "{env=\"$env\"}" },
+        "definition": "label_values(service_name)",
+        "query": { "type": "labelValues", "label": "service_name" },
         "refresh": 2,
         "sort": 1,
         "multi": true,
@@ -48,8 +37,8 @@
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
-          "expr": "sum by (service) (rate({env=\"$env\", service=~\"$service\"}[$__auto]))",
-          "legendFormat": "{{service}}",
+          "expr": "sum by (service_name) (rate({service_name=~\"$service\"}[$__auto]))",
+          "legendFormat": "{{service_name}}",
           "refId": "A"
         }
       ],
@@ -72,7 +61,7 @@
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
-          "expr": "{env=\"$env\", service=~\"$service\"}",
+          "expr": "{service_name=~\"$service\"}",
           "refId": "A"
         }
       ],
@@ -92,7 +81,7 @@
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
-          "expr": "{env=\"$env\", service=~\"$service\"} |~ `(?i)(error|fatal|panic|exception|warn)`",
+          "expr": "{service_name=~\"$service\"} |~ `(?i)(error|fatal|panic|exception|warn)`",
           "refId": "A"
         }
       ],
