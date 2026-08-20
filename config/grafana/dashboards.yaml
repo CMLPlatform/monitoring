@@ -4,9 +4,7 @@ providers:
   - name: default
     folder: ""
     type: file
-    disableDeletion: false
-    allowUiUpdates: true
+    allowUiUpdates: false
     updateIntervalSeconds: 30
     options:
       path: /var/lib/grafana/dashboards
-      foldersFromFilesStructure: true
