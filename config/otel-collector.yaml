@@ -7,6 +7,12 @@
 extensions:
   bearertokenauth:
     token: ${env:OTLP_AUTH_TOKEN}
+  # Backs the exporter queues below so buffered telemetry survives collector
+  # restarts (every image bump is one). The volume must be writable by the
+  # image's uid 10001 — `just up` handles that (see _queue-volume).
+  file_storage:
+    directory: /var/lib/otelcol/queue
+    create_directory: true
 
 receivers:
   otlp:
@@ -21,30 +27,60 @@ receivers:
           authenticator: bearertokenauth
 
 processors:
+  # Absolute, not percentage: percentages are read against the cgroup, and an
+  # unbounded container makes that the whole host. Sized to the container's
+  # mem_limit (512m in compose.yml) — change both together.
   memory_limiter:
     check_interval: 2s
-    limit_percentage: 80
-    spike_limit_percentage: 15
+    limit_mib: 400
+    spike_limit_mib: 100
   batch:
     timeout: 5s
     send_batch_size: 1024
 
+# The queue/retry settings repeated on each exporter below are pinned rather
+# than left to upstream defaults, because the RUNBOOK's "buffers about five
+# minutes" promise is exactly those numbers. (No YAML anchor: the collector
+# rejects unknown top-level keys, so there is nowhere to hang one.) The queue
+# is file-backed, so both a backend outage and a collector restart are ridden out.
 exporters:
   # Loki 3.x accepts OTLP natively — no Promtail / loki exporter needed.
   otlp_http/loki:
     endpoint: http://loki:3100/otlp
+    sending_queue:
+      enabled: true
+      queue_size: 1000
+      storage: file_storage
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 300s
 
   otlp_grpc/tempo:
     endpoint: tempo:4317
     tls:
       insecure: true
+    sending_queue:
+      enabled: true
+      queue_size: 1000
+      storage: file_storage
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 300s
 
-  # Prometheus native OTLP receiver (requires otlp-write-receiver feature flag).
+  # Prometheus native OTLP receiver (needs --web.enable-otlp-receiver, set in
+  # compose.yml; it is a real flag, not an --enable-feature entry).
   otlp_http/prometheus:
     endpoint: http://prometheus:9090/api/v1/otlp
+    sending_queue:
+      enabled: true
+      queue_size: 1000
+      storage: file_storage
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 300s
 
 service:
-  extensions: [bearertokenauth]
+  extensions: [bearertokenauth, file_storage]
   pipelines:
     logs:
       receivers: [otlp]

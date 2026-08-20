@@ -39,6 +39,9 @@ overrides:
   defaults:
     metrics_generator:
       processors: [service-graphs, span-metrics]
+      # Cardinality backstop: a sender with unrouted span names (raw paths)
+      # would otherwise mint Prometheus series without bound.
+      max_active_series: 50000
     compaction:
       block_retention: 168h  # 7 days — traces are bulky, tune to disk budget
 

@@ -8,15 +8,25 @@ backup_mounts := "-v monitoring_grafana_data:/data/grafana -v monitoring_prometh
 default:
     @just --list
 
+# The collector's queue volume must be writable by the image's uid 10001, but
+# a fresh named volume is root-owned and the image is distroless (no chown at
+# startup possible). Idempotent, so every up-path just runs it.
+_queue-volume:
+    @docker volume create monitoring_otel_queue > /dev/null
+    @docker run --rm --network none -v monitoring_otel_queue:/q alpine:3.24 chown 10001:10001 /q
+
 # Core stack (no tunnel; Grafana at http://localhost:3000)
-up:
+up: _queue-volume
     docker compose up -d
 
 # Core stack + Cloudflare Tunnel (production; needs CLOUDFLARE_TUNNEL_TOKEN).
 # Refuses to expose the stack with the documented default credentials.
-up-tunnel:
+up-tunnel: _queue-volume
     @[ "${OTLP_AUTH_TOKEN:-}" != "local-dev-token" ] || { echo "error: OTLP_AUTH_TOKEN is still the local default; generate one (openssl rand -hex 32) before exposing ingestion" >&2; exit 1; }
     @[ "${GRAFANA_ADMIN_PASSWORD:-}" != "change-me" ] || { echo "error: GRAFANA_ADMIN_PASSWORD is still the documented default; change it before exposing Grafana" >&2; exit 1; }
+    @[ "${GRAFANA_ROOT_URL:-}" != "http://localhost:3000" ] || { echo "error: GRAFANA_ROOT_URL is still the localhost default; set it to the tunnel hostname or every absolute URL Grafana generates breaks" >&2; exit 1; }
+    @[ "${GRAFANA_COOKIE_SECURE:-false}" = "true" ] || { echo "error: GRAFANA_COOKIE_SECURE must be true when Grafana is served over HTTPS; set it in .env" >&2; exit 1; }
+    @[ -n "${HEARTBEAT_URL:-}" ] || echo "WARNING: HEARTBEAT_URL is empty; the stack goes live without a dead-man's switch" >&2
     docker compose -f compose.yml -f compose.tunnel.yml up -d
 
 down:
@@ -24,19 +34,25 @@ down:
 
 # Core stack + a demo telemetry source (see compose.demo.yml), then look at
 # Grafana: http://localhost:3000
-demo:
+demo: _queue-volume
     docker compose -f compose.yml -f compose.demo.yml up -d --build
+
+# Build the demo image without starting anything. Used by CI to catch a broken
+# demo app before it merges.
+demo-build:
+    docker compose -f compose.yml -f compose.demo.yml build
 
 # Remove only the demo services; the core stack keeps running.
 demo-down:
     docker compose -f compose.yml -f compose.demo.yml rm -sf demo-api demo-load
 
 logs service="":
-    docker compose logs -f {{service}}
+    docker compose -f compose.yml -f compose.demo.yml logs -f {{service}}
 
 ps:
-    docker compose ps
+    docker compose -f compose.yml -f compose.demo.yml ps
 
+# Targets the base stack only; demo services are recreated with `just demo`.
 restart service:
     docker compose restart {{service}}
 
@@ -45,7 +61,7 @@ pull:
 
 # Tail a service's logs as JSON, decoded. Useful before Grafana is set up.
 tail service:
-    docker compose logs -f --no-log-prefix {{service}} | jq -R 'fromjson? // .'
+    docker compose -f compose.yml -f compose.demo.yml logs -f --no-log-prefix {{service}} | jq -R 'fromjson? // .'
 
 # Validate everything. All validators run in containers — no host installs.
 # promtool/otelcol/amtool images are read from compose.yml so they can't
@@ -57,14 +73,18 @@ check:
     docker run --rm -v ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro -v ./config/alerts:/etc/prometheus/alerts:ro --entrypoint promtool $(docker compose config --images | grep prom/prometheus) check config /etc/prometheus/prometheus.yaml
     docker run --rm -e OTLP_AUTH_TOKEN=dummy -v ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro $(docker compose config --images | grep opentelemetry-collector) validate --config=/etc/otelcol/config.yaml
     docker run --rm -v ./config/alertmanager.yaml:/etc/alertmanager/alertmanager.yaml:ro --entrypoint /bin/amtool $(docker compose config --images | grep prom/alertmanager) check-config /etc/alertmanager/alertmanager.yaml
-    docker run --rm -v .:/code:ro pipelinecomponents/yamllint:0.35.13 yamllint -d '{extends: relaxed, ignore: [.git/, backups/, infra/.terraform/]}' .
-    docker run --rm -v .:/repo:ro -w /repo rhysd/actionlint:1.7.12 -color
-    docker run --rm -v ./infra:/infra:ro -w /infra ghcr.io/opentofu/opentofu:1.12.3 fmt -check
+    docker run --rm --network none -v ./config/loki.yaml:/etc/loki/loki.yaml:ro $(docker compose config --images | grep grafana/loki) -config.file=/etc/loki/loki.yaml -verify-config
+    docker run --rm --network none -v ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro $(docker compose config --images | grep grafana/tempo) -config.file=/etc/tempo/tempo.yaml -config.verify=true
+    docker run --rm --network none -v .:/code:ro pipelinecomponents/yamllint:0.35.13 yamllint -d '{extends: relaxed, ignore: [.git/, backups/, infra/.terraform/]}' .
+    docker run --rm --network none -v .:/repo:ro -w /repo rhysd/actionlint:1.7.12 -color
+    docker run --rm --network none -v ./infra:/infra:ro -w /infra ghcr.io/opentofu/opentofu:1.12.3 fmt -check
     docker run --rm -v ./dashboards:/dashboards:ro ghcr.io/jqlang/jq:1.8.1 empty $(ls dashboards/*.json | sed 's|^dashboards|/dashboards|')
 
 # Full OpenTofu validation (downloads the provider, so not part of `check`).
+# Runs against a copy of the sources only: state and tfvars never enter the
+# container, which needs network access to fetch the provider.
 infra-validate:
-    docker run --rm --entrypoint sh -v ./infra:/infra -w /infra ghcr.io/opentofu/opentofu:1.12.3 -c 'tofu init -backend=false -input=false >/dev/null && tofu validate'
+    @d=$(mktemp -d) && cp infra/main.tf infra/.terraform.lock.hcl "$d"/ && docker run --rm --entrypoint sh -v "$d":/src:ro ghcr.io/opentofu/opentofu:1.12.3 -c 'mkdir /work && cp /src/main.tf /src/.terraform.lock.hcl /work && cd /work && tofu init -backend=false -input=false >/dev/null && tofu validate'; rc=$?; rm -rf "$d"; exit $rc
 
 # Format YAML in place (needs yamlfmt on the host; optional).
 fmt:
@@ -89,10 +109,12 @@ restore file:
     docker run --rm {{backup_mounts}} -v {{absolute_path(file)}}:/backup.tar.gz:ro alpine:3.24 sh -c 'for d in /data/*; do find "$d" -mindepth 1 -delete; done && tar xzf /backup.tar.gz -C /data'
     @echo "Restored {{file}} — run 'just up' to start the stack."
 
-# Boot the core stack, wait until Grafana reports healthy, and fail if any
-# service is crash-looping. Used by CI.
-smoke:
+# Boot the core stack, wait until Grafana reports healthy, assert every
+# dashboard in dashboards/ actually provisioned (Grafana skips broken ones
+# silently), and fail if any service is crash-looping. Used by CI.
+smoke: _queue-volume
     docker compose up -d
     n=0; until curl -sf http://localhost:3000/api/health >/dev/null; do n=$((n+3)); [ $n -ge 120 ] && { echo "Grafana not healthy after 120s" >&2; exit 1; }; sleep 3; done
+    @for uid in $(docker run --rm --network none -v ./dashboards:/dashboards:ro ghcr.io/jqlang/jq:1.8.1 -r .uid $(ls dashboards/*.json | sed 's|^dashboards|/dashboards|')); do n=0; until curl -sf -u "admin:${GRAFANA_ADMIN_PASSWORD}" "http://localhost:3000/api/dashboards/uid/$uid" >/dev/null; do n=$((n+3)); [ $n -ge 60 ] && { echo "error: dashboard $uid was not provisioned" >&2; exit 1; }; sleep 3; done; done
     @[ -z "$(docker compose ps -q --status=restarting --status=exited)" ] || { echo "error: services not running:" >&2; docker compose ps >&2; exit 1; }
     @echo "Stack healthy"

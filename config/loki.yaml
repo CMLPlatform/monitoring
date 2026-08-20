@@ -39,6 +39,16 @@ limits_config:
   # Keep ingestion generous for a single-tenant homelab.
   ingestion_rate_mb: 16
   ingestion_burst_size_mb: 32
+  # Index only service.name. Loki's default OTLP mapping also indexes
+  # service.instance.id, which mints a fresh stream on every sender restart;
+  # it is now structured metadata, so query it with `| service_instance_id=...`.
+  otlp_config:
+    resource_attributes:
+      ignore_defaults: true
+      attributes_config:
+        - action: index_label
+          attributes:
+            - service.name
 
 compactor:
   working_directory: /loki/compactor

@@ -18,41 +18,67 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "3"
 
+x-security: &default-security
+  - no-new-privileges:true
+
+# The mem_limit on each service is sized from observed steady-state usage with
+# generous headroom for bursts. They are ceilings, not reservations: the point
+# is that one runaway component can't OOM a host that also runs production.
+
 services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.156.0
     restart: unless-stopped
-    depends_on: [ loki, tempo, prometheus ]
+    depends_on:
+      loki:
+        condition: service_started
+      tempo:
+        condition: service_started
+      prometheus:
+        condition: service_healthy
     ports:
       - "127.0.0.1:4317:4317" # OTLP gRPC
       - "127.0.0.1:4318:4318" # OTLP HTTP
     volumes:
       - ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+      # File-backed exporter queue: telemetry buffered during a backend outage
+      # survives a collector restart. Owned by uid 10001 — see justfile.
+      - otel_queue:/var/lib/otelcol/queue
     command: [ "--config=/etc/otelcol/config.yaml" ]
     environment:
       OTLP_AUTH_TOKEN: ${OTLP_AUTH_TOKEN:?set OTLP_AUTH_TOKEN in .env}
+    # Keep in step with memory_limiter in config/otel-collector.yaml.
+    mem_limit: 512m
+    security_opt: *default-security
     logging: *default-logging
 
   loki:
-    image: grafana/loki:3.7.3
+    image: grafana/loki:3.7.6
     restart: unless-stopped
     volumes:
       - ./config/loki.yaml:/etc/loki/loki.yaml:ro
       - loki_data:/loki
     command: [ "-config.file=/etc/loki/loki.yaml" ]
+    # No healthcheck: the image is distroless, so there is no shell, wget or
+    # curl to probe /ready with. Grafana's Stack Health dashboard covers it.
+    mem_limit: 2g
+    security_opt: *default-security
     logging: *default-logging
 
   tempo:
-    image: grafana/tempo:3.0.2
+    image: grafana/tempo:3.0.3
     restart: unless-stopped
     volumes:
       - ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro
       - tempo_data:/var/tempo
     command: [ "-config.file=/etc/tempo/tempo.yaml" ]
+    # Distroless too — see the note on loki.
+    mem_limit: 2g
+    security_opt: *default-security
     logging: *default-logging
 
   prometheus:
-    image: prom/prometheus:v3.13.0
+    image: prom/prometheus:v3.13.2
     restart: unless-stopped
     volumes:
       - ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
@@ -68,6 +94,14 @@ services:
       - --enable-feature=native-histograms,exemplar-storage
       # Whichever hits first wins; the disk-space alert is the backstop.
       - --storage.tsdb.retention.size=15GB
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "--spider", "http://localhost:9090/-/ready" ]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+    mem_limit: 2g
+    security_opt: *default-security
     logging: *default-logging
 
   alertmanager:
@@ -90,13 +124,17 @@ services:
         printf '%s' "$$ALERT_WEBHOOK_URL" > /run/am/webhook_url
         printf '%s' "$$HEARTBEAT_URL" > /run/am/heartbeat_url
         exec /bin/alertmanager --config.file=/etc/alertmanager/alertmanager.yaml --storage.path=/alertmanager
+    mem_limit: 256m
+    security_opt: *default-security
     logging: *default-logging
 
   node-exporter:
-    image: prom/node-exporter:v1.11.1
+    image: prom/node-exporter:v1.12.1
     restart: unless-stopped
     command: [ "--path.rootfs=/host" ]
     pid: host
+    mem_limit: 128m
+    security_opt: *default-security
     volumes:
       # No rslave: unsupported on Docker Desktop; only affects mounts added after start.
       # No network_mode:host either, so node_network_* describes the container
@@ -105,9 +143,15 @@ services:
     logging: *default-logging
 
   grafana:
-    image: grafana/grafana:13.1.0
+    image: grafana/grafana:13.1.4
     restart: unless-stopped
-    depends_on: [ loki, tempo, prometheus ]
+    depends_on:
+      loki:
+        condition: service_started
+      tempo:
+        condition: service_started
+      prometheus:
+        condition: service_healthy
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
@@ -121,6 +165,23 @@ services:
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
       # Land on Stack Health instead of the empty welcome page.
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/stack-health.json
+      # Secure cookies would break plain-http localhost logins, so this is
+      # opt-in; `just up-tunnel` refuses to expose Grafana without it.
+      GF_SECURITY_COOKIE_SECURE: ${GRAFANA_COOKIE_SECURE:-false}
+      GF_SECURITY_COOKIE_SAMESITE: strict
+      # Opt-in per-user identity from Cloudflare Access, replacing the shared
+      # admin login. Off until GRAFANA_JWT_AUTH=true and CF_ACCESS_TEAM_DOMAIN
+      # are set in .env; new users land on the org's default role (Viewer).
+      # NOTE: the JWK set is team-wide, so if the Zero Trust team fronts more
+      # than one app, also pin GF_AUTH_JWT_EXPECT_CLAIMS to this app's aud tag.
+      GF_AUTH_JWT_ENABLED: ${GRAFANA_JWT_AUTH:-false}
+      GF_AUTH_JWT_HEADER_NAME: Cf-Access-Jwt-Assertion
+      GF_AUTH_JWT_JWK_SET_URL: https://${CF_ACCESS_TEAM_DOMAIN:-example}.cloudflareaccess.com/cdn-cgi/access/certs
+      GF_AUTH_JWT_EMAIL_CLAIM: email
+      GF_AUTH_JWT_USERNAME_CLAIM: email
+      GF_AUTH_JWT_AUTO_SIGN_UP: "true"
+    mem_limit: 1g
+    security_opt: *default-security
     logging: *default-logging
 
 volumes:
@@ -129,3 +190,6 @@ volumes:
   prometheus_data:
   grafana_data:
   alertmanager_data:
+  # Deliberately not in `just backup`: queue contents are seconds of in-flight
+  # telemetry, worthless by restore time.
+  otel_queue:
