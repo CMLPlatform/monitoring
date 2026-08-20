@@ -13,6 +13,10 @@ queryable side by side.
 
 ## Try it in one command
 
+You need Docker with the [Compose plugin](https://docs.docker.com/compose/install/)
+and [`just`](https://github.com/casey/just#installation); everything else runs
+in containers.
+
 ```sh
 cp .env.example .env
 just demo
@@ -30,7 +34,8 @@ purpose. Give it a minute, then open Grafana at <http://localhost:3000>
 - **Dashboards → Logs Overview** — log volume by service and level, an error
   feed, and a live tail of everything arriving over OTLP.
 - **Alerting → Alert rules** — the stack-health and error-rate rules Prometheus
-  is evaluating.
+  is evaluating. `HighErrorRate` trips on the demo service after five minutes:
+  one request in ten failing is twice the 5% threshold.
 
 ![Service Health (RED) dashboard](docs/img/service-health.png)
 
@@ -83,6 +88,12 @@ just check              # validate every config in the repo
 
 Grafana: <http://localhost:3000> (admin / whatever you set).
 
+`up-tunnel` refuses to run until the settings that only matter once the stack
+is reachable are real: a generated `OTLP_AUTH_TOKEN`, a changed
+`GRAFANA_ADMIN_PASSWORD`, `GRAFANA_ROOT_URL` pointing at the tunnel hostname
+rather than localhost, and `GRAFANA_COOKIE_SECURE=true` so the session cookie
+is marked Secure. An empty `HEARTBEAT_URL` only warns.
+
 In production the stack sits behind a Cloudflare Tunnel, and that edge is code
 too. The tunnel, its hostnames, DNS, and the Cloudflare Access rule that puts
 an email one-time-PIN in front of Grafana all live in `infra/` as a small
@@ -91,10 +102,11 @@ OpenTofu configuration. Applying it produces the `CLOUDFLARE_TUNNEL_TOKEN` that
 [infra/main.tf](infra/main.tf).
 
 `just check` validates compose files, Prometheus config and alert rules, the
-collector config, YAML, workflows, and dashboard JSON. Every validator runs in
-a pinned container, so nothing needs to be installed on the host. CI runs the
-same command on every push and pull request, plus a smoke test that boots the
-stack and waits for Grafana to come up healthy.
+collector, Alertmanager, Loki and Tempo configs, YAML, workflows, OpenTofu
+formatting, and dashboard JSON. Every validator runs in a pinned container, so
+nothing needs to be installed on the host. CI runs the same command on every
+push and pull request, plus a smoke test that boots the stack, waits for
+Grafana to come up healthy, and checks that every dashboard provisioned.
 
 ## Sending telemetry from a project
 
@@ -124,7 +136,10 @@ optional; leave them unset and alerts are simply visible in Grafana.
 ## Storage
 
 Everything persists to local Docker volumes (`loki_data`, `tempo_data`,
-`prometheus_data`, `grafana_data`). When local disk stops fitting, Loki and
+`prometheus_data`, `grafana_data`, `alertmanager_data`), all of which `just
+backup` captures. A sixth, `otel_queue`, holds the collector's on-disk export
+queue — seconds of in-flight telemetry, worthless by the time anyone restores,
+so it is deliberately left out. When local disk stops fitting, Loki and
 Tempo can move to any S3-compatible object store (Backblaze B2, Cloudflare R2,
 Hetzner, MinIO); `compose.storage-s3.yml` documents the concrete shape of that
 change.
@@ -148,6 +163,13 @@ dashboards/             # drop JSON dashboards here; Grafana auto-loads them
 docs/                   # runbook, onboarding templates, ADRs, screenshots
 infra/                  # OpenTofu: Cloudflare tunnel, ingress routes, DNS
 ```
+
+`dashboards/*.json` is the source of truth for what Grafana shows: the
+directory is mounted read-only and saving from the UI is disabled, so a change
+made in the browser lasts until the page is reloaded. Edit the JSON and
+provisioning picks it up within about 30 seconds; to keep something built
+interactively, export the dashboard as JSON (or copy a single panel's JSON out
+of *Inspect → Panel JSON*) and paste it back into the file.
 
 ## Documentation
 

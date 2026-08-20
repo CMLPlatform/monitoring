@@ -25,11 +25,16 @@ directly.
 - **`service.name`** is required: one stable name per deployable unit
   (`relab-api`, not `relab-api-prod-2`). Dashboards key on it.
 - **`env`** is `prod`, `staging`, or `dev`, set as a resource attribute.
-- **Keep labels low-cardinality.** Loki and Prometheus index labels, and
-  every distinct value creates a new stream or series. User IDs, request
-  IDs, and timestamps therefore don't belong in resource attributes or log
-  labels. Put them in the log line or in span attributes instead — you can
-  still filter on them at query time, without the storage blowing up.
+- **Keep labels low-cardinality.** Prometheus turns every distinct label
+  value into a series. User IDs, request IDs, and timestamps therefore
+  don't belong in resource attributes or metric labels. Put them in the log
+  line or in span attributes instead — you can still filter on them at
+  query time, without the storage blowing up.
+- **In Loki, `service.name` is the only index label.** Every other
+  attribute, `service.instance.id` included, is stored as structured
+  metadata, so a query starts from the stream selector and filters after
+  it: `{service_name="my-service"} | env="prod"`. Streams written before
+  this change keep their old labels until they age out after 30 days.
 
 Traces are the most valuable signal to send. Tempo derives request-rate,
 error-rate, and duration ("RED") metrics from them, so a service that

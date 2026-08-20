@@ -19,7 +19,9 @@ just restart <service>
 ```
 
 Two alerts point here. `TargetDown` fires after two minutes when
-Prometheus can't scrape the collector, node-exporter, or itself.
+Prometheus can't scrape a target, and it scrapes every service in the
+stack — collector, node-exporter, Grafana, Loki, Tempo, Alertmanager, and
+itself — so the alert names whichever one went quiet.
 `OtelExportFailures` means the collector is up but a backend is rejecting
 its data, so look at that backend's logs, not the collector's.
 
@@ -44,6 +46,11 @@ Stack Health, then either free space or shorten a retention window
 coming back, the durable fix is moving Loki and Tempo to object storage —
 see `compose.storage-s3.yml`.
 
+Memory is bounded per service instead: every service carries a `mem_limit`
+in `compose.yml`, sized from observed usage with headroom so that one
+runaway component cannot take the host down with it. If a component
+legitimately grows into its ceiling, raise it there.
+
 ## Backup and restore
 
 ```sh
@@ -62,8 +69,12 @@ write-ahead log. Two practical notes:
 - The tarball covers the docker volumes and nothing else. The OpenTofu
   state for the Cloudflare edge is not in it — see below.
 - During the pause the collector keeps accepting telemetry and buffers it
-  for about five minutes. A backup that takes longer than that will drop
-  data, so on large volumes run it at a quiet hour.
+  for five minutes — the `retry_on_failure.max_elapsed_time` pinned on
+  every exporter in `config/otel-collector.yaml`, not an upstream default
+  that can move under you. The queue is file-backed, so restarting the
+  collector inside that window keeps the buffer; a backup that runs longer
+  than five minutes still drops data, so on large volumes run it at a
+  quiet hour.
 
 How much history you can lose equals how often you run it. A daily cron on
 the host is the intended setup.
@@ -122,6 +133,15 @@ cd infra && tofu apply
   so for an urgent revocation also revoke the session in Zero Trust. At
   least one address has to remain — the variable's validation rejects an
   empty list, which would lock everyone out of Grafana.
+- **Per-user Grafana logins:** by default everyone who clears Access then
+  shares the one admin password. Setting `GRAFANA_JWT_AUTH=true` and
+  `CF_ACCESS_TEAM_DOMAIN=<team>` in `.env` makes Grafana verify the Access
+  JWT instead, so each address signs in as itself and new ones land on the
+  org's default role (Viewer). The JWK set is team-wide, so if the Zero
+  Trust team fronts more than one Access application, also pin
+  `GF_AUTH_JWT_EXPECT_CLAIMS` in `compose.yml` to this app's `aud` tag —
+  otherwise a token minted for any other app in the team is accepted here
+  too.
 - **Adding a hostname:** add an `ingress` entry pointing at the service's
   container port, plus a matching `cloudflare_dns_record`. The catch-all
   `http_status:404` entry stays last, or it swallows everything after it.
@@ -147,4 +167,13 @@ hashes in `.terraform.lock.hcl`, so check the branch out and run
 against the real account — validation proves the syntax parses, only a plan
 proves the provider still maps the config to the same resources.
 
-After merging: on the host, `git pull && just pull && just up`.
+Nothing watches the tool images pinned in the `justfile` — yamllint,
+actionlint, OpenTofu, jq, and the alpine that backup, restore, and the
+queue-volume setup run in. No Dependabot ecosystem covers a justfile, so
+those are bumped by hand.
+
+After merging: on the host, `git pull && just pull && just up`. Bring the
+stack up through `just up` rather than `docker compose up -d`: the recipe
+first chowns the collector's queue volume to uid 10001, and on a host where
+that volume is new a raw compose up leaves it root-owned and the collector
+crash-looping on a queue directory it cannot write.
