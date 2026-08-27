@@ -10,6 +10,13 @@ storage:
     # batches are silently dropped.
     out_of_order_time_window: 30m
 
+otlp:
+  # Prometheus otherwise keeps these resource attributes on target_info only,
+  # so alerts and dashboards see no project/env/host. Promoting them puts the
+  # identity labels ADR 0002 requires on every series. service.name and
+  # service.instance.id already become job/instance without being listed.
+  promote_resource_attributes: [project, env, host.name]
+
 rule_files:
   - /etc/prometheus/alerts/*.yaml
 
