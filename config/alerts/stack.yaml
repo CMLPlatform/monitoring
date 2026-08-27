@@ -52,6 +52,26 @@ groups:
           summary: "Filesystem {{ $labels.mountpoint }} is over 80% full"
           description: "Loki and Tempo have no total-size cap, so this alert is the storage backstop. Free space or lower retention (see RUNBOOK)."
 
+  - name: container-lifecycle
+    rules:
+      - alert: ContainerRestarting
+        expr: changes(container_start_time_seconds{name!=""}[1h]) > 3
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container {{ $labels.name }} is crash-looping"
+          description: "{{ $labels.name }} on {{ $labels.host_name }} has restarted more than 3 times in the last hour."
+
+      - alert: ContainerOOMKilled
+        expr: increase(container_oom_events_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container {{ $labels.name }} was OOM-killed"
+          description: "{{ $labels.name }} on {{ $labels.host_name }} hit an OOM kill in the last 5 minutes."
+
   - name: service-red
     rules:
       # Server spans only, matching the Service Health dashboard. Without the
