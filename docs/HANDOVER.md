@@ -41,6 +41,12 @@ hostnames, no new credentials, nothing to configure centrally per host.
 Every signal carries four identity labels: **`project`**, **`env`**, **`service.name`**,
 **`host_name`**. Enforced by the agent config, so a host cannot omit them.
 
+Verified live 2026-08-27, with two corrections. Alloy attaches these as **ordinary series
+labels, not OTLP resource attributes** — so `target_info` carries none of them, and any rule
+keyed on `target_info` is keyed on nothing. And Relab's `env` is **`staging`**, not
+`production`; no `production` series exist. `config/prometheus.yaml` promotes the four
+attributes anyway, for spokes whose app SDK sends them the resource-attribute way.
+
 Application logs are **no longer** exported by the API's SDK. Alloy ships that container's
 stdout, so exporting them twice stored every line twice in two shapes. The stdout path is
 the one kept, because it also carries what the SDK cannot report: the SDK's own export
@@ -157,18 +163,15 @@ Stock cAdvisor dashboards assume Prometheus *scraped* cAdvisor — they key on `
 Prometheus reconstructs `job` from `service.name`, `instance` from `service.instance.id`,
 and applies a translation strategy to metric names.
 
-**Run and answered (2026-08-27): names survive.** An OTLP batch posted straight at
-Prometheus v3.13.2's receiver came back as `container_start_time_seconds` and
-`container_oom_events_total`, names untouched, with the data-point `name` attribute intact
-as a label. So: keep the single OTLP path, import 15798, repoint its two template variables
-at `host_name`/`project`. No second hostname, no second credential, and no reaching for the
-experimental `otlp.translation_strategy: NoTranslation`.
+**Run and answered (2026-08-27): names survive.** Confirmed twice — once against a
+scratch Prometheus v3.13.2, once against the live stack, where Relab's own
+`container_cpu_usage_seconds_total` and friends are present under their exact upstream
+names. So: keep the single OTLP path, import 15798, and do not reach for the experimental
+`otlp.translation_strategy: NoTranslation`.
 
-What the same experiment *did* turn up: resource attributes land on `target_info` only.
-Until they are promoted, no series carries `project`, `env` or `host_name` — which silently
-guts every by-host and by-project alert and the whole `project` template-variable plan. Now
-fixed by `otlp.promote_resource_attributes` in `config/prometheus.yaml`; `target_info` keeps
-its copy either way, so the keystone alert is unaffected.
+**But do not repoint 15798's variables at `host_name`/`project` yet, and do not import it
+expecting per-container panels.** See the cAdvisor gap below — the per-container series the
+dashboard is built on are not arriving at all.
 
 ______________________________________________________________________
 
@@ -229,12 +232,14 @@ this work up by the review date, the watchdog stays, and the deletion item in Re
 `deploy/MONITORING-DESIGN.md` §2.1 must not proceed on optimism. Deleting a weak local
 signal before its central replacement exists trades a weak signal for none.
 
-1. ~~`ProjectTelemetrySilent`~~ — done; `config/alerts/projects.yaml`, keyed on
-   `target_info` so it does not depend on any project-side metric name.
-1. ~~`ContainerRestarting` + `ContainerOOMKilled`~~ — done; `config/alerts/stack.yaml`,
-   group `container-lifecycle`.
-1. ~~Run the metric-name experiment~~ — done, names survive. Still to do: import 15798
-   and 14574.
+1. ~~`ProjectTelemetrySilent`~~ — done and **verified against live traffic**;
+   `config/alerts/projects.yaml`. Keyed on a label-only selector, `project`/`env` on the
+   series themselves, because `target_info` carries no identity labels here.
+1. `ContainerRestarting` + `ContainerOOMKilled` — written (`config/alerts/stack.yaml`,
+   group `container-lifecycle`) but **blind: no data reaches them.** See below. This is
+   the open item; the incident that started all of this is still undetected.
+1. ~~Run the metric-name experiment~~ — done, names survive. Import of 15798/14574 is
+   blocked behind the same cAdvisor gap.
 1. `HostDiskSpaceLow`, `OtelExportFailures`, `Watchdog` heartbeat.
 1. Grafana-managed alerting; delete Alertmanager.
 1. Generic dashboards with a `project` variable.
@@ -242,9 +247,39 @@ signal before its central replacement exists trades a weak signal for none.
 
 Steps 1–2 convert this from telemetry into monitoring. Everything after is leverage.
 
-Steps 1–2 are live in config but **not yet verified against real Relab traffic** — the
-tripwire above holds until they have fired once and been seen. Relab's local watchdog
-checks stay until then.
+### What live verification found (2026-08-27)
+
+Checked against the running stack with Relab reporting. Step 1 holds. Step 2 does not.
+
+- **cAdvisor sends only the root cgroup.** `container_start_time_seconds`,
+  `container_oom_events_total` and every other `container_*` metric have exactly **one**
+  series each, `id="/"`, and there is no `name` label on any of them. So
+  `changes(container_start_time_seconds{name!=""}[1h]) > 3` matches zero series and
+  **`ContainerRestarting` can never fire**; `ContainerOOMKilled` sees only host-level OOM
+  and cannot say which container. The 668-restart incident would still be invisible today.
+
+  The fix is on the spoke, not here: Relab's Alloy needs the mounts
+  `prometheus.exporter.cadvisor` requires to see container cgroups (Docker socket,
+  `/sys/fs/cgroup`, `/var/lib/docker`). Nothing in this repo can close it. **Until it is
+  closed, the tripwire holds and Relab's local watchdog checks stay.**
+
+- **30% of all OTLP metric writes were being rejected** — 19,585 HTTP 400s, 1,307 points
+  dropped every 30 seconds, silently, for as long as the counters go back.
+  `prometheus_tsdb_out_of_order_samples_total` matched the 400 count exactly: every
+  rejection was an out-of-order sample. Fixed by the `out_of_order_time_window` this branch
+  already carried; zero rejections since.
+
+  Two operational notes worth keeping. `out_of_order_time_window` is **not applied by a
+  config reload** — SIGHUP logs a successful load and leaves the window at 0. It needs
+  `docker compose up -d --force-recreate prometheus`; plain `up -d` and `restart` are both
+  no-ops for a config-only change. And this failure mode is exactly what `OtelExportFailures`
+  exists to catch, which means it had been firing, unread, the whole time.
+
+- **`relab-api`'s own SDK metrics are not arriving.** The only jobs carrying
+  `project="relab"` are `gpu`, `integrations/self`, `integrations/unix` and
+  `integrations/cadvisor` — all Alloy. The emission table above claims app traces and
+  metrics under `service.name=relab-api`; the metrics half is not there. Traces were not
+  checked.
 
 ______________________________________________________________________
 
