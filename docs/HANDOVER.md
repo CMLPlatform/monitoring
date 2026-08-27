@@ -1,7 +1,7 @@
 # Handover: the central stack's half of the August 2026 review
 
-Owner: _unassigned — put a name here before doing anything else._
-Review date: _set one; if nobody has picked this up by then, the tripwire below holds._
+Owner: Simon van Lierde
+Review date: 2026-09-19
 
 Relab's side of an architecture review is done and merged (its repo carries the full
 review in `deploy/MONITORING-DESIGN.md`; the target architecture is recorded here as
@@ -157,19 +157,18 @@ Stock cAdvisor dashboards assume Prometheus *scraped* cAdvisor — they key on `
 Prometheus reconstructs `job` from `service.name`, `instance` from `service.instance.id`,
 and applies a translation strategy to metric names.
 
-Metric names are expected to survive untouched (already underscore-only, already
-`_total`-suffixed, no OTLP unit set) but that could not be confirmed from documentation,
-only inferred from translator behaviour. **Label values definitely change.**
+**Run and answered (2026-08-27): names survive.** An OTLP batch posted straight at
+Prometheus v3.13.2's receiver came back as `container_start_time_seconds` and
+`container_oom_events_total`, names untouched, with the data-point `name` attribute intact
+as a label. So: keep the single OTLP path, import 15798, repoint its two template variables
+at `host_name`/`project`. No second hostname, no second credential, and no reaching for the
+experimental `otlp.translation_strategy: NoTranslation`.
 
-So: check whether `container_cpu_usage_seconds_total` exists in Prometheus with a `name`
-label. Fifteen minutes, and it decides the wiring:
-
-- **Names survive** (expected): keep the single OTLP path, import 15798, repoint its two
-  template variables at `host_name`/`project`. One-time, ~20 minutes. One endpoint and one
-  credential is worth more than a dashboard's pristine defaults.
-- **Names mangled**: do *not* reach for `otlp.translation_strategy: NoTranslation`, which
-  is experimental and documented with warnings. Route only the cAdvisor series natively
-  instead — that costs a second hostname and a second credential, so make it deliberately.
+What the same experiment *did* turn up: resource attributes land on `target_info` only.
+Until they are promoted, no series carries `project`, `env` or `host_name` — which silently
+guts every by-host and by-project alert and the whole `project` template-variable plan. Now
+fixed by `otlp.promote_resource_attributes` in `config/prometheus.yaml`; `target_info` keeps
+its copy either way, so the keystone alert is unaffected.
 
 ______________________________________________________________________
 
@@ -230,9 +229,12 @@ this work up by the review date, the watchdog stays, and the deletion item in Re
 `deploy/MONITORING-DESIGN.md` §2.1 must not proceed on optimism. Deleting a weak local
 signal before its central replacement exists trades a weak signal for none.
 
-1. `ProjectTelemetrySilent` — the keystone. Nothing else detects absence.
-1. `ContainerRestarting` + `ContainerOOMKilled` — closes the incident that started this.
-1. Run the metric-name experiment; import 15798 and 14574 accordingly.
+1. ~~`ProjectTelemetrySilent`~~ — done; `config/alerts/projects.yaml`, keyed on
+   `target_info` so it does not depend on any project-side metric name.
+1. ~~`ContainerRestarting` + `ContainerOOMKilled`~~ — done; `config/alerts/stack.yaml`,
+   group `container-lifecycle`.
+1. ~~Run the metric-name experiment~~ — done, names survive. Still to do: import 15798
+   and 14574.
 1. `HostDiskSpaceLow`, `OtelExportFailures`, `Watchdog` heartbeat.
 1. Grafana-managed alerting; delete Alertmanager.
 1. Generic dashboards with a `project` variable.
@@ -240,16 +242,20 @@ signal before its central replacement exists trades a weak signal for none.
 
 Steps 1–2 convert this from telemetry into monitoring. Everything after is leverage.
 
+Steps 1–2 are live in config but **not yet verified against real Relab traffic** — the
+tripwire above holds until they have fired once and been seen. Relab's local watchdog
+checks stay until then.
+
 ______________________________________________________________________
 
 ## Be skeptical of these
 
 This came from an architecture review that verified claims against current documentation and
-flagged what it could not. Two are worth checking rather than trusting:
+flagged what it could not. One is still worth checking rather than trusting:
 
 - the Cloudflare Zero Trust free-plan seat count — the widely-cited figure appears only in
   third-party posts, never in Cloudflare's own docs;
-- the OTLP metric-name round trip, which is the experiment above.
+- ~~the OTLP metric-name round trip~~ — run on 2026-08-27; names survive. See above.
 
 There is also **no official cadence recommendation** for `restic check --read-data-subset`;
 the commonly repeated "1/12 monthly" is forum folklore. Pick a cadence, write down why, and
