@@ -4,6 +4,12 @@ global:
   external_labels:
     origin: monitoring-host
 
+storage:
+  tsdb:
+    # OTel's guide requires this for OTLP ingestion — without it, late
+    # batches are silently dropped.
+    out_of_order_time_window: 30m
+
 rule_files:
   - /etc/prometheus/alerts/*.yaml
 

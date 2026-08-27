@@ -98,9 +98,6 @@ logging:
     loki-external-labels: service={{.Name}},env=prod,host=myhost
 ```
 
-RELab's `compose.logging.loki.yml` overlay, auto-included when `LOKI_URL`
-is set, is the reference implementation of this pattern.
-
 ## Template 4 — host or file logs (Grafana Alloy)
 
 For log files that live outside containers. (Promtail is end-of-life;
