@@ -44,11 +44,20 @@ limits_config:
   # it is now structured metadata, so query it with `| service_instance_id=...`.
   otlp_config:
     resource_attributes:
+      # ignore_defaults keeps Loki from indexing every resource attribute it is
+      # handed. These four are the identity labels ADR 0002 requires on every
+      # signal, and they have to be real stream LABELS, not structured metadata:
+      # a `project` template variable is a stream selector, and label_values()
+      # cannot see structured metadata. All four are bounded — one value per
+      # project, environment and host — so indexing them costs nothing.
       ignore_defaults: true
       attributes_config:
         - action: index_label
           attributes:
             - service.name
+            - project
+            - env
+            - host.name
 
 compactor:
   working_directory: /loki/compactor
