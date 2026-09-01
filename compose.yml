@@ -87,7 +87,7 @@ services:
       - --config.file=/etc/prometheus/prometheus.yaml
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=30d
-      # Prometheus 3.x: OTLP ingestion is its own flag, no longer a feature flag.
+      # Prometheus 3.x: OTLP ingestion is its own flag, not an --enable-feature entry.
       - --web.enable-otlp-receiver
       - --enable-feature=native-histograms,exemplar-storage
       # Whichever hits first wins; the disk-space alert is the backstop.
@@ -146,7 +146,8 @@ services:
       # Land on Stack Health instead of the empty welcome page.
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/stack-health.json
       # Secure cookies would break plain-http localhost logins, so this is
-      # opt-in; `just up-tunnel` refuses to expose Grafana without it.
+      # opt-in; with the tunnel overlay active, `just up` refuses to expose
+      # Grafana without it.
       GF_SECURITY_COOKIE_SECURE: ${GRAFANA_COOKIE_SECURE:-false}
       GF_SECURITY_COOKIE_SAMESITE: strict
       # Opt-in per-user identity from Cloudflare Access, replacing the shared

@@ -129,7 +129,7 @@ data "cloudflare_zero_trust_tunnel_cloudflared_token" "monitoring" {
 }
 
 output "tunnel_token" {
-  description = "Set as CLOUDFLARE_TUNNEL_TOKEN in ../.env for just up-tunnel."
+  description = "Set as CLOUDFLARE_TUNNEL_TOKEN in ../.env for the tunnel overlay."
   value       = data.cloudflare_zero_trust_tunnel_cloudflared_token.monitoring.token
   sensitive   = true
 }

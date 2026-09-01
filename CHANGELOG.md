@@ -1,7 +1,8 @@
 # Changelog
 
-Notable changes to this stack. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
-versions follow [SemVer](https://semver.org/).
+Notable changes to this stack. Format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
+[SemVer](https://semver.org/).
 
 ## [Unreleased]
 
@@ -13,17 +14,17 @@ handful of queries that had been quietly measuring the wrong thing.
 
 - **Durable export queue**: the collector's send queues are file-backed on a
   new `otel_queue` volume, so telemetry buffered during a backend outage
-  survives a collector restart. `just up` (and `demo`, `smoke`, `up-tunnel`)
+  survives a collector restart. `just up` (and `demo`, `smoke`)
   prepares the volume's ownership; it is deliberately not backed up.
-- **Full-stack scraping**: Prometheus now scrapes Grafana, Loki, Tempo, and
-  Alertmanager as well, so `TargetDown` covers every service.
+- **Full-stack scraping**: Prometheus now scrapes Grafana, Loki, and Tempo as
+  well, so `TargetDown` covers every service.
 - **Per-user Grafana logins**, optional: `GRAFANA_JWT_AUTH` plus
   `CF_ACCESS_TEAM_DOMAIN` make Grafana verify the Cloudflare Access JWT
   instead of everyone sharing the admin password.
 - **Memory ceilings** (`mem_limit`) on every service, sized from observed
   usage, so one runaway component cannot OOM the host.
-- **Wider validation**: `just check` also verifies the Alertmanager, Loki,
-  and Tempo configs and OpenTofu formatting; `just smoke` asserts every
+- **Wider validation**: `just check` also verifies the Loki and Tempo configs
+  and OpenTofu formatting; `just smoke` asserts every
   dashboard actually provisioned; CI additionally runs `just infra-validate`
   and a new `just demo-build`.
 - Dependabot now watches the Cloudflare provider in `infra/`, and the runbook
@@ -31,23 +32,34 @@ handful of queries that had been quietly measuring the wrong thing.
 
 ### Changed
 
-- **Loki indexes only `service.name`.** Everything else, `service.instance.id`
-  included, is structured metadata now — one stream per service instead of one
-  per sender restart. Existing streams keep their old labels until they age
-  out (30 days).
+- **Overlays are host config now**: `COMPOSE_FILE` in `.env` names the compose
+  file set, and every recipe — `up`, `logs`, `ps`, `backup` — acts on that
+  same set. `just up-tunnel` is gone; its exposure guards run automatically
+  whenever the tunnel overlay is active.
+- **Loki indexes only the identity labels** (`service.name`, `project`, `env`,
+  `host.name` — the authoritative list lives in `config/loki.yaml`). Everything
+  else, `service.instance.id` included, is structured metadata now — one stream
+  per service instead of one per sender restart. Existing streams keep their
+  old labels until they age out (30 days).
 - **Dashboards are provisioned, not editable**: `dashboards/*.json` is mounted
   read-only and UI saves are off, making the files the source of truth.
 - The collector's `memory_limiter` is sized in absolute MiB against the
   container limit, and the queue and retry settings behind the runbook's
   "buffers for five minutes" are pinned rather than inherited from upstream.
-- Tempo's metrics generator is capped at 50k active series, so a sender with
-  unrouted span names cannot mint Prometheus series without bound.
+- **Tempo's metrics generator is removed**: RED comes from the applications'
+  own OTLP metrics now (ADR 0002), so Tempo stores traces and nothing else.
 - Dropped the `relab-api` dashboard: the `$service` picker on Service Health
   and Logs Overview covers it.
 - README rewritten for a broader CML audience.
 - Image bumps: Grafana 13.1.4, Loki 3.7.6, Tempo 3.0.3, Prometheus 3.13.2,
-  the collector 0.156.0, Alertmanager 0.33.1, node-exporter 1.12.1,
-  cloudflared 2026.8.2, and the demo's Python dependencies.
+  the collector 0.156.0, node-exporter 1.12.1, cloudflared 2026.8.2, and the
+  demo's Python dependencies.
+
+### Removed
+
+- **Alertmanager**: alerting is Grafana-managed now (ADR 0002) — rules are
+  provisioned from `config/grafana/alerting/`, and delivery still posts to
+  `ALERT_WEBHOOK_URL`.
 
 ### Fixed
 
@@ -70,7 +82,8 @@ handful of queries that had been quietly measuring the wrong thing.
 
 - `no-new-privileges` on every service; the demo image runs as `nobody`.
 - `GRAFANA_COOKIE_SECURE` marks the session cookie Secure (with strict
-  SameSite), and `just up-tunnel` refuses to expose the stack without it, a
+  SameSite), and `just up` with the tunnel overlay refuses to expose the
+  stack without it, a
   non-localhost `GRAFANA_ROOT_URL`, and non-default credentials.
 - GitHub Actions are pinned to commit SHAs, and `just infra-validate` runs
   against a copy of the sources so state and tfvars never enter the container.

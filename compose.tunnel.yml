@@ -1,7 +1,7 @@
 # Production overlay: expose Grafana (and the OTLP endpoints) via Cloudflare
 # Tunnel. Requires CLOUDFLARE_TUNNEL_TOKEN in .env.
 #
-#   just up-tunnel
+#   COMPOSE_FILE=compose.yml:compose.tunnel.yml in .env, then `just up`
 #
 # The tunnel, its public hostnames, and DNS are managed as code in infra/
 # (OpenTofu); `tofu output -raw tunnel_token` yields the token for .env.

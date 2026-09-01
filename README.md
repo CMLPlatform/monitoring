@@ -45,11 +45,10 @@ running.
 ## How it works
 
 Everything enters through a single gateway, the OpenTelemetry Collector. A
-project only ever configures one endpoint, and we can swap a storage backend
-later without touching any application. Tempo also derives request-rate,
-error-rate, and duration ("RED") metrics from the traces it receives, so a
-service that sends nothing but traces still gets a working dashboard and error
-alerting.
+project only ever configures one endpoint, and a storage backend can be
+swapped later without touching any application. The Service Health dashboard
+and the error-rate alert read the standard HTTP metrics that OpenTelemetry
+auto-instrumentation emits; traces add per-request drill-down on top.
 
 ```mermaid
 flowchart LR
@@ -63,7 +62,6 @@ flowchart LR
         otel -->|logs| loki["Loki"]
         otel -->|traces| tempo["Tempo"]
         otel -->|metrics| prom["Prometheus"]
-        tempo -->|"span metrics (RED)"| prom
         grafana["Grafana"] -. queries .-> loki & tempo & prom
     end
 ```
@@ -72,35 +70,37 @@ Solid arrows show telemetry being written; dotted arrows show Grafana reading
 at query time. Locally (`just up` or `just demo`) there is no tunnel involved:
 everything talks over the compose network and Grafana is at `localhost:3000`.
 
-The stack deliberately runs on a single host. At CML's telemetry volume,
-distributed ingestion would add operational weight for no gain. The reasoning,
-and the alternatives we considered, are recorded in
-[ADR 0001](docs/adr/0001-observability-stack.md). The hub-and-spoke target for
-serving multiple CML projects is [ADR 0002](docs/adr/0002-hub-and-spoke-observability.md), and onboarding a project
-onto it is [templates/README.md](templates/README.md).
+The stack runs on a single host; at CML's telemetry volume, distributed
+ingestion would add operational weight for no gain
+([ADR 0001](docs/adr/0001-observability-stack.md) records the alternatives).
+The hub-and-spoke design for serving multiple CML projects is
+[ADR 0002](docs/adr/0002-hub-and-spoke-observability.md), and onboarding a
+project onto it is [templates/README.md](templates/README.md).
 
 ## Run it for real
 
 ```sh
 cp .env.example .env    # set GRAFANA_ADMIN_PASSWORD
-just up                 # core stack, local only
-just up-tunnel          # production: core stack + Cloudflare Tunnel
+just up                 # the stack; overlays come from COMPOSE_FILE in .env
 just check              # validate every config in the repo
 ```
 
 Grafana: <http://localhost:3000> (admin / whatever you set).
 
-`up-tunnel` refuses to run until the settings that only matter once the stack
-is reachable are real: a generated `OTLP_AUTH_TOKEN`, a changed
-`GRAFANA_ADMIN_PASSWORD`, `GRAFANA_ROOT_URL` pointing at the tunnel hostname
-rather than localhost, and `GRAFANA_COOKIE_SECURE=true` so the session cookie
-is marked Secure. An empty `HEARTBEAT_URL` only warns.
+`COMPOSE_FILE` in `.env` names the overlays a host runs. Set
+`COMPOSE_FILE=compose.yml:compose.tunnel.yml` in the production `.env`, and
+every recipe (`up`, `logs`, `ps`, `backup`) acts on that same set. With the
+tunnel overlay active, `just up` refuses to run until the settings that only
+matter once the stack is reachable are real: a generated `OTLP_AUTH_TOKEN`, a
+changed `GRAFANA_ADMIN_PASSWORD`, `GRAFANA_ROOT_URL` pointing at the tunnel
+hostname, and `GRAFANA_COOKIE_SECURE=true` so the session cookie is marked
+Secure. An empty `HEARTBEAT_URL` only warns.
 
 In production the stack sits behind a Cloudflare Tunnel, and that edge is code
 too. The tunnel, its hostnames, DNS, and the Cloudflare Access rule that puts
 an email one-time-PIN in front of Grafana all live in `infra/` as a small
 OpenTofu configuration. Applying it produces the `CLOUDFLARE_TUNNEL_TOKEN` that
-`just up-tunnel` needs; bootstrap steps are at the top of
+the tunnel overlay needs; bootstrap steps are at the top of
 [infra/main.tf](infra/main.tf).
 
 `just check` validates compose files, Prometheus config, the collector, Loki
@@ -139,15 +139,15 @@ every five minutes. Point that at a dead man's switch such as healthchecks.io �
 a service that alerts when the pings *stop* — and you will also hear about the
 one failure the host cannot report itself: its own death. Set both: an unset
 `ALERT_WEBHOOK_URL` drops every alert while the heartbeat keeps reporting
-healthy, so `just up-tunnel` refuses to start without it.
+healthy, so `just up` with the tunnel overlay refuses to start without it.
 
 ## Storage
 
 Everything persists to local Docker volumes (`loki_data`, `tempo_data`,
 `prometheus_data`, `grafana_data`), all of which `just
 backup` captures. A fifth, `otel_queue`, holds the collector's on-disk export
-queue — seconds of in-flight telemetry, worthless by the time anyone restores,
-so it is deliberately left out. When local disk stops fitting, Loki and
+queue: seconds of in-flight telemetry, worthless by the time anyone restores,
+so backups skip it. When local disk stops fitting, Loki and
 Tempo can move to any S3-compatible object store (Backblaze B2, Cloudflare R2,
 Hetzner, MinIO); `compose.storage-s3.yml` documents the concrete shape of that
 change.

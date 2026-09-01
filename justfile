@@ -5,6 +5,14 @@ set dotenv-load
 stateful := "grafana prometheus loki tempo"
 backup_mounts := "-v monitoring_grafana_data:/data/grafana -v monitoring_prometheus_data:/data/prometheus -v monitoring_loki_data:/data/loki -v monitoring_tempo_data:/data/tempo"
 
+# Compose with the demo overlay, for the demo lifecycle recipes — explicit -f
+# so `just demo` works regardless of what COMPOSE_FILE names.
+compose_demo := "docker compose -f compose.yml -f compose.demo.yml"
+
+# dashboards/*.json as the paths they get when mounted at /dashboards, shared
+# by check and smoke.
+dash_paths := `ls dashboards/*.json | sed 's|^dashboards|/dashboards|' | tr '\n' ' '`
+
 default:
     @just --list
 
@@ -15,20 +23,22 @@ _queue-volume:
     @docker volume create monitoring_otel_queue > /dev/null
     @docker run --rm --network none -v monitoring_otel_queue:/q alpine:3.24 chown 10001:10001 /q
 
-# Core stack (no tunnel; Grafana at http://localhost:3000)
+# The stack (Grafana at http://localhost:3000). Overlays are host config:
+# COMPOSE_FILE in .env names the file set (see .env.example), and every recipe
+# here — up, down, logs, ps, backup — acts on that same set. With the tunnel
+# overlay active, up refuses to start until the exposure guards pass.
 up: _queue-volume
+    @case "${COMPOSE_FILE:-}" in *compose.tunnel.yml*) just _expose-guards;; esac
     docker compose up -d
 
-# Core stack + Cloudflare Tunnel (production; needs CLOUDFLARE_TUNNEL_TOKEN).
 # Refuses to expose the stack with the documented default credentials.
-up-tunnel: _queue-volume
+_expose-guards:
     @[ "${OTLP_AUTH_TOKEN:-}" != "local-dev-token" ] || { echo "error: OTLP_AUTH_TOKEN is still the local default; generate one (openssl rand -hex 32) before exposing ingestion" >&2; exit 1; }
     @[ "${GRAFANA_ADMIN_PASSWORD:-}" != "change-me" ] || { echo "error: GRAFANA_ADMIN_PASSWORD is still the documented default; change it before exposing Grafana" >&2; exit 1; }
     @[ "${GRAFANA_ROOT_URL:-}" != "http://localhost:3000" ] || { echo "error: GRAFANA_ROOT_URL is still the localhost default; set it to the tunnel hostname or every absolute URL Grafana generates breaks" >&2; exit 1; }
     @[ "${GRAFANA_COOKIE_SECURE:-false}" = "true" ] || { echo "error: GRAFANA_COOKIE_SECURE must be true when Grafana is served over HTTPS; set it in .env" >&2; exit 1; }
     @[ -n "${HEARTBEAT_URL:-}" ] || echo "WARNING: HEARTBEAT_URL is empty; the stack goes live without a dead-man's switch" >&2
     @[ -n "${ALERT_WEBHOOK_URL:-}" ] || { echo "error: ALERT_WEBHOOK_URL is empty; every alert would fire into an empty url_file and be dropped. The heartbeat keeps pinging either way, so this failure looks healthy from the outside — set it, or comment out this guard deliberately" >&2; exit 1; }
-    docker compose -f compose.yml -f compose.tunnel.yml up -d
 
 down:
     docker compose down --remove-orphans
@@ -36,24 +46,24 @@ down:
 # Core stack + a demo telemetry source (see compose.demo.yml), then look at
 # Grafana: http://localhost:3000
 demo: _queue-volume
-    docker compose -f compose.yml -f compose.demo.yml up -d --build
+    {{compose_demo}} up -d --build
 
 # Build the demo image without starting anything. Used by CI to catch a broken
 # demo app before it merges.
 demo-build:
-    docker compose -f compose.yml -f compose.demo.yml build
+    {{compose_demo}} build
 
 # Remove only the demo services; the core stack keeps running.
 demo-down:
-    docker compose -f compose.yml -f compose.demo.yml rm -sf demo-api demo-load
+    {{compose_demo}} rm -sf demo-api demo-load
 
 logs service="":
-    docker compose -f compose.yml -f compose.demo.yml logs -f {{service}}
+    docker compose logs -f {{service}}
 
 ps:
-    docker compose -f compose.yml -f compose.demo.yml ps
+    docker compose ps
 
-# Targets the base stack only; demo services are recreated with `just demo`.
+# Targets the COMPOSE_FILE set; demo services are recreated with `just demo`.
 restart service:
     docker compose restart {{service}}
 
@@ -62,7 +72,7 @@ pull:
 
 # Tail a service's logs as JSON, decoded. Useful before Grafana is set up.
 tail service:
-    docker compose -f compose.yml -f compose.demo.yml logs -f --no-log-prefix {{service}} | jq -R 'fromjson? // .'
+    docker compose logs -f --no-log-prefix {{service}} | jq -R 'fromjson? // .'
 
 # Validate everything. All validators run in containers — no host installs.
 # promtool/otelcol images are read from compose.yml so they can't
@@ -70,15 +80,16 @@ tail service:
 check:
     docker compose config -q
     CLOUDFLARE_TUNNEL_TOKEN=dummy docker compose -f compose.yml -f compose.tunnel.yml config -q
-    docker compose -f compose.yml -f compose.demo.yml config -q
-    docker run --rm -v ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro --entrypoint promtool $(docker compose config --images | grep prom/prometheus) check config /etc/prometheus/prometheus.yaml
-    docker run --rm -e OTLP_AUTH_TOKEN=dummy -v ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro $(docker compose config --images | grep opentelemetry-collector) validate --config=/etc/otelcol/config.yaml
-    docker run --rm --network none -v ./config/loki.yaml:/etc/loki/loki.yaml:ro $(docker compose config --images | grep grafana/loki) -config.file=/etc/loki/loki.yaml -verify-config
-    docker run --rm --network none -v ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro $(docker compose config --images | grep grafana/tempo) -config.file=/etc/tempo/tempo.yaml -config.verify=true
+    {{compose_demo}} config -q
+    images="$(docker compose config --images)" && \
+      docker run --rm -v ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro --entrypoint promtool $(echo "$images" | grep prom/prometheus) check config /etc/prometheus/prometheus.yaml && \
+      docker run --rm -e OTLP_AUTH_TOKEN=dummy -v ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro $(echo "$images" | grep opentelemetry-collector) validate --config=/etc/otelcol/config.yaml && \
+      docker run --rm --network none -v ./config/loki.yaml:/etc/loki/loki.yaml:ro $(echo "$images" | grep grafana/loki) -config.file=/etc/loki/loki.yaml -verify-config && \
+      docker run --rm --network none -v ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro $(echo "$images" | grep grafana/tempo) -config.file=/etc/tempo/tempo.yaml -config.verify=true
     docker run --rm --network none -v .:/code:ro pipelinecomponents/yamllint:0.35.13 yamllint -d '{extends: relaxed, ignore: [.git/, backups/, infra/.terraform/]}' .
     docker run --rm --network none -v .:/repo:ro -w /repo rhysd/actionlint:1.7.12 -color
     docker run --rm --network none -v ./infra:/infra:ro -w /infra ghcr.io/opentofu/opentofu:1.12.3 fmt -check
-    docker run --rm -v ./dashboards:/dashboards:ro ghcr.io/jqlang/jq:1.8.1 empty $(ls dashboards/*.json | sed 's|^dashboards|/dashboards|')
+    docker run --rm -v ./dashboards:/dashboards:ro ghcr.io/jqlang/jq:1.8.1 empty {{dash_paths}}
 
 # Full OpenTofu validation (downloads the provider, so not part of `check`).
 # Runs against a copy of the sources only: state and tfvars never enter the
@@ -115,7 +126,7 @@ restore file:
 smoke: _queue-volume
     docker compose up -d
     n=0; until curl -sf http://localhost:3000/api/health >/dev/null; do n=$((n+3)); [ $n -ge 120 ] && { echo "Grafana not healthy after 120s" >&2; exit 1; }; sleep 3; done
-    @for uid in $(docker run --rm --network none -v ./dashboards:/dashboards:ro ghcr.io/jqlang/jq:1.8.1 -r .uid $(ls dashboards/*.json | sed 's|^dashboards|/dashboards|')); do n=0; until curl -sf -u "admin:${GRAFANA_ADMIN_PASSWORD}" "http://localhost:3000/api/dashboards/uid/$uid" >/dev/null; do n=$((n+3)); [ $n -ge 60 ] && { echo "error: dashboard $uid was not provisioned" >&2; exit 1; }; sleep 3; done; done
+    @want="$(docker run --rm --network none -v ./dashboards:/dashboards:ro ghcr.io/jqlang/jq:1.8.1 -r .uid {{dash_paths}})"; n=0; while :; do have="$(curl -sf -u "admin:${GRAFANA_ADMIN_PASSWORD}" 'http://localhost:3000/api/search?type=dash-db&limit=5000' | docker run --rm -i ghcr.io/jqlang/jq:1.8.1 -r '.[].uid')"; missing=""; for uid in $want; do echo "$have" | grep -qx "$uid" || missing="$missing $uid"; done; [ -z "$missing" ] && break; n=$((n+3)); [ $n -ge 60 ] && { echo "error: dashboards not provisioned:$missing" >&2; exit 1; }; sleep 3; done
     @want=$(grep -h '^ *title:' config/grafana/alerting/*.yaml | wc -l); got=$(curl -sf -u "admin:${GRAFANA_ADMIN_PASSWORD}" http://localhost:3000/api/v1/provisioning/alert-rules | docker run --rm -i ghcr.io/jqlang/jq:1.8.1 length); [ "$want" = "$got" ] || { echo "error: $want alert rules on disk, $got provisioned — a malformed file provisions none of its group. See just logs grafana" >&2; exit 1; }
     @[ -z "$(docker compose ps -q --status=restarting --status=exited)" ] || { echo "error: services not running:" >&2; docker compose ps >&2; exit 1; }
     @echo "Stack healthy"

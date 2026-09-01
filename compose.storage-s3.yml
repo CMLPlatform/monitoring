@@ -4,7 +4,7 @@
 # to any S3-compatible backend (Cloudflare R2, Backblaze B2, Hetzner, MinIO)
 # without touching the collector, Prometheus, or any client project.
 #
-# This is deliberately a commented stub: it documents the concrete shape of
+# This is a commented stub: it documents the concrete shape of
 # the change so the README's scale-out claim is real, but it is not meant to
 # be started until credentials and a bucket exist. To activate:
 #
@@ -35,8 +35,8 @@
 #      overlay below re-declares each `command` with -config.expand-env=true.
 #      (compose replaces `command` wholesale, it does not merge it.)
 #
-#   2. Uncomment the overlay below and run:
-#        docker compose -f compose.yml -f compose.storage-s3.yml up -d
+#   2. Uncomment the overlay below, add compose.storage-s3.yml to COMPOSE_FILE
+#      in .env, and `just up`.
 #
 # services:
 #   loki:
