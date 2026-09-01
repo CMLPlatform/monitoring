@@ -1,7 +1,8 @@
 # ADR 0002: Hub-and-spoke observability for CML projects
 
-Date: 2026-08-20. Status: accepted (records the target architecture from the
-August 2026 review; the migration work is tracked in [HANDOVER.md](../HANDOVER.md)).
+Date: 2026-08-20. Status: accepted; **migration complete 2026-08-28**. The
+transitional HANDOVER.md that tracked it has been deleted — it described a
+transition, not a system. Onboarding is [templates/README.md](../../templates/README.md).
 
 Supersedes one decision from ADR 0001: RED metrics move off Tempo's span-metrics
 and onto the applications' native OTLP HTTP metrics. Everything else in ADR 0001
@@ -83,8 +84,10 @@ Contracts that make it scale:
 - Tempo demotes to trace storage only; deleting its metrics-generator dependency
   makes it disposable on its next breaking upgrade.
 - The spokes' local watchdog checks (service health, snapshot age, timer state)
-  are deletable only after `ProjectTelemetrySilent` and the container-lifecycle
-  rules are live here — see the tripwire in [HANDOVER.md](../HANDOVER.md).
+  were deletable only once `ProjectTelemetrySilent` and the container-lifecycle
+  rules were live here. Both are, and both have been seen working on real traffic:
+  the keystone fired on an actual spoke outage on 2026-08-27 and resolved when the
+  host came back. That tripwire has therefore been released.
 - Prometheus needs `out_of_order_time_window: 30m` for OTLP ingestion; without
   it late batches drop silently. The OTLP receiver is documented as a
   low-volume path — the revisit trigger is a host exceeding a few thousand

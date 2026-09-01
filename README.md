@@ -77,7 +77,7 @@ distributed ingestion would add operational weight for no gain. The reasoning,
 and the alternatives we considered, are recorded in
 [ADR 0001](docs/adr/0001-observability-stack.md). The hub-and-spoke target for
 serving multiple CML projects is [ADR 0002](docs/adr/0002-hub-and-spoke-observability.md),
-and the open migration work toward it lives in [docs/HANDOVER.md](docs/HANDOVER.md).
+Onboarding a project onto it is [templates/README.md](templates/README.md).
 
 ## Run it for real
 
@@ -103,8 +103,8 @@ OpenTofu configuration. Applying it produces the `CLOUDFLARE_TUNNEL_TOKEN` that
 `just up-tunnel` needs; bootstrap steps are at the top of
 [infra/main.tf](infra/main.tf).
 
-`just check` validates compose files, Prometheus config and alert rules, the
-collector, Alertmanager, Loki and Tempo configs, YAML, workflows, OpenTofu
+`just check` validates compose files, Prometheus config, the collector, Loki
+and Tempo configs, Grafana provisioning, YAML, workflows, OpenTofu
 formatting, and dashboard JSON. Every validator runs in a pinned container, so
 nothing needs to be installed on the host. CI runs the same command on every
 push and pull request, plus a smoke test that boots the stack, waits for
@@ -124,22 +124,26 @@ Grafana Alloy for log files — are in
 
 ## Alerting
 
-Prometheus evaluates the rules in `config/alerts/`: scrape target down, OTel
-export failures, error rate above 5%, disk above 80%. Alertmanager delivers
-them to whatever webhook you set in `ALERT_WEBHOOK_URL` (ntfy, Slack, and so
-on).
+Grafana both evaluates and delivers, from `config/grafana/alerting/`: telemetry
+silent per project, container crash-looping, container OOM-killed, scrape target
+down, OTel export failures, alert delivery failing, error rate above 5%, disk
+above 80%. Notifications go to whatever webhook you set in `ALERT_WEBHOOK_URL`
+(ntfy, Slack, and so on). There is no Alertmanager: Grafana rules can query Loki
+as well as Prometheus, and one engine owning both means one answer to "who gets
+told".
 
 One rule, `Watchdog`, fires permanently by design and posts to `HEARTBEAT_URL`
 every five minutes. Point that at a dead man's switch such as healthchecks.io —
 a service that alerts when the pings *stop* — and you will also hear about the
-one failure the host cannot report itself: its own death. Both variables are
-optional; leave them unset and alerts are simply visible in Grafana.
+one failure the host cannot report itself: its own death. Set both: an unset
+`ALERT_WEBHOOK_URL` drops every alert while the heartbeat keeps reporting
+healthy, so `just up-tunnel` refuses to start without it.
 
 ## Storage
 
 Everything persists to local Docker volumes (`loki_data`, `tempo_data`,
-`prometheus_data`, `grafana_data`, `alertmanager_data`), all of which `just
-backup` captures. A sixth, `otel_queue`, holds the collector's on-disk export
+`prometheus_data`, `grafana_data`), all of which `just
+backup` captures. A fifth, `otel_queue`, holds the collector's on-disk export
 queue — seconds of in-flight telemetry, worthless by the time anyone restores,
 so it is deliberately left out. When local disk stops fitting, Loki and
 Tempo can move to any S3-compatible object store (Backblaze B2, Cloudflare R2,
@@ -158,9 +162,8 @@ config/
   loki.yaml             # logs
   tempo.yaml            # traces
   prometheus.yaml       # metrics
-  alertmanager.yaml     # alert routing (webhook + watchdog heartbeat)
-  alerts/               # Prometheus alert rules
-  grafana/              # provisioned datasources + dashboard loader
+  grafana/              # provisioned datasources, dashboards, and alerting
+                        #   alerting/ = rules, contact points, routing tree
 dashboards/             # drop JSON dashboards here; Grafana auto-loads them
 docs/                   # runbook, onboarding templates, ADRs, screenshots
 infra/                  # OpenTofu: Cloudflare tunnel, ingress routes, DNS

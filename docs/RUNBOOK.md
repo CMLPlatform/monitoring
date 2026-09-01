@@ -14,13 +14,13 @@ panel is a backup/restore drill. Both procedures are below.
 
 ```sh
 just ps                    # what's running, what's restarting
-just logs <service>        # follow logs (otel-collector, loki, tempo, prometheus, grafana, alertmanager)
+just logs <service>        # follow logs (otel-collector, loki, tempo, prometheus, grafana)
 just restart <service>
 ```
 
 Two alerts point here. `TargetDown` fires after two minutes when
 Prometheus can't scrape a target, and it scrapes every service in the
-stack — collector, node-exporter, Grafana, Loki, Tempo, Alertmanager, and
+stack — collector, node-exporter, Grafana, Loki, Tempo, and
 itself — so the alert names whichever one went quiet.
 `OtelExportFailures` means the collector is up but a backend is rejecting
 its data, so look at that backend's logs, not the collector's.
@@ -100,8 +100,10 @@ the host is the intended setup.
 
 ## Alert delivery
 
-Prometheus evaluates the rules; Alertmanager delivers them. Two
-environment variables control where:
+Grafana evaluates the rules and delivers them; there is no Alertmanager. Rules,
+contact points and the routing tree are provisioned from
+`config/grafana/alerting/`, so the UI shows them read-only — edit the YAML.
+Two environment variables control where notifications go:
 
 - `ALERT_WEBHOOK_URL` receives all alerts (any webhook: ntfy, Slack, …).
 - `HEARTBEAT_URL` receives the always-firing `Watchdog` every five
@@ -109,12 +111,23 @@ environment variables control where:
   raises the alarm when pings **stop** — that is the "monitoring host is
   dead" signal nothing inside the host can send.
 
-Leaving both empty is fine: nothing is delivered, Alertmanager logs one
-notify error per cycle (expected, harmless), and alerts remain visible in
-Grafana. After changing either variable, `docker compose up -d
-alertmanager`.
+Leaving them empty is not a safe default. Delivery then fails silently while
+the heartbeat keeps pinging, so the dead man's switch reads healthy and every
+real alert is dropped. `just up-tunnel` refuses to start without
+`ALERT_WEBHOOK_URL`, and `AlertDeliveryFailing` fires on a failing notifier.
+
+After changing either variable, `docker compose up -d grafana`. Compose only
+recreates a container when its own definition changes, so a `.env` edit needs
+that command — a plain `restart` keeps the old environment, and the stale value
+survives with no indication that it has.
 
 ## Changing the Cloudflare edge
+
+> Unverified: the Cloudflare Zero Trust free-plan seat count that the Access policy
+> below assumes. The widely-cited figure appears only in third-party posts, never in
+> Cloudflare's own documentation. Check it against your plan before adding people, not
+> after they cannot log in.
+
 
 The tunnel, its ingress rules, both DNS records, and the Cloudflare Access
 policy that fronts Grafana are all OpenTofu in `infra/`. Change them there,
@@ -154,7 +167,7 @@ cd infra && tofu apply
 ## Upgrading images
 
 Dependabot opens PRs that bump the pinned versions, and CI runs `just
-check` on each one. The validators (promtool, otelcol, amtool) read their
+check` on each one. The validators (promtool, otelcol) read their
 image versions from `compose.yml`, so every bump is checked with the exact
 binaries the stack will run — when a new version changes its config
 syntax, CI fails loudly before the change reaches the host. That is the
