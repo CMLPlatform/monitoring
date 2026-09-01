@@ -19,13 +19,29 @@ queries that had been measuring the wrong thing.
 - **Full-stack scraping**: Prometheus now scrapes Grafana, Loki, and Tempo as
   well, so `TargetDown` covers every service.
 - **Per-user Grafana logins**, optional: `GRAFANA_JWT_AUTH` plus
-  `CF_ACCESS_TEAM_DOMAIN` make Grafana verify the Cloudflare Access JWT
-  instead of everyone sharing the admin password.
+  `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` make Grafana verify the
+  Cloudflare Access JWT — pinned to this app's `aud` tag, both values enforced
+  by the exposure guards — instead of everyone sharing the admin password.
 - **Memory ceilings** (`mem_limit`) on every service, sized from observed
-  usage, so one runaway component cannot OOM the host.
-- **Wider validation**: `just check` also verifies the Loki and Tempo configs
-  and OpenTofu formatting; `just smoke` asserts every dashboard provisioned;
-  CI also runs `just infra-validate` and a new `just demo-build`.
+  usage, so one runaway component cannot OOM the host; the spoke Alloy agent
+  gains a matching in-pipeline memory limiter so a long hub outage sheds load
+  instead of OOM-killing the agent and its loss counters with it.
+- **Tighter container defaults**: every service drops all capabilities,
+  node-exporter (which holds `pid: host` and the host filesystem) runs
+  read-only with a pids limit, and the hub images are digest-pinned like the
+  client templates. The tunnel token reaches cloudflared via environment, not
+  argv.
+- **Wider validation**: `just check` also verifies the Loki and Tempo configs,
+  the vendored Alloy config, shell scripts, the demo app's Python, OpenTofu
+  formatting, and git history for secrets; `just smoke` asserts every
+  dashboard and alert rule provisioned; CI also runs `just infra-validate`
+  and a new `just demo-build`.
+- **Isolated smoke and demo**: each runs under its own compose project and
+  Grafana port (`compose.sandbox.yml`), so neither can adopt or recreate a
+  stack already running on the host.
+- `bootstrap.sh` refuses to run from a release tag that lacks `templates/`
+  and prints `sha256sum -c` lines for the files it tells a project host to
+  vendor.
 - Dependabot now watches the Cloudflare provider in `infra/`, and the runbook
   covers OpenTofu-managed tunnel and Access changes.
 
@@ -48,7 +64,7 @@ queries that had been measuring the wrong thing.
 - **Tempo's metrics generator is removed**: RED comes from the applications'
   own OTLP metrics now (ADR 0002), so Tempo stores traces and nothing else.
 - Dropped the `relab-api` dashboard: the `$service` picker on Service Health
-  and Logs Overview covers it.
+  and Logs covers it.
 - README rewritten for a broader CML audience.
 - Image bumps: Grafana 13.1.4, Loki 3.7.6, Tempo 3.0.3, Prometheus 3.13.2,
   the collector 0.156.0, node-exporter 1.12.1, cloudflared 2026.8.2, and the
@@ -59,6 +75,8 @@ queries that had been measuring the wrong thing.
 - **Alertmanager**: alerting is Grafana-managed now (ADR 0002) — rules are
   provisioned from `config/grafana/alerting/`, and delivery still posts to
   `ALERT_WEBHOOK_URL`.
+- The commented `compose.storage-s3.yml` stub: the S3 escape hatch lives as
+  an appendix of ADR 0001 instead.
 
 ### Fixed
 
@@ -77,6 +95,14 @@ queries that had been measuring the wrong thing.
   of racing it on a cold start.
 - The S3 overlay documents the `-config.expand-env=true` that Loki and Tempo
   need before `${...}` in their configs expands at all.
+- **`HighErrorRate` merged environments**: aggregating by job alone let a
+  healthy prod service dilute a broken staging one sharing the job name below
+  the threshold; it now keys on job, project and env like the other
+  multi-tenant rules, and `HostDiskSpaceLow` says whose disk is filling.
+- With `GRAFANA_JWT_AUTH=true` but no team domain set, Grafana fetched its
+  JWT signing keys from a placeholder `cloudflareaccess.com` subdomain any
+  Cloudflare customer could claim; the fallback is gone and the guards refuse
+  to start without the real values.
 
 ### Security
 

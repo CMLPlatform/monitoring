@@ -38,13 +38,13 @@ datasources:
     access: proxy
     url: http://tempo:3200
     jsonData:
+      # No tracesToMetrics/serviceMap/nodeGraph: all three need span-metrics series
+      # this stack does not generate (RED comes from the apps' own OTLP metrics,
+      # ADR 0002). Configured anyway, they render a permanently empty service graph
+      # that reads as "no traffic".
       tracesToLogsV2:
         datasourceUid: loki
         filterByTraceID: true
         tags:
           - key: service.name
             value: service_name
-      # No tracesToMetrics/serviceMap/nodeGraph: all three need span-metrics series
-      # this stack does not generate (RED comes from the apps' own OTLP metrics,
-      # ADR 0002). Configured anyway, they render a permanently empty service graph
-      # that reads as "no traffic".

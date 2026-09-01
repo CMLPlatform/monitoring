@@ -30,7 +30,7 @@ storage:
 overrides:
   defaults:
     compaction:
-      block_retention: 168h  # 7 days — traces are bulky, tune to disk budget
+      block_retention: 168h # 7 days — traces are bulky, tune to disk budget
 
 usage_report:
   reporting_enabled: false

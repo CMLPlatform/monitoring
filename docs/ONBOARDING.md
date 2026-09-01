@@ -9,7 +9,7 @@ project runs; a Python/FastAPI service needs no code changes at all.
 
 | | |
 | --- | --- |
-| Production (via tunnel) | `https://otlp.<domain>` — OTLP **HTTP** (`http/protobuf`) only |
+| Production (via tunnel) | `https://otel.<domain>` — OTLP **HTTP** (`http/protobuf`) only |
 | Private network / same host | `<host>:4317` (gRPC) or `<host>:4318` (HTTP) |
 | Auth | `Authorization: Bearer <OTLP_AUTH_TOKEN>` (ask the stack operator) |
 
@@ -50,7 +50,7 @@ pip install opentelemetry-distro opentelemetry-exporter-otlp opentelemetry-instr
 ```sh
 export OTEL_SERVICE_NAME=my-service
 export OTEL_RESOURCE_ATTRIBUTES=env=prod
-export OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.example.org
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://otel.example.org
 export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <token>"
 export OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true
@@ -70,7 +70,7 @@ Every OpenTelemetry SDK understands the same four environment variables:
 
 ```sh
 OTEL_SERVICE_NAME=my-service
-OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.example.org
+OTEL_EXPORTER_OTLP_ENDPOINT=https://otel.example.org
 OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <token>"
 OTEL_RESOURCE_ATTRIBUTES=env=prod
 ```

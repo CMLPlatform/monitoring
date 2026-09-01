@@ -43,6 +43,48 @@ endpoints via Cloudflare Tunnel; bind everything else to `127.0.0.1`.
   fire-and-forget) and the stack rebuilds from this repo in minutes.
 - Local disk bounds retention (30d logs/metrics, 7d traces). The escape hatch,
   reached before any move to distributed ingest, is S3-compatible storage for
-  Loki and Tempo — see `compose.storage-s3.yml`.
+  Loki and Tempo — see the appendix below.
 - Every image is pinned and validated by `just check` in CI, so the stack
   stays reproducible.
+
+## Appendix: the S3 storage escape hatch
+
+When local volumes stop fitting, Loki and Tempo move their object storage to
+any S3-compatible backend (Cloudflare R2, Backblaze B2, Hetzner, MinIO)
+without touching the collector, Prometheus, or any client project. Not wired
+up — don't start until credentials and a bucket exist. The concrete shape:
+
+1. Create s3 variants of the configs. `config/loki.s3.yaml` replaces
+   `common.storage.filesystem` with:
+
+   ```yaml
+   common:
+     storage:
+       s3:
+         endpoint: ${S3_ENDPOINT}        # e.g. <account>.r2.cloudflarestorage.com
+         bucketnames: cml-loki
+         access_key_id: ${S3_ACCESS_KEY_ID}
+         secret_access_key: ${S3_SECRET_ACCESS_KEY}
+         s3forcepathstyle: true
+   ```
+
+   and `config/tempo.s3.yaml` replaces `storage.trace.backend: local` with:
+
+   ```yaml
+   storage:
+     trace:
+       backend: s3
+       s3:
+         endpoint: ${S3_ENDPOINT}
+         bucket: cml-tempo
+         access_key: ${S3_ACCESS_KEY_ID}
+         secret_key: ${S3_SECRET_ACCESS_KEY}
+   ```
+
+2. Add a `compose.storage-s3.yml` overlay to `COMPOSE_FILE` in `.env` that
+   mounts the s3 config variants over the originals and re-declares each
+   service's `command` with `-config.expand-env=true` appended — neither Loki
+   nor Tempo expands `${...}` in its config by default, and compose replaces
+   `command` wholesale rather than merging it. Pass `S3_ENDPOINT`,
+   `S3_ACCESS_KEY_ID`, and `S3_SECRET_ACCESS_KEY` through each service's
+   `environment` with `:?` guards, then `just up`.

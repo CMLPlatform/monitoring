@@ -25,12 +25,12 @@ just demo
 This starts the full stack plus a small FastAPI service under constant
 artificial load (`compose.demo.yml`). It uses OpenTelemetry
 auto-instrumentation and fails about one request in ten, on purpose. Give it
-a minute, then open Grafana at <http://localhost:3000> (admin / change-me):
+a minute, then open Grafana at <http://localhost:3002> (admin / change-me):
 
 - **Dashboards → Service Health (RED)** — request rate, error rate, and
   latency. The dots on the latency panel are exemplars: click one and Grafana
   opens the exact trace behind that measurement.
-- **Dashboards → Logs Overview** — log volume by service and level, an error
+- **Dashboards → Logs** — log volume by service and level, an error
   feed, and a live tail of everything arriving over OTLP.
 - **Alerting → Alert rules** — the stack-health and error-rate rules Grafana
   is evaluating. `HighErrorRate` trips on the demo service after five minutes:
@@ -38,8 +38,12 @@ a minute, then open Grafana at <http://localhost:3000> (admin / change-me):
 
 ![Service Health (RED) dashboard](docs/img/service-health.png)
 
-`just demo-down` removes the demo services again; the rest of the stack keeps
-running.
+`just demo-down` removes the demo services again; the rest of the demo stack
+keeps running, and `just demo-destroy` takes the whole thing down.
+
+The demo runs under its own compose project on its own port, so it never joins
+or disturbs a stack already running on the host — safe on the production box.
+Same for `just smoke`, on :3001. Override with `DEMO_PORT` / `SMOKE_PORT`.
 
 ## How it works
 
@@ -66,8 +70,9 @@ flowchart LR
 ```
 
 Solid arrows show telemetry being written; dotted arrows show Grafana reading
-at query time. Locally (`just up` or `just demo`) there is no tunnel:
-everything talks over the compose network and Grafana is at `localhost:3000`.
+at query time. Locally there is no tunnel: everything talks over the compose
+network, and Grafana is at `localhost:3000` for `just up`, `localhost:3002` for
+the isolated `just demo` stack.
 
 The stack runs on a single host; at CML's telemetry volume, distributed
 ingestion would add operational weight for no gain
@@ -102,12 +107,16 @@ overlay needs; bootstrap steps are at the top of
 [infra/main.tf](infra/main.tf).
 
 `just check` validates compose files, Prometheus config, the collector, Loki
-and Tempo configs, YAML, workflows, OpenTofu formatting, and dashboard JSON.
+and Tempo configs, the vendored Alloy config, YAML, workflows, shell scripts,
+the demo app's Python, OpenTofu formatting, dashboard JSON, and git history
+for leaked secrets.
 Every validator runs in a pinned container, so nothing is installed on the
 host. Grafana's alerting provisioning has no offline validator, so `just smoke`
 covers it: it boots the stack, waits for Grafana to report healthy, and checks
-that every dashboard and every alert rule provisioned. CI runs both on every
-push and pull request.
+that every dashboard and every alert rule provisioned. It runs under its own
+compose project on its own ports, so it cannot disturb a stack already running
+on the host — `just smoke` is safe on the production box, and `just smoke-down`
+cleans it up. CI runs both on every push and pull request.
 
 ## Sending telemetry from a project
 
@@ -146,7 +155,7 @@ Everything persists to local Docker volumes (`loki_data`, `tempo_data`,
 `otel_queue`, holds the collector's on-disk export queue: seconds of in-flight
 telemetry, worthless by the time anyone restores, so backups skip it. When
 local disk stops fitting, Loki and Tempo can move to any S3-compatible object
-store (Backblaze B2, Cloudflare R2, Hetzner, MinIO); `compose.storage-s3.yml`
+store (Backblaze B2, Cloudflare R2, Hetzner, MinIO); the appendix of ADR 0001
 documents that change.
 
 ## Layout
@@ -155,6 +164,7 @@ documents that change.
 compose.yml             # core services
 compose.tunnel.yml      # production overlay: Cloudflare Tunnel
 compose.demo.yml        # demo overlay: sample telemetry source
+compose.sandbox.yml     # isolation overlay for `just demo` and `just smoke`
 demo/                   # the demo FastAPI service
 config/
   otel-collector.yaml   # ingestion gateway (OTLP in → Loki/Tempo/Prometheus out)

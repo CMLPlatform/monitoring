@@ -41,7 +41,7 @@ free space, or shorten a retention window and restart the affected service
 (`retention_period` in `config/loki.yaml`, `block_retention` in
 `config/tempo.yaml`, the `--storage.tsdb.retention.*` flags in
 `compose.yml`). If disk pressure keeps returning, move Loki and Tempo to
-object storage (see `compose.storage-s3.yml`).
+object storage (see the appendix of ADR 0001).
 
 Memory is bounded per service instead: every service carries a `mem_limit`
 in `compose.yml`, sized from observed usage so one runaway component cannot
@@ -81,6 +81,12 @@ host is the intended setup.
   `OTEL_EXPORTER_OTLP_HEADERS`. Senders still on the old token get 401s
   (export errors on their side) until updated. A running demo overlay counts
   as a sender: re-run `just demo` to recreate it with the new token.
+  The token is shared and the collector does not verify `project`/`env`
+  against the sender, so every project host is trusted with every other
+  project's telemetry identity: a compromised host could spoof another
+  project's labels (and so quiet its silence alarm). Per-project tokens with
+  a collector-side identity check are the upgrade if that trust ever stops
+  being acceptable.
 - **Tunnel token:** the tunnel is OpenTofu-managed, so read the token back
   from there, not from the dashboard. Rotate the tunnel secret in Cloudflare
   Zero Trust, then `cd infra && tofu apply` (which refreshes the token data
@@ -136,13 +142,14 @@ cd infra && tofu apply
   Zero Trust seat limit in the Cloudflare dashboard — Cloudflare does not
   document the free-plan figure.
 - **Per-user Grafana logins:** by default everyone who clears Access shares
-  the one admin password. Set `GRAFANA_JWT_AUTH=true` and
-  `CF_ACCESS_TEAM_DOMAIN=<team>` in `.env` to make Grafana verify the Access
-  JWT instead: each address signs in as itself, and new ones land on the org's
-  default role (Viewer). The JWK set is team-wide. If the Zero Trust team
-  fronts more than one Access application, also pin
-  `GF_AUTH_JWT_EXPECT_CLAIMS` in `compose.yml` to this app's `aud` tag, or a
-  token minted for any other app in the team is accepted here too.
+  the one admin password. Set `GRAFANA_JWT_AUTH=true`,
+  `CF_ACCESS_TEAM_DOMAIN=<team>`, and `CF_ACCESS_AUD` (from
+  `tofu output -raw grafana_access_aud`) in `.env` to make Grafana verify the
+  Access JWT instead: each address signs in as itself, and new ones land on
+  the org's default role (Viewer). The aud pin is required because the JWK
+  set is team-wide — without it a token minted for any other Access app in
+  the team would be accepted here too; the `just up` exposure guards refuse
+  to start JWT auth without both values.
 - **Adding a hostname:** add an `ingress` entry pointing at the service's
   container port, plus a matching `cloudflare_dns_record`. The catch-all
   `http_status:404` entry stays last, or it swallows everything after it.
@@ -167,9 +174,9 @@ against the real account. Validation proves the syntax parses; only a plan
 proves the provider still maps the config to the same resources.
 
 Nothing watches the tool images pinned in the `justfile`: yamllint,
-actionlint, OpenTofu, jq, and the alpine that backup, restore, and the
-queue-volume setup run in. No Dependabot ecosystem covers a justfile, so
-bump those by hand.
+actionlint, shellcheck, ruff, gitleaks, OpenTofu, jq, the Alloy validator,
+and the alpine that backup, restore, and the queue-volume setup run in. No
+Dependabot ecosystem covers a justfile, so bump those by hand.
 
 After merging, on the host: `git pull && just pull && just up`. Use `just
 up`, not `docker compose up -d`: the recipe first chowns the collector's

@@ -21,7 +21,7 @@ you need: the `.env` variables to paste on the project host, and the `curl` comm
 that vendor these files at a pinned tag. Then on the project host:
 
 ```sh
-docker compose -f compose.yaml -f compose.telemetry.yml up -d
+docker compose -f compose.yml -f compose.telemetry.yml up -d
 ```
 
 Under an hour, most of it waiting for the first scrape.
