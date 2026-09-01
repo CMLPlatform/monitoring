@@ -3,9 +3,13 @@
 # The trap this closes: ProjectTelemetrySilent only exists for projects bootstrap.sh was
 # actually run for. A project that ships telemetry but skipped bootstrap is silently
 # uncovered — the exact failure class the keystone closes, one level up. This fires on
-# any series carrying a project label that has no rendered rule file.
+# any series whose project/env pair has no rendered rule file.
 #
-# Covered right now: relab
+# The selector touches every series every project sends (~3k for one project). Cheap at
+# this size, evaluated instantly every 5m; revisit if a project's active series reach
+# five figures.
+#
+# Covered right now: relab/staging
 
 apiVersion: 1
 
@@ -32,7 +36,7 @@ groups:
               refId: QUERY
               instant: true
               editorMode: code
-              expr: count by (project) ({project!~"relab", project!=""})
+              expr: count by (project, env) ({project!="", env!=""} unless on (project, env) ({project="relab",env="staging"}))
           - refId: FIRING
             datasourceUid: __expr__
             model:
@@ -46,5 +50,5 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Project {{ $labels.project }} is sending telemetry but has no alert rules"
-          description: "Telemetry is arriving for a project bootstrap.sh was never run for, so nothing would notice if it went silent. Run ./bootstrap.sh {{ $labels.project }} <env> on the monitoring host."
+          summary: "{{ $labels.project }}/{{ $labels.env }} is sending telemetry but has no alert rules"
+          description: "Telemetry is arriving for a project/environment bootstrap.sh was never run for, so nothing would notice if it went silent. Run ./bootstrap.sh {{ $labels.project }} {{ $labels.env }} on the monitoring host."

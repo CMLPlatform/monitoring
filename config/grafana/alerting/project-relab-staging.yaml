@@ -1,12 +1,15 @@
-# Rendered by bootstrap.sh into config/grafana/alerting/projects/. Do not edit the
-# rendered files by hand — re-run bootstrap.sh, or edit this template so every project
-# gets the fix.
+# Rendered by bootstrap.sh into config/grafana/alerting/, flat — Grafana's alerting
+# provisioner does not recurse. Do not edit the rendered files by hand: re-run
+# bootstrap.sh, or edit this template so every project gets the fix.
 #
 # This is the keystone: nothing on a spoke can detect its own absence. A project that
 # ships telemetry but never had bootstrap.sh run is silently uncovered — that is what
-# the ProjectsUncovered rule in _coverage.yaml exists to catch, one level up.
+# the ProjectsUncovered rule in coverage.yaml exists to catch, one level up.
 #
-# Placeholders: relab staging proj-silent-relab-staging
+# The marker below is read back by bootstrap.sh to regenerate that coverage rule. It is
+# the pair, not the filename, because both halves may contain a dash: `project-a-b-c`
+# cannot be split back into the project and env that produced it.
+# COVERS: relab staging
 
 apiVersion: 1
 
