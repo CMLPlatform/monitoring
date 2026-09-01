@@ -103,30 +103,6 @@ services:
     security_opt: *default-security
     logging: *default-logging
 
-  alertmanager:
-    image: prom/alertmanager:v0.33.1
-    restart: unless-stopped
-    volumes:
-      - ./config/alertmanager.yaml:/etc/alertmanager/alertmanager.yaml:ro
-      - alertmanager_data:/alertmanager
-    environment:
-      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
-      HEARTBEAT_URL: ${HEARTBEAT_URL:-}
-    # Alertmanager can't expand env vars in its config; write the webhook
-    # URLs to the url_file paths the config points at, then start. tmpfs on
-    # purpose: the URLs often carry secrets and must not end up in the
-    # persistent volume (which `just backup` archives).
-    tmpfs: [ /run/am ]
-    entrypoint: [ "/bin/sh", "-c" ]
-    command:
-      - |
-        printf '%s' "$$ALERT_WEBHOOK_URL" > /run/am/webhook_url
-        printf '%s' "$$HEARTBEAT_URL" > /run/am/heartbeat_url
-        exec /bin/alertmanager --config.file=/etc/alertmanager/alertmanager.yaml --storage.path=/alertmanager
-    mem_limit: 256m
-    security_opt: *default-security
-    logging: *default-logging
-
   node-exporter:
     image: prom/node-exporter:v1.12.1
     restart: unless-stopped
@@ -156,10 +132,16 @@ services:
     volumes:
       - ./config/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
       - ./config/grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
+      - ./config/grafana/alerting:/etc/grafana/provisioning/alerting:ro
       - ./dashboards:/var/lib/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      # Expanded by Grafana into the provisioned contact points. Alertmanager needed
+      # a url_file written by an entrypoint because it cannot read env vars; Grafana
+      # can, so that hack is gone along with its tmpfs.
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      HEARTBEAT_URL: ${HEARTBEAT_URL:-}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
       # Land on Stack Health instead of the empty welcome page.
@@ -188,7 +170,6 @@ volumes:
   tempo_data:
   prometheus_data:
   grafana_data:
-  alertmanager_data:
   # Deliberately not in `just backup`: queue contents are seconds of in-flight
   # telemetry, worthless by restore time.
   otel_queue:

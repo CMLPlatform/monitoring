@@ -2,8 +2,8 @@ set dotenv-load
 
 # Stateful services and their volumes, shared by backup/restore. The volume
 # names assume the compose project name "monitoring" (see guard in backup).
-stateful := "grafana prometheus loki tempo alertmanager"
-backup_mounts := "-v monitoring_grafana_data:/data/grafana -v monitoring_prometheus_data:/data/prometheus -v monitoring_loki_data:/data/loki -v monitoring_tempo_data:/data/tempo -v monitoring_alertmanager_data:/data/alertmanager"
+stateful := "grafana prometheus loki tempo"
+backup_mounts := "-v monitoring_grafana_data:/data/grafana -v monitoring_prometheus_data:/data/prometheus -v monitoring_loki_data:/data/loki -v monitoring_tempo_data:/data/tempo"
 
 default:
     @just --list
@@ -27,6 +27,7 @@ up-tunnel: _queue-volume
     @[ "${GRAFANA_ROOT_URL:-}" != "http://localhost:3000" ] || { echo "error: GRAFANA_ROOT_URL is still the localhost default; set it to the tunnel hostname or every absolute URL Grafana generates breaks" >&2; exit 1; }
     @[ "${GRAFANA_COOKIE_SECURE:-false}" = "true" ] || { echo "error: GRAFANA_COOKIE_SECURE must be true when Grafana is served over HTTPS; set it in .env" >&2; exit 1; }
     @[ -n "${HEARTBEAT_URL:-}" ] || echo "WARNING: HEARTBEAT_URL is empty; the stack goes live without a dead-man's switch" >&2
+    @[ -n "${ALERT_WEBHOOK_URL:-}" ] || { echo "error: ALERT_WEBHOOK_URL is empty; every alert would fire into an empty url_file and be dropped. The heartbeat keeps pinging either way, so this failure looks healthy from the outside — set it, or comment out this guard deliberately" >&2; exit 1; }
     docker compose -f compose.yml -f compose.tunnel.yml up -d
 
 down:
@@ -64,7 +65,7 @@ tail service:
     docker compose -f compose.yml -f compose.demo.yml logs -f --no-log-prefix {{service}} | jq -R 'fromjson? // .'
 
 # Validate everything. All validators run in containers — no host installs.
-# promtool/otelcol/amtool images are read from compose.yml so they can't
+# promtool/otelcol images are read from compose.yml so they can't
 # drift from the versions the stack actually runs.
 check:
     docker compose config -q
@@ -72,7 +73,6 @@ check:
     docker compose -f compose.yml -f compose.demo.yml config -q
     docker run --rm -v ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro -v ./config/alerts:/etc/prometheus/alerts:ro --entrypoint promtool $(docker compose config --images | grep prom/prometheus) check config /etc/prometheus/prometheus.yaml
     docker run --rm -e OTLP_AUTH_TOKEN=dummy -v ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro $(docker compose config --images | grep opentelemetry-collector) validate --config=/etc/otelcol/config.yaml
-    docker run --rm -v ./config/alertmanager.yaml:/etc/alertmanager/alertmanager.yaml:ro --entrypoint /bin/amtool $(docker compose config --images | grep prom/alertmanager) check-config /etc/alertmanager/alertmanager.yaml
     docker run --rm --network none -v ./config/loki.yaml:/etc/loki/loki.yaml:ro $(docker compose config --images | grep grafana/loki) -config.file=/etc/loki/loki.yaml -verify-config
     docker run --rm --network none -v ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro $(docker compose config --images | grep grafana/tempo) -config.file=/etc/tempo/tempo.yaml -config.verify=true
     docker run --rm --network none -v .:/code:ro pipelinecomponents/yamllint:0.35.13 yamllint -d '{extends: relaxed, ignore: [.git/, backups/, infra/.terraform/]}' .

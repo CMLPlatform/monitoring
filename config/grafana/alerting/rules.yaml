@@ -1,0 +1,318 @@
+# Grafana-managed alert rules (ADR 0002): one engine owns evaluation and notification,
+# and Grafana rules can query Loki as well as Prometheus.
+#
+# Shape note, true for every rule here: the PromQL carries its own comparison, so it
+# returns a series only when the alert should fire, and the threshold node just asks
+# whether anything came back — no reduce/threshold pair to decode.
+#
+# Keep the total under about ten. These are the generic rules; the per-project keystone
+# lives in project-<project>-<env>.yaml beside this file, rendered by bootstrap.sh.
+
+apiVersion: 1
+
+groups:
+  # The alerting pipeline's own proof of life, and the detector for it failing.
+  - orgId: 1
+    name: meta
+    folder: Stack alerts
+    interval: 1m
+    rules:
+      # Always firing on purpose; its ARRIVAL is the proof. execErrState Error is
+      # deliberate: if the query breaks the heartbeat stops and the switch alarms.
+      - uid: watchdog-heartbeat
+        title: Watchdog
+        condition: FIRING
+        for: 0m
+        noDataState: OK
+        execErrState: Error
+        isPaused: false
+        data:
+          - refId: QUERY
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            model:
+              refId: QUERY
+              instant: true
+              editorMode: code
+              expr: vector(1)
+          - refId: FIRING
+            datasourceUid: __expr__
+            model:
+              refId: FIRING
+              type: threshold
+              expression: QUERY
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+        labels:
+          severity: none
+        annotations:
+          summary: "Alerting-pipeline heartbeat (always firing)"
+          description: "Routed to a dead man's switch. Investigate if the pings stop."
+      # Cannot page when the path it reports on is the broken one — that is what the
+      # heartbeat is for. Its job is to make the state visible instead of silent.
+      - uid: alert-delivery-failing
+        title: AlertDeliveryFailing
+        condition: FIRING
+        for: 10m
+        noDataState: OK
+        execErrState: Error
+        isPaused: false
+        data:
+          - refId: QUERY
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            model:
+              refId: QUERY
+              instant: true
+              editorMode: code
+              expr: rate(grafana_alerting_notifications_failed_total[10m]) > 0
+          - refId: FIRING
+            datasourceUid: __expr__
+            model:
+              refId: FIRING
+              type: threshold
+              expression: QUERY
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+        labels:
+          severity: critical
+        annotations:
+          summary: "Grafana cannot deliver {{ $labels.integration }} notifications"
+          description: "Alerts are firing and going nowhere. Most likely an unset ALERT_WEBHOOK_URL, otherwise the receiver is rejecting. Check `just logs grafana`."
+  # The central stack watching itself.
+  - orgId: 1
+    name: stack-health
+    folder: Stack alerts
+    interval: 1m
+    rules:
+      - uid: target-down
+        title: TargetDown
+        condition: FIRING
+        for: 2m
+        noDataState: OK
+        execErrState: Error
+        isPaused: false
+        data:
+          - refId: QUERY
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            model:
+              refId: QUERY
+              instant: true
+              editorMode: code
+              expr: up == 0
+          - refId: FIRING
+            datasourceUid: __expr__
+            model:
+              refId: FIRING
+              type: threshold
+              expression: QUERY
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+        labels:
+          severity: critical
+        annotations:
+          summary: "Scrape target {{ $labels.job }} is down"
+          description: "Prometheus cannot scrape {{ $labels.instance }} (job {{ $labels.job }}) for 2 minutes."
+      - uid: otel-export-failures
+        title: OtelExportFailures
+        condition: FIRING
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        isPaused: false
+        data:
+          - refId: QUERY
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            model:
+              refId: QUERY
+              instant: true
+              editorMode: code
+              expr: >
+                sum by (exporter) (rate(otelcol_exporter_send_failed_spans[5m])) > 0
+                or sum by (exporter) (rate(otelcol_exporter_send_failed_metric_points[5m])) > 0
+                or sum by (exporter) (rate(otelcol_exporter_send_failed_log_records[5m])) > 0
+          - refId: FIRING
+            datasourceUid: __expr__
+            model:
+              refId: FIRING
+              type: threshold
+              expression: QUERY
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+        labels:
+          severity: warning
+        annotations:
+          summary: "OTel Collector failing to export via {{ $labels.exporter }}"
+          description: "The collector has been failing to deliver telemetry to a backend for 5 minutes. Check `just logs otel-collector`."
+  # Storage backstop: Loki and Tempo have no total-size cap.
+  - orgId: 1
+    name: capacity
+    folder: Stack alerts
+    interval: 1m
+    rules:
+      - uid: host-disk-space-low
+        title: HostDiskSpaceLow
+        condition: FIRING
+        for: 15m
+        noDataState: OK
+        execErrState: Error
+        isPaused: false
+        data:
+          - refId: QUERY
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            model:
+              refId: QUERY
+              instant: true
+              editorMode: code
+              expr: >
+                (node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay"}
+                / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay"}) < 0.2
+          - refId: FIRING
+            datasourceUid: __expr__
+            model:
+              refId: FIRING
+              type: threshold
+              expression: QUERY
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+        labels:
+          severity: warning
+        annotations:
+          summary: "Filesystem {{ $labels.mountpoint }} is over 80% full"
+          description: "Loki and Tempo have no total-size cap, so this alert is the storage backstop. Free space or lower retention (see RUNBOOK)."
+  # The 668-restart incident: a crash loop must get louder, not quieter.
+  - orgId: 1
+    name: container-lifecycle
+    folder: Stack alerts
+    interval: 1m
+    rules:
+      - uid: container-restarting
+        title: ContainerRestarting
+        condition: FIRING
+        for: 10m
+        noDataState: OK
+        execErrState: Error
+        isPaused: false
+        data:
+          - refId: QUERY
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            model:
+              refId: QUERY
+              instant: true
+              editorMode: code
+              expr: changes(container_start_time_seconds{name!=""}[1h]) > 3
+          - refId: FIRING
+            datasourceUid: __expr__
+            model:
+              refId: FIRING
+              type: threshold
+              expression: QUERY
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container {{ $labels.name }} is crash-looping"
+          description: "{{ $labels.name }} on {{ $labels.host_name }} has restarted more than 3 times in the last hour."
+      - uid: container-oom-killed
+        title: ContainerOOMKilled
+        condition: FIRING
+        for: 0m
+        noDataState: OK
+        execErrState: Error
+        isPaused: false
+        data:
+          - refId: QUERY
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            model:
+              refId: QUERY
+              instant: true
+              editorMode: code
+              expr: increase(container_oom_events_total[5m]) > 0
+          - refId: FIRING
+            datasourceUid: __expr__
+            model:
+              refId: FIRING
+              type: threshold
+              expression: QUERY
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container {{ $labels.name }} was OOM-killed"
+          description: "{{ $labels.name }} on {{ $labels.host_name }} hit an OOM kill in the last 5 minutes."
+  # RED from the applications' own OTLP metrics, not Tempo's span-metrics.
+  - orgId: 1
+    name: service-red
+    folder: Stack alerts
+    interval: 1m
+    rules:
+      - uid: high-error-rate
+        title: HighErrorRate
+        condition: FIRING
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        isPaused: false
+        data:
+          - refId: QUERY
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            model:
+              refId: QUERY
+              instant: true
+              editorMode: code
+              expr: >
+                sum by (job) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m]))
+                / sum by (job) (rate(http_server_request_duration_seconds_count[5m])) > 0.05
+          - refId: FIRING
+            datasourceUid: __expr__
+            model:
+              refId: FIRING
+              type: threshold
+              expression: QUERY
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }} error rate above 5%"
+          description: "More than 5% of requests to {{ $labels.job }} returned 5xx over the last 5 minutes."

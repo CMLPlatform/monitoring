@@ -1,0 +1,28 @@
+# Notification targets. Grafana expands $VAR in provisioning files, so the URLs come
+# straight from the environment and no secret is written to disk.
+#
+# An unset variable leaves the URL empty and every notification fails — silently, from
+# the outside. AlertDeliveryFailing and the heartbeat are what surface that; the guard
+# in `just up-tunnel` is what prevents it.
+
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: webhook
+    receivers:
+      - uid: cp-webhook-default
+        type: webhook
+        settings:
+          url: $ALERT_WEBHOOK_URL
+
+  - orgId: 1
+    name: heartbeat
+    receivers:
+      - uid: cp-heartbeat-dms
+        type: webhook
+        settings:
+          url: $HEARTBEAT_URL
+        # A resolved-notification would ping the dead man's switch too, which
+        # would mask the very outage the switch exists to report.
+        disableResolveMessage: true

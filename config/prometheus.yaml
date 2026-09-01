@@ -17,13 +17,8 @@ otlp:
   # service.instance.id already become job/instance without being listed.
   promote_resource_attributes: [project, env, host.name]
 
-rule_files:
-  - /etc/prometheus/alerts/*.yaml
-
-alerting:
-  alertmanagers:
-    - static_configs:
-        - targets: ["alertmanager:9093"]
+# No rule_files and no alerting block: Grafana owns both evaluation and
+# notification (ADR 0002). Prometheus is a store and a query engine here.
 
 # Apps push metrics via OTLP (through the collector). Scrape only infra we host.
 scrape_configs:
@@ -51,7 +46,3 @@ scrape_configs:
   - job_name: tempo
     static_configs:
       - targets: ["tempo:3200"]
-
-  - job_name: alertmanager
-    static_configs:
-      - targets: ["alertmanager:9093"]

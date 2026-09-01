@@ -1,0 +1,17 @@
+# Routing tree. Everything reaches the webhook except Watchdog, whose delivery
+# IS the heartbeat: it fires permanently and its silence is the alarm, so it
+# goes to the dead man's switch on a short repeat and never groups or waits.
+
+apiVersion: 1
+
+policies:
+  - orgId: 1
+    receiver: webhook
+    group_by: [alertname]
+    routes:
+      - receiver: heartbeat
+        object_matchers:
+          - [alertname, =, Watchdog]
+        group_wait: 0s
+        group_interval: 1m
+        repeat_interval: 5m
