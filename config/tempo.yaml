@@ -23,25 +23,14 @@ storage:
     local:
       path: /var/tempo/blocks
 
-# Derive RED metrics (requests/errors/duration) + a service graph from traces.
-# These land in Prometheus and power the Service Health dashboard.
-metrics_generator:
-  registry:
-    external_labels:
-      source: tempo
-  storage:
-    path: /var/tempo/generator/wal
-    remote_write:
-      - url: http://prometheus:9090/api/v1/write
-        send_exemplars: true
+# No metrics_generator: RED comes from the applications' own OTLP metrics (ADR 0002).
+# Deriving it from traces as well meant two producers for one number, a Prometheus
+# remote-write path that existed for nothing else, and a cardinality backstop to
+# maintain. Tempo is trace storage now, which makes it disposable on its next
+# breaking upgrade.
 
 overrides:
   defaults:
-    metrics_generator:
-      processors: [service-graphs, span-metrics]
-      # Cardinality backstop: a sender with unrouted span names (raw paths)
-      # would otherwise mint Prometheus series without bound.
-      max_active_series: 50000
     compaction:
       block_retention: 168h  # 7 days — traces are bulky, tune to disk budget
 

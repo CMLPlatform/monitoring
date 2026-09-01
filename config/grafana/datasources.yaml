@@ -44,9 +44,8 @@ datasources:
         tags:
           - key: service.name
             value: service_name
-      tracesToMetrics:
-        datasourceUid: prometheus
-      serviceMap:
-        datasourceUid: prometheus
-      nodeGraph:
-        enabled: true
+      # No tracesToMetrics/serviceMap/nodeGraph: all three read the series Tempo's
+      # metrics-generator used to write, and that generator is gone (ADR 0002 — RED
+      # comes from the apps' own OTLP metrics). Leaving them configured would render
+      # a permanently empty service graph, which reads as "no traffic" rather than
+      # "not wired".

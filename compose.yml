@@ -88,7 +88,6 @@ services:
       - --config.file=/etc/prometheus/prometheus.yaml
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=30d
-      - --web.enable-remote-write-receiver
       # Prometheus 3.x: OTLP ingestion is its own flag, no longer a feature flag.
       - --web.enable-otlp-receiver
       - --enable-feature=native-histograms,exemplar-storage
