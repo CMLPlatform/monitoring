@@ -79,7 +79,7 @@ services:
       # `:-` default here would be dead text. This is the COMPOSE project (docker's -p),
       # not PROJECT above; rename the deploy directory and the filter follows it.
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME}
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:?telemetry overlay requires OTEL_EXPORTER_OTLP_ENDPOINT}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:?required by the telemetry overlay}
       OTLP_AUTH_TOKEN: ${OTLP_AUTH_TOKEN:?telemetry overlay requires OTLP_AUTH_TOKEN}
       # Second, weaker credential: matched by the Cloudflare WAF-skip rule for the
       # telemetry hostname (infra/cloudflare-zone), so the bearer token itself never
@@ -87,7 +87,7 @@ services:
       # Optional: only projects whose egress crosses a WAF need this. Empty is fine.
       TELEMETRY_EDGE_KEY: ${TELEMETRY_EDGE_KEY:-}
     volumes:
-      - ./deploy/alloy/config.alloy:/etc/alloy/config.alloy:ro  # vendored, never edited
+      - ./deploy/alloy/config.alloy:/etc/alloy/config.alloy:ro # vendored, never edited
       # node_exporter's collectors read the host's own /proc, /sys and filesystems.
       # All read-only. Note this does give the container read access to the host
       # filesystem via /rootfs, which is the price of host disk-usage metrics from a

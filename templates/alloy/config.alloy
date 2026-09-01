@@ -114,7 +114,7 @@ otelcol.processor.transform "resource_attributes" {
 	}
 
 	output {
-		logs = [otelcol.processor.batch.default.input]
+		logs = [otelcol.processor.memory_limiter.default.input]
 	}
 }
 
@@ -298,6 +298,21 @@ prometheus.scrape "gpu" {
 
 otelcol.receiver.prometheus "host" {
 	output {
+		metrics = [otelcol.processor.memory_limiter.default.input]
+	}
+}
+
+// Refuse work before the cgroup does it for us: without this, a long hub outage
+// grows the sending queue until the OOM killer takes the agent AND the self-metrics
+// that would have counted the loss. Mirrors the central collector; sized under the
+// overlay's 512m mem_limit — keep the two in step.
+otelcol.processor.memory_limiter "default" {
+	check_interval = "1s"
+	limit          = "400MiB"
+	spike_limit    = "100MiB"
+
+	output {
+		logs    = [otelcol.processor.batch.default.input]
 		metrics = [otelcol.processor.batch.default.input]
 	}
 }
