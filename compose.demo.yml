@@ -16,7 +16,7 @@ services:
   demo-api:
     build: ./demo
     restart: on-failure
-    depends_on: [ otel-collector ]
+    depends_on: [otel-collector]
     environment:
       OTEL_SERVICE_NAME: demo-api
       OTEL_RESOURCE_ATTRIBUTES: env=demo
@@ -36,7 +36,7 @@ services:
   demo-load:
     image: curlimages/curl:8.21.0
     restart: on-failure
-    depends_on: [ demo-api ]
+    depends_on: [demo-api]
     command:
       - sh
       - -c

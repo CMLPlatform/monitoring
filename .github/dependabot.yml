@@ -1,13 +1,12 @@
 version: 2
 updates:
+  # Deliberately ungrouped: a grouped bump that fails `just check` or `just
+  # smoke` gives no clue which of six images broke it, and bisecting a
+  # Dependabot PR by hand is worse than reviewing six small ones.
   - package-ecosystem: "docker-compose"
     directory: "/"
     schedule:
       interval: "weekly"
-    groups:
-      monitoring-stack-updates:
-        patterns:
-          - "*"
 
   - package-ecosystem: "docker"
     directory: "/demo"

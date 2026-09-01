@@ -3,9 +3,18 @@ name = "demo"
 version = "0.1.0"
 requires-python = ">=3.14"
 dependencies = [
-    "fastapi==0.141.1",
-    "uvicorn==0.52.4",
-    "opentelemetry-distro==0.65b0",
-    "opentelemetry-exporter-otlp==1.44.0",
-    "opentelemetry-instrumentation-fastapi==0.65b0",
+  "fastapi==0.141.1",
+  "uvicorn==0.52.4",
+  "opentelemetry-distro==0.65b0",
+  "opentelemetry-exporter-otlp==1.44.0",
+  "opentelemetry-instrumentation-fastapi==0.65b0",
 ]
+
+# Pinned so lint results do not depend on whatever ruff config the contributor
+# has at home. target-version is explicit because requires-python is ahead of
+# what released ruff knows about.
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B"]

@@ -1,0 +1,5 @@
+# Keep line breaks inside folded (>) block scalars: the default re-joins them
+# onto one line, which un-wraps the long PromQL exprs and alert descriptions
+# in config/grafana/alerting/ every time yamlfmt runs.
+formatter:
+  scan_folded_as_literal: true

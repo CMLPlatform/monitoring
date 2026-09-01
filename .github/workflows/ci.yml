@@ -10,11 +10,22 @@ on:
 permissions:
   contents: read
 
+# A push to an open PR supersedes the run already in flight; both jobs boot a
+# full stack, so leaving them stacked wastes a runner per push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # `just check` scans git history for secrets; the default shallow clone
+        # would give it one commit and pass vacuously.
+        with:
+          fetch-depth: 0
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
       - run: cp .env.example .env
       - run: just check
@@ -23,9 +34,15 @@ jobs:
 
   smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
       - run: cp .env.example .env
       - run: just smoke
-      - run: just down
+      # Every smoke failure message points at the logs, which are only useful if
+      # they outlive the job.
+      - if: failure()
+        run: just smoke-logs
+      - if: always()
+        run: just smoke-down
