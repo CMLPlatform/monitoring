@@ -23,8 +23,8 @@
           "type": "loki",
           "uid": "loki"
         },
-        "definition": "label_values({project=~\".+\"}, project)",
-        "query": "label_values({project=~\".+\"}, project)",
+        "definition": "label_values(project)",
+        "query": "label_values(project)",
         "refresh": 2,
         "sort": 1,
         "current": {},

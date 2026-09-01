@@ -12,14 +12,16 @@
 #   - per-container resources and lifecycle from cAdvisor, which is what makes a crash
 #     loop visible centrally.
 #
-# It replaces the older Loki Docker-driver overlay. That approach needed a Loki push
-# hostname exposed to the internet, which the monitoring stack deliberately does not
-# publish because Loki has no authentication of its own, and it wrote the push
-# credential into every container's HostConfig where `docker inspect` could read it.
-#
 # The root deploy recipes auto-include this overlay when OTEL_EXPORTER_OTLP_ENDPOINT is
 # set in the host's root `.env` — the same switch that turns on the API's own exporter.
 # Hosts without it ship nothing and keep `docker logs` as the only log path.
+
+# Local json-file logging with rotation for the agent stack itself.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
   # Least-privilege gate between Alloy and the Docker API. Alloy never sees the socket:
@@ -48,11 +50,7 @@ services:
     pids_limit: 128
     networks:
       - docker_socket
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+    logging: *default-logging
 
   alloy:
     image: grafana/alloy:v1.18.1@sha256:0f4434c92b3e6cdac38bb129b344e1790c246f7b6e2eaffcc16a5fa363240e33
@@ -141,13 +139,9 @@ services:
     networks:
       - egress
       - docker_socket
-    logging:
-      # Never through itself: Alloy reporting its own failure to ship logs, by shipping
-      # a log, is a loop with no exit.
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+    # Never through itself: Alloy reporting its own failure to ship logs, by shipping
+    # a log, is a loop with no exit.
+    logging: *default-logging
 
 volumes:
   alloy_data:

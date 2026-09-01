@@ -12,7 +12,7 @@
 // Everything else in the stack — databases, caches, proxies, frontends, batch jobs —
 // only writes to stdout, so this agent picks those up and forwards them on the
 // same OTLP endpoint with the same token. Nothing new is published at the edge: the
-// monitoring stack exposes `otlp.` and deliberately does not expose Loki, which has no
+// monitoring stack exposes `otlp.` and does not expose Loki, which has no
 // authentication of its own.
 
 // The host's own name, read from its /etc/hostname through the rootfs mount rather than
@@ -159,12 +159,11 @@ prometheus.exporter.unix "host" {
 // ---------------------------------------------------------------------------
 // Per-container resource metrics. This is what makes a crash loop visible: cAdvisor has
 // no restart counter, but container_start_time_seconds moving repeatedly is the same
-// signal, and container_oom_events_total says why. The incident that produced these
-// runbooks — 668 restarts over 19 hours, every monitor green — is detected by
+// signal, and container_oom_events_total says why. The central stack alerts on
 //
 //     changes(container_start_time_seconds{name!=""}[1h]) > 3
 //
-// which is a rule on the central stack, not here. This side only has to ship the series.
+// so this side only has to ship the series.
 // Shipping them at all needs `cgroup: host` on this container: see the note in
 // compose.telemetry.yml, without which cAdvisor reports one root series and the
 // rule above matches nothing.

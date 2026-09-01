@@ -28,18 +28,20 @@ directly.
 - **Keep labels low-cardinality.** Prometheus turns every distinct label
   value into a series. User IDs, request IDs, and timestamps therefore
   don't belong in resource attributes or metric labels. Put them in the log
-  line or in span attributes instead — you can still filter on them at
-  query time, without the storage blowing up.
-- **In Loki, `service.name` is the only index label.** Every other
-  attribute, `service.instance.id` included, is stored as structured
-  metadata, so a query starts from the stream selector and filters after
-  it: `{service_name="my-service"} | env="prod"`. Streams written before
-  this change keep their old labels until they age out after 30 days.
+  line or in span attributes instead; they stay filterable at query time
+  without the storage blowing up.
+- **In Loki, only the identity labels are index labels**: `service.name`,
+  `project`, `env`, `host.name` (the authoritative list lives in
+  `config/loki.yaml`). Every other attribute, `service.instance.id`
+  included, is stored as structured metadata, so a query starts from the
+  stream selector and filters after it:
+  `{service_name="my-service", env="prod"} | service_instance_id="..."`.
 
-Traces are the most valuable signal to send. Tempo derives request-rate,
-error-rate, and duration ("RED") metrics from them, so a service that
-sends only traces already gets the Service Health dashboard and error
-alerting. Start with traces; everything else is a bonus.
+The Service Health dashboard and the error-rate alert key on the standard
+HTTP server metrics (`http_server_request_duration_seconds`), which the
+auto-instrumentation below emits out of the box. Traces add per-request
+drill-down on top. Start with the templates below and you get all three
+signals at once.
 
 ## Template 1 — Python/FastAPI, zero code changes
 
@@ -84,9 +86,3 @@ and token as Templates 1 and 2: no second hostname, no second credential.
 
 Run `./bootstrap.sh <project> <env>` on the monitoring host and follow what it prints.
 See [templates/README.md](../templates/README.md).
-
-> Earlier revisions of this document carried two templates that pushed straight to Loki
-> (the Docker `loki` log driver, and Alloy's `loki.write`). Both required exposing Loki,
-> which this stack deliberately does not do because Loki has no authentication of its
-> own, and undoing it later is more work than not starting. If you find those
-> instructions in an old copy, they are wrong — use the agent above.

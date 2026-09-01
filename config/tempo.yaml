@@ -1,8 +1,6 @@
 # Tempo 3.x single-binary. Traces arrive only from the collector
 # (collector → tempo:4317) so external apps never talk to Tempo directly.
-# Migrated from 2.x: the ingester/compactor blocks and the local-blocks
-# processor are gone (handled internally by the live-store/backend worker);
-# block retention now lives under overrides.
+# Block retention lives under overrides.
 
 server:
   http_listen_port: 3200

@@ -37,7 +37,10 @@ groups:
               instant: true
               editorMode: code
               expr: vector(1)
-          - refId: FIRING
+          # Identical on every rule (see the shape note up top): defined once
+          # here, aliased as `- *firing` below.
+          - &firing
+            refId: FIRING
             datasourceUid: __expr__
             model:
               refId: FIRING
@@ -72,16 +75,7 @@ groups:
               instant: true
               editorMode: code
               expr: rate(grafana_alerting_notifications_failed_total[10m]) > 0
-          - refId: FIRING
-            datasourceUid: __expr__
-            model:
-              refId: FIRING
-              type: threshold
-              expression: QUERY
-              conditions:
-                - evaluator:
-                    type: gt
-                    params: [0]
+          - *firing
         labels:
           severity: critical
         annotations:
@@ -111,16 +105,7 @@ groups:
               instant: true
               editorMode: code
               expr: up == 0
-          - refId: FIRING
-            datasourceUid: __expr__
-            model:
-              refId: FIRING
-              type: threshold
-              expression: QUERY
-              conditions:
-                - evaluator:
-                    type: gt
-                    params: [0]
+          - *firing
         labels:
           severity: critical
         annotations:
@@ -147,16 +132,7 @@ groups:
                 sum by (exporter) (rate(otelcol_exporter_send_failed_spans[5m])) > 0
                 or sum by (exporter) (rate(otelcol_exporter_send_failed_metric_points[5m])) > 0
                 or sum by (exporter) (rate(otelcol_exporter_send_failed_log_records[5m])) > 0
-          - refId: FIRING
-            datasourceUid: __expr__
-            model:
-              refId: FIRING
-              type: threshold
-              expression: QUERY
-              conditions:
-                - evaluator:
-                    type: gt
-                    params: [0]
+          - *firing
         labels:
           severity: warning
         annotations:
@@ -188,22 +164,13 @@ groups:
               expr: >
                 (node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay"}
                 / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay"}) < 0.2
-          - refId: FIRING
-            datasourceUid: __expr__
-            model:
-              refId: FIRING
-              type: threshold
-              expression: QUERY
-              conditions:
-                - evaluator:
-                    type: gt
-                    params: [0]
+          - *firing
         labels:
           severity: warning
         annotations:
           summary: "Filesystem {{ $labels.mountpoint }} is over 80% full"
           description: "Loki and Tempo have no total-size cap, so this alert is the storage backstop. Free space or lower retention (see RUNBOOK)."
-  # The 668-restart incident: a crash loop must get louder, not quieter.
+  # A crash loop must get louder, not quieter.
   - orgId: 1
     name: container-lifecycle
     folder: Stack alerts
@@ -227,16 +194,7 @@ groups:
               instant: true
               editorMode: code
               expr: changes(container_start_time_seconds{name!=""}[1h]) > 3
-          - refId: FIRING
-            datasourceUid: __expr__
-            model:
-              refId: FIRING
-              type: threshold
-              expression: QUERY
-              conditions:
-                - evaluator:
-                    type: gt
-                    params: [0]
+          - *firing
         labels:
           severity: warning
         annotations:
@@ -260,16 +218,7 @@ groups:
               instant: true
               editorMode: code
               expr: increase(container_oom_events_total[5m]) > 0
-          - refId: FIRING
-            datasourceUid: __expr__
-            model:
-              refId: FIRING
-              type: threshold
-              expression: QUERY
-              conditions:
-                - evaluator:
-                    type: gt
-                    params: [0]
+          - *firing
         labels:
           severity: warning
         annotations:
@@ -301,16 +250,7 @@ groups:
               expr: >
                 sum by (job) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m]))
                 / sum by (job) (rate(http_server_request_duration_seconds_count[5m])) > 0.05
-          - refId: FIRING
-            datasourceUid: __expr__
-            model:
-              refId: FIRING
-              type: threshold
-              expression: QUERY
-              conditions:
-                - evaluator:
-                    type: gt
-                    params: [0]
+          - *firing
         labels:
           severity: warning
         annotations:

@@ -59,6 +59,15 @@ ping_url="${!url_var:-}"
 output_file="$(mktemp)"
 trap 'rm -f "$output_file"' EXIT
 
+# Send the job's own output as the failure body: the alert then carries the reason,
+# instead of only saying that something went wrong. Note this puts job output —
+# hostnames, paths, restic summaries — in a third party's hands; it is why the ping
+# carries no credentials and why the URL itself is the only secret.
+ping_fail() {
+    curl -fsS -m 10 --retry 3 --data-binary "@${output_file}" "${ping_url}/fail" -o /dev/null \
+        || echo "WARNING: failure ping to ${url_var} failed" >&2
+}
+
 # A killed job must still report. systemd's TimeoutStartSec TERMs the whole cgroup:
 # the job dies, and without this trap bash would die too — before the ping block —
 # so a HUNG job would send neither success nor failure and its captured output would
@@ -70,8 +79,7 @@ on_terminate() {
     echo "run_scheduled: received SIG${sig}; job killed (likely a systemd timeout)" >>"$output_file"
     cat "$output_file"
     if [[ -n "$ping_url" ]]; then
-        curl -fsS -m 10 --retry 3 --data-binary "@${output_file}" "${ping_url}/fail" -o /dev/null \
-            || echo "WARNING: failure ping to ${url_var} failed" >&2
+        ping_fail
     fi
     rm -f "$output_file"
     exit 143
@@ -92,12 +100,7 @@ if [[ "$status" -eq 0 ]]; then
     curl -fsS -m 10 --retry 3 "$ping_url" -o /dev/null \
         || echo "WARNING: success ping to ${url_var} failed" >&2
 else
-    # Send the job's own output as the failure body: the alert then carries the reason,
-    # instead of only saying that something went wrong. Note this puts job output —
-    # hostnames, paths, restic summaries — in a third party's hands; it is why the ping
-    # carries no credentials and why the URL itself is the only secret.
-    curl -fsS -m 10 --retry 3 --data-binary "@${output_file}" "${ping_url}/fail" -o /dev/null \
-        || echo "WARNING: failure ping to ${url_var} failed" >&2
+    ping_fail
 fi
 
 exit "$status"

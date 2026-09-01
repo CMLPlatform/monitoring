@@ -38,46 +38,34 @@ processors:
     timeout: 5s
     send_batch_size: 1024
 
-# The queue/retry settings repeated on each exporter below are pinned rather
-# than left to upstream defaults, because the RUNBOOK's "buffers about five
-# minutes" promise is exactly those numbers. (No YAML anchor: the collector
-# rejects unknown top-level keys, so there is nowhere to hang one.) The queue
-# is file-backed, so both a backend outage and a collector restart are ridden out.
+# The queue/retry settings are pinned rather than left to upstream defaults,
+# because the RUNBOOK's "buffers about five minutes" promise is exactly those
+# numbers. Defined once on the loki exporter, aliased onto the other two. The
+# queue is file-backed, so both a backend outage and a collector restart are
+# ridden out.
 exporters:
   # Loki 3.x accepts OTLP natively — no Promtail / loki exporter needed.
   otlp_http/loki:
     endpoint: http://loki:3100/otlp
-    sending_queue:
-      enabled: true
+    sending_queue: &queue
       queue_size: 1000
       storage: file_storage
-    retry_on_failure:
-      enabled: true
+    retry_on_failure: &retry
       max_elapsed_time: 300s
 
   otlp_grpc/tempo:
     endpoint: tempo:4317
     tls:
       insecure: true
-    sending_queue:
-      enabled: true
-      queue_size: 1000
-      storage: file_storage
-    retry_on_failure:
-      enabled: true
-      max_elapsed_time: 300s
+    sending_queue: *queue
+    retry_on_failure: *retry
 
   # Prometheus native OTLP receiver (needs --web.enable-otlp-receiver, set in
   # compose.yml; it is a real flag, not an --enable-feature entry).
   otlp_http/prometheus:
     endpoint: http://prometheus:9090/api/v1/otlp
-    sending_queue:
-      enabled: true
-      queue_size: 1000
-      storage: file_storage
-    retry_on_failure:
-      enabled: true
-      max_elapsed_time: 300s
+    sending_queue: *queue
+    retry_on_failure: *retry
 
 service:
   extensions: [bearertokenauth, file_storage]

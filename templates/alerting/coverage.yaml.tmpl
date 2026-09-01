@@ -10,7 +10,7 @@
 # this size, evaluated instantly every 5m; revisit if a project's active series reach
 # five figures.
 #
-# Covered right now: relab/staging
+# Covered right now: __COVERED__
 
 apiVersion: 1
 
@@ -37,7 +37,7 @@ groups:
               refId: QUERY
               instant: true
               editorMode: code
-              expr: count by (project, env) ({project!="", env!=""} unless on (project, env) ({project="relab",env="staging"}))
+              expr: count by (project, env) ({project!="", env!=""} unless on (project, env) (__COVERED_EXPR__))
           - refId: FIRING
             datasourceUid: __expr__
             model:

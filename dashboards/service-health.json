@@ -254,7 +254,7 @@
       },
       "targets": [
         {
-          "expr": "{project=\"$project\", env=\"$env\"}",
+          "expr": "{project=\"$project\", env=\"$env\", service_name=~\"$service\"}",
           "refId": "A"
         }
       ],

@@ -1,6 +1,7 @@
 # Demo overlay: a tiny auto-instrumented FastAPI service plus a load
 # generator, so the stack has real traces, metrics, and correlated logs
-# to show. Not for production — no restart-across-reboots on purpose.
+# to show. Not for production: restart policies are omitted, so it does not
+# survive a reboot.
 #
 #   just demo        # core stack + this overlay
 #   just demo-down   # remove just the demo services

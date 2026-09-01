@@ -11,7 +11,7 @@ agent config on every host is byte-identical and a fix here reaches all of them.
 | `compose.telemetry.gpu.yml` | Opt-in overlay: `nvidia_gpu_exporter`, discovered automatically |
 | `run_scheduled.sh` | Dead-man's-switch wrapper for scheduled jobs |
 
-`alerting/project.yaml.tmpl` is not vendored — it stays here and is rendered by
+`alerting/project.yaml.tmpl` is not vendored; it stays here and is rendered by
 `bootstrap.sh` into this stack's own alert rules.
 
 ## The whole checklist
@@ -28,13 +28,13 @@ Under an hour, most of it waiting for the first scrape.
 
 ## Bootstrap creates the safety net, not the telemetry
 
-A host can ship perfect telemetry and still be unmonitored, because the rule that
-notices its *silence* lives on this stack, not on the host. That asymmetry is why
-`bootstrap.sh` exists and why skipping it is dangerous rather than merely untidy.
+A host can ship perfect telemetry and still be unmonitored: the rule that notices its
+*silence* lives on this stack, not on the host. Skipping `bootstrap.sh` therefore
+leaves a project uncovered, with no error anywhere.
 
 The backstop for skipping it anyway is `ProjectsUncovered`, regenerated on every
 bootstrap run: it fires on any series carrying a `project` label with no rendered rule
-file. It is the keystone applied one level up — the detector for a missing detector.
+file. It is the detector for a missing detector.
 
 ## Two things that silently produce nothing
 
@@ -44,7 +44,7 @@ file. It is the keystone applied one level up — the detector for a missing det
   with no `name` label, and every container alert matches nothing. No error is logged.
 - **`OTEL_SEMCONV_STABILITY_OPT_IN=http` in an instrumented app.** Without it the SDK
   emits the legacy HTTP metric names, whose `http_target` label carries the raw request
-  path — unbounded series on any API with path parameters. The stable names use
+  path: unbounded series on any API with path parameters. The stable names use
   `http_route`, and the central Service Health dashboard queries those.
 
 ## GPU hosts
@@ -53,15 +53,14 @@ Include `compose.telemetry.gpu.yml` as well and set `GPU_METRICS=1`. The agent c
 already discovers the exporter by its Compose service label, so nothing else changes:
 a GPU host is an ordinary host plus one overlay.
 
-`nvidia_gpu_exporter` rather than dcgm-exporter on purpose — DCGM's advantage is its
+The exporter is `nvidia_gpu_exporter`, not dcgm-exporter: DCGM's advantage is its
 `DCGM_FI_PROF_*` profiling fields, which NVIDIA document as datacentre-only. On a
-consumer card they are simply absent, which removes the reason to prefer DCGM while
-keeping its `SYS_ADMIN` requirement.
+consumer card they are absent, and dcgm-exporter still requires `SYS_ADMIN`.
 
 Three GPU rules are worth adding per GPU host. They are not provisioned by
 `bootstrap.sh` yet:
 
-- `nvidia_smi_gpu_recovery_action > 0` — the driver is asking for a reset. The single
+- `nvidia_smi_gpu_recovery_action > 0`: the driver is asking for a reset. The single
   best GPU health signal.
 - a thermal/power throttle flag.
 - XID faults, with an explicit code allowlist rather than every code, since most XIDs
@@ -75,14 +74,11 @@ XIDs are the GPU analogue of the crash-loop blind spot: a stuck kernel, an
 uncorrectable memory fault, or a card that has fallen off the bus are all invisible to
 utilisation graphs, and they are what silently kills a twelve-hour training run.
 
-For dashboards, import [14574](https://grafana.com/grafana/dashboards/14574) (revised
-2026-08-04) and its multi-GPU companion 25547. Do **not** use the canonical DCGM
-dashboard 12239: last revised 2021, and its panels lean on profiling fields consumer
-cards cannot produce. For per-container resources,
-[15798](https://grafana.com/grafana/dashboards/15798-docker-monitoring/) (revised
-2025-07-12), with 19792 as the Compose-aware second choice. Avoid 10619 and 893 —
-high download counts, untouched since 2019 and Grafana 4 respectively. Download counts
-measure inertia, not maintenance.
+The dashboards for both are provisioned centrally on the monitoring stack: `dashboards/gpu.json`
+(vendored from [14574](https://grafana.com/grafana/dashboards/14574); its multi-GPU
+companion is 25547 if a host ever grows a second card) and
+`dashboards/host-containers.json` for per-container resources. Nothing to import on
+the project host.
 
 ## Removing a project
 
@@ -111,7 +107,7 @@ listing the removed one as covered.
 ## Budgets to plan against
 
 - **healthchecks.io free tier is exactly 20 checks.** `bootstrap.sh` creates three per
-  project/environment, so that is the onboarding ceiling — about six environments.
+  project/environment, so that is the onboarding ceiling: about six environments.
 - **Prometheus's OTLP receiver is documented as "not an efficient way of ingesting
   samples"**, for "specific low-volume use cases". A few hundred series per host at 30s
   is exactly the case that sentence carves out. The trigger for revisiting is volume: a
@@ -126,6 +122,6 @@ count(container_start_time_seconds{project="<project>",name!=""}) # one per cont
 count({job="<service.name>"})                                     # app's own SDK metrics
 ```
 
-If the first is zero after five minutes, `ProjectTelemetrySilent` will tell you anyway
-— that is the point of it. Expect it ~20 minutes after the last sample: `absent()`
-needs the series to go stale before it reports.
+If the first is zero after five minutes, `ProjectTelemetrySilent` will tell you anyway.
+Expect it ~20 minutes after the last sample: `absent()` needs the series to go stale
+before it reports.
