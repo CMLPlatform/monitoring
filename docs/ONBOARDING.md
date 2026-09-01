@@ -75,62 +75,18 @@ OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <token>"
 OTEL_RESOURCE_ATTRIBUTES=env=prod
 ```
 
-## Template 3 — Docker container logs (Loki driver)
+## Container logs, host metrics, per-container metrics
 
-This ships container stdout/stderr without touching the app. It needs a
-Loki push URL, which **this stack does not expose by default**: Loki has
-no authentication of its own, so a push hostname must first be added to
-`infra/main.tf` and protected with a Cloudflare Access service token, or
-reached over a private network path (VPN/WireGuard). If in doubt, use the
-OTLP log path from Templates 1–2 instead.
+Everything the application cannot report about itself — other containers' stdout, host
+resources, container lifecycle — is shipped by one Grafana Alloy agent per host. It is
+vendored from `templates/`, not written per project, and it rides the same OTLP endpoint
+and token as Templates 1 and 2: no second hostname, no second credential.
 
-```sh
-# once per host
-docker plugin install grafana/loki-docker-driver:latest --alias loki --grant-all-permissions
-```
+Run `./bootstrap.sh <project> <env>` on the monitoring host and follow what it prints.
+See [templates/README.md](../templates/README.md).
 
-```yaml
-# per service, in compose.yml
-logging:
-  driver: loki
-  options:
-    loki-url: ${LOKI_URL}   # e.g. https://logs.example.org/loki/api/v1/push
-    loki-external-labels: service={{.Name}},env=prod,host=myhost
-```
-
-## Template 4 — host or file logs (Grafana Alloy)
-
-For log files that live outside containers. (Promtail is end-of-life;
-Alloy is its successor.)
-
-```alloy
-// alloy/config.alloy
-local.file_match "app" {
-  path_targets = [{ __path__ = "/var/log/myapp/*.log", service = "myapp", env = "prod", host = "myhost" }]
-}
-
-loki.source.file "app" {
-  targets    = local.file_match.app.targets
-  forward_to = [loki.write.central.receiver]
-}
-
-loki.write "central" {
-  endpoint {
-    url = "https://logs.example.org/loki/api/v1/push"
-  }
-}
-```
-
-```yaml
-# compose service
-alloy:
-  image: grafana/alloy:v1.13.0
-  restart: unless-stopped
-  command: [ "run", "/etc/alloy/config.alloy" ]
-  volumes:
-    - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
-    - /var/log/myapp:/var/log/myapp:ro
-```
-
-The same caveat as Template 3 applies: the Loki push URL needs a protected
-network path.
+> Earlier revisions of this document carried two templates that pushed straight to Loki
+> (the Docker `loki` log driver, and Alloy's `loki.write`). Both required exposing Loki,
+> which this stack deliberately does not do because Loki has no authentication of its
+> own, and undoing it later is more work than not starting. If you find those
+> instructions in an old copy, they are wrong — use the agent above.

@@ -1,0 +1,57 @@
+# Rendered by bootstrap.sh into config/grafana/alerting/projects/. Do not edit the
+# rendered files by hand — re-run bootstrap.sh, or edit this template so every project
+# gets the fix.
+#
+# This is the keystone: nothing on a spoke can detect its own absence. A project that
+# ships telemetry but never had bootstrap.sh run is silently uncovered — that is what
+# the ProjectsUncovered rule in _coverage.yaml exists to catch, one level up.
+#
+# Placeholders: __PROJECT__ __ENV__ __UID__
+
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: project-__PROJECT__-__ENV__
+    folder: Stack alerts
+    interval: 1m
+    rules:
+      # A label-only selector, deliberately not target_info: agents attach the identity
+      # labels to the series themselves, so target_info carries none of them. absent()
+      # yields nothing while telemetry flows, so NoData is the HEALTHY state and must
+      # map to OK or the rule reads inverted.
+      - uid: __UID__
+        title: ProjectTelemetrySilent
+        condition: FIRING
+        for: 15m
+        noDataState: OK
+        execErrState: Error
+        isPaused: false
+        data:
+          - refId: QUERY
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            model:
+              refId: QUERY
+              instant: true
+              editorMode: code
+              expr: absent({project="__PROJECT__",env="__ENV__"})
+          - refId: FIRING
+            datasourceUid: __expr__
+            model:
+              refId: FIRING
+              type: threshold
+              expression: QUERY
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+        labels:
+          severity: critical
+          project: __PROJECT__
+          env: __ENV__
+        annotations:
+          summary: "No telemetry from __PROJECT__/__ENV__ in 15m"
+          description: "Host down, Docker down, the agent down, tunnel down, token rotated wrong, or the collector is rejecting this project's data. Nothing on the __PROJECT__ side can detect this on its own. Expect this ~20m after the last sample: absent() needs the series to go stale first."
