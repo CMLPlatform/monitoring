@@ -7,9 +7,7 @@
 #
 # Keep the total under about ten. These are the generic rules; the per-project keystone
 # lives in project-<project>-<env>.yaml beside this file, rendered by bootstrap.sh.
-
 apiVersion: 1
-
 groups:
   # The alerting pipeline's own proof of life, and the detector for it failing.
   - orgId: 1
@@ -80,7 +78,9 @@ groups:
           severity: critical
         annotations:
           summary: "Grafana cannot deliver {{ $labels.integration }} notifications"
-          description: "Alerts are firing and going nowhere. Most likely an unset ALERT_WEBHOOK_URL, otherwise the receiver is rejecting. Check `just logs grafana`."
+          description: >-
+            Alerts are firing and going nowhere. Most likely an unset ALERT_WEBHOOK_URL,
+            otherwise the receiver is rejecting. Check `just logs grafana`.
   # The central stack watching itself.
   - orgId: 1
     name: stack-health
@@ -129,13 +129,17 @@ groups:
               instant: true
               editorMode: code
               expr: >
-                sum by (exporter) (rate(otelcol_exporter_send_failed_spans[5m])) > 0 or sum by (exporter) (rate(otelcol_exporter_send_failed_metric_points[5m])) > 0 or sum by (exporter) (rate(otelcol_exporter_send_failed_log_records[5m])) > 0
+                sum by (exporter) (rate(otelcol_exporter_send_failed_spans[5m])) > 0
+                or sum by (exporter) (rate(otelcol_exporter_send_failed_metric_points[5m])) > 0
+                or sum by (exporter) (rate(otelcol_exporter_send_failed_log_records[5m])) > 0
           - *firing
         labels:
           severity: warning
         annotations:
           summary: "OTel Collector failing to export via {{ $labels.exporter }}"
-          description: "The collector has been failing to deliver telemetry to a backend for 5 minutes. Check `just logs otel-collector`."
+          description: >-
+            The collector has been failing to deliver telemetry to a backend for
+            5 minutes. Check `just logs otel-collector`.
   # Storage backstop: Loki and Tempo have no total-size cap.
   - orgId: 1
     name: capacity
@@ -160,13 +164,18 @@ groups:
               instant: true
               editorMode: code
               expr: >
-                (node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay"}) < 0.2
+                (node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay"}
+                / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay"}) < 0.2
           - *firing
         labels:
           severity: warning
         annotations:
-          summary: "Filesystem {{ $labels.mountpoint }} is over 80% full"
-          description: "Loki and Tempo have no total-size cap, so this alert is the storage backstop. Free space or lower retention (see RUNBOOK)."
+          # host_name comes on spoke series shipped via Alloy; the central
+          # node-exporter has only instance. `or` picks whichever exists.
+          summary: "Filesystem {{ $labels.mountpoint }} on {{ or $labels.host_name $labels.instance }} is over 80% full"
+          description: >-
+            Loki and Tempo have no total-size cap, so this alert is the storage
+            backstop. Free space or lower retention (see RUNBOOK).
   # A crash loop must get louder, not quieter.
   - orgId: 1
     name: container-lifecycle
@@ -244,11 +253,18 @@ groups:
               refId: QUERY
               instant: true
               editorMode: code
+              # Keyed on (job, project, env) like every other multi-tenant rule
+              # here: aggregating on job alone lets a healthy prod service dilute
+              # a broken staging one sharing the job name below the threshold.
               expr: >
-                sum by (job) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m])) / sum by (job) (rate(http_server_request_duration_seconds_count[5m])) > 0.05
+                sum by (job, project, env)
+                (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m]))
+                / sum by (job, project, env) (rate(http_server_request_duration_seconds_count[5m])) > 0.05
           - *firing
         labels:
           severity: warning
         annotations:
-          summary: "{{ $labels.job }} error rate above 5%"
-          description: "More than 5% of requests to {{ $labels.job }} returned 5xx over the last 5 minutes."
+          summary: "{{ $labels.project }}/{{ $labels.env }} {{ $labels.job }} error rate above 5%"
+          description: >-
+            More than 5% of requests to {{ $labels.job }}
+            ({{ $labels.project }}/{{ $labels.env }}) returned 5xx over the last 5 minutes.
