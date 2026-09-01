@@ -104,11 +104,12 @@ OpenTofu configuration. Applying it produces the `CLOUDFLARE_TUNNEL_TOKEN` that
 [infra/main.tf](infra/main.tf).
 
 `just check` validates compose files, Prometheus config, the collector, Loki
-and Tempo configs, Grafana provisioning, YAML, workflows, OpenTofu
-formatting, and dashboard JSON. Every validator runs in a pinned container, so
-nothing needs to be installed on the host. CI runs the same command on every
-push and pull request, plus a smoke test that boots the stack, waits for
-Grafana to come up healthy, and checks that every dashboard provisioned.
+and Tempo configs, YAML, workflows, OpenTofu formatting, and dashboard JSON.
+Every validator runs in a pinned container, so nothing needs to be installed on
+the host. Grafana's alerting provisioning has no offline validator, so `just
+smoke` covers it instead: it boots the stack, waits for Grafana to come up
+healthy, and checks that every dashboard and every alert rule provisioned. CI
+runs both on every push and pull request.
 
 ## Sending telemetry from a project
 

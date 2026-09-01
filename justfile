@@ -71,7 +71,7 @@ check:
     docker compose config -q
     CLOUDFLARE_TUNNEL_TOKEN=dummy docker compose -f compose.yml -f compose.tunnel.yml config -q
     docker compose -f compose.yml -f compose.demo.yml config -q
-    docker run --rm -v ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro -v ./config/alerts:/etc/prometheus/alerts:ro --entrypoint promtool $(docker compose config --images | grep prom/prometheus) check config /etc/prometheus/prometheus.yaml
+    docker run --rm -v ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro --entrypoint promtool $(docker compose config --images | grep prom/prometheus) check config /etc/prometheus/prometheus.yaml
     docker run --rm -e OTLP_AUTH_TOKEN=dummy -v ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro $(docker compose config --images | grep opentelemetry-collector) validate --config=/etc/otelcol/config.yaml
     docker run --rm --network none -v ./config/loki.yaml:/etc/loki/loki.yaml:ro $(docker compose config --images | grep grafana/loki) -config.file=/etc/loki/loki.yaml -verify-config
     docker run --rm --network none -v ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro $(docker compose config --images | grep grafana/tempo) -config.file=/etc/tempo/tempo.yaml -config.verify=true
@@ -116,5 +116,6 @@ smoke: _queue-volume
     docker compose up -d
     n=0; until curl -sf http://localhost:3000/api/health >/dev/null; do n=$((n+3)); [ $n -ge 120 ] && { echo "Grafana not healthy after 120s" >&2; exit 1; }; sleep 3; done
     @for uid in $(docker run --rm --network none -v ./dashboards:/dashboards:ro ghcr.io/jqlang/jq:1.8.1 -r .uid $(ls dashboards/*.json | sed 's|^dashboards|/dashboards|')); do n=0; until curl -sf -u "admin:${GRAFANA_ADMIN_PASSWORD}" "http://localhost:3000/api/dashboards/uid/$uid" >/dev/null; do n=$((n+3)); [ $n -ge 60 ] && { echo "error: dashboard $uid was not provisioned" >&2; exit 1; }; sleep 3; done; done
+    @want=$(grep -h '^ *title:' config/grafana/alerting/*.yaml | wc -l); got=$(curl -sf -u "admin:${GRAFANA_ADMIN_PASSWORD}" http://localhost:3000/api/v1/provisioning/alert-rules | docker run --rm -i ghcr.io/jqlang/jq:1.8.1 length); [ "$want" = "$got" ] || { echo "error: $want alert rules on disk, $got provisioned — a malformed file provisions none of its group. See just logs grafana" >&2; exit 1; }
     @[ -z "$(docker compose ps -q --status=restarting --status=exited)" ] || { echo "error: services not running:" >&2; docker compose ps >&2; exit 1; }
     @echo "Stack healthy"
