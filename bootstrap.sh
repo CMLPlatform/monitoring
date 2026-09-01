@@ -54,8 +54,12 @@ fi
 out_dir="config/grafana/alerting"
 
 # Pinned tag for the vendoring curl. A moving ref would let two projects vendor two
-# different agent configs and call it the same template.
-tag="$(git -C "$root" describe --tags --abbrev=0 2>/dev/null || echo main)"
+# different agent configs and call it the same template — so no fallback to a branch.
+tag="$(git -C "$root" describe --tags --abbrev=0 2>/dev/null)" \
+    || { echo "error: no release tag to pin the vendoring curls to; tag a release first" >&2; exit 1; }
+# ...and the tag must actually contain the templates, or every curl 404s.
+git -C "$root" rev-parse -q --verify "${tag}:templates/alloy/config.alloy" >/dev/null \
+    || { echo "error: tag ${tag} predates templates/; tag a new release before onboarding" >&2; exit 1; }
 repo_raw="https://raw.githubusercontent.com/CMLPlatform/monitoring/${tag}/templates"
 
 # --------------------------------------------------------------- 1. the keystone rules
@@ -89,7 +93,7 @@ sed -e "s@__COVERED__@${covered}@" \
 echo "rendered  ${out_dir}/coverage.yaml  (covering: ${covered})"
 
 # ------------------------------------------------------------------ 3. reload Grafana
-if docker compose ps --status running --format '{{.Service}}' 2>/dev/null | grep -qx grafana; then
+if docker compose ps --status running --services 2>/dev/null | grep -qx grafana; then
     # A restart, not SIGHUP: Grafana re-reads alert provisioning only at startup, and
     # a SIGHUP reports success while changing nothing.
     docker compose up -d --force-recreate grafana >/dev/null 2>&1 \
@@ -105,8 +109,10 @@ if [[ -n "${HEALTHCHECKS_API_KEY:-}" ]]; then
     hc_note="created via API"
     # Default job set; override per project with HC_JOBS="backup nightly-sync" etc.
     for job in ${HC_JOBS:-backup watchdog restore-check}; do
-        curl -fsS -X POST https://healthchecks.io/api/v3/checks/ \
-            -H "X-Api-Key: ${HEALTHCHECKS_API_KEY}" \
+        # API key via curl's stdin config, not -H: argv is readable in `ps` by
+        # any local user, and this is a read-write key.
+        printf 'header = "X-Api-Key: %s"\n' "$HEALTHCHECKS_API_KEY" \
+            | curl -fsS -K - -X POST https://healthchecks.io/api/v3/checks/ \
             -H "Content-Type: application/json" \
             -d "{\"name\":\"${project}-${env_name}-${job}\",\"slug\":\"${project}-${env_name}-${job}\",\"unique\":[\"name\"],\"timeout\":93600,\"grace\":3600,\"channels\":\"*\"}" \
             | sed -n 's/.*"ping_url": *"\([^"]*\)".*/  PING_'"$(echo "$job" | tr 'a-z-' 'A-Z_')"'=\1/p'
@@ -135,10 +141,24 @@ curl -fsSL -o deploy/alloy/config.alloy   ${repo_raw}/alloy/config.alloy
 curl -fsSL -o compose.telemetry.yml       ${repo_raw}/compose.telemetry.yml
 curl -fsSL -o compose.telemetry.gpu.yml   ${repo_raw}/compose.telemetry.gpu.yml
 curl -fsSL -o scripts/run_scheduled.sh    ${repo_raw}/run_scheduled.sh
+
+Verify before executing anything — hashes taken from the ${tag} tag here, so a
+repo compromise after tagging cannot silently change what project hosts run:
+sha256sum -c <<'SUM'
+$(for pair in "alloy/config.alloy deploy/alloy/config.alloy" \
+              "compose.telemetry.yml compose.telemetry.yml" \
+              "compose.telemetry.gpu.yml compose.telemetry.gpu.yml" \
+              "run_scheduled.sh scripts/run_scheduled.sh"; do
+      # Deliberate word splitting: each pair is "<src> <dest>".
+      # shellcheck disable=SC2086
+      set -- $pair
+      printf '%s  %s\n' "$(git -C "$root" show "${tag}:templates/$1" | sha256sum | cut -d' ' -f1)" "$2"
+  done)
+SUM
 chmod +x scripts/run_scheduled.sh
 
 Then include the overlay and bring it up:
-  docker compose -f compose.yaml -f compose.telemetry.yml up -d
+  docker compose -f compose.yml -f compose.telemetry.yml up -d
 
 The agent container needs 'cgroup: host' (the overlay sets it). Without it cAdvisor
 reports the root cgroup only, and every container alert here matches nothing.

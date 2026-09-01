@@ -128,6 +128,11 @@ data "cloudflare_zero_trust_tunnel_cloudflared_token" "monitoring" {
   tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.monitoring.id
 }
 
+output "grafana_access_aud" {
+  description = "Set as CF_ACCESS_AUD in ../.env so Grafana rejects tokens minted for other Access apps."
+  value       = cloudflare_zero_trust_access_application.grafana.aud
+}
+
 output "tunnel_token" {
   description = "Set as CLOUDFLARE_TUNNEL_TOKEN in ../.env for the tunnel overlay."
   value       = data.cloudflare_zero_trust_tunnel_cloudflared_token.monitoring.token
