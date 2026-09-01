@@ -7,8 +7,8 @@ Notable changes to this stack. Format follows
 ## [Unreleased]
 
 A hardening pass over the whole stack: buffering that survives a restart,
-self-monitoring that covers every service, tighter container defaults, and a
-handful of queries that had been quietly measuring the wrong thing.
+self-monitoring that covers every service, tighter container defaults, and
+queries that had been measuring the wrong thing.
 
 ### Added
 
@@ -24,9 +24,8 @@ handful of queries that had been quietly measuring the wrong thing.
 - **Memory ceilings** (`mem_limit`) on every service, sized from observed
   usage, so one runaway component cannot OOM the host.
 - **Wider validation**: `just check` also verifies the Loki and Tempo configs
-  and OpenTofu formatting; `just smoke` asserts every
-  dashboard actually provisioned; CI additionally runs `just infra-validate`
-  and a new `just demo-build`.
+  and OpenTofu formatting; `just smoke` asserts every dashboard provisioned;
+  CI also runs `just infra-validate` and a new `just demo-build`.
 - Dependabot now watches the Cloudflare provider in `infra/`, and the runbook
   covers OpenTofu-managed tunnel and Access changes.
 
@@ -68,7 +67,8 @@ handful of queries that had been quietly measuring the wrong thing.
   so clicking a dot resolved to nothing.
 - **`HighErrorRate` measured the wrong denominator**: it counted all spans, so
   internal child spans diluted the ratio well below the real request error
-  rate. It now filters server spans, matching the Service Health dashboard.
+  rate. It now reads the applications' HTTP server metrics, matching the
+  Service Health dashboard.
 - The demo load generator hit a never-failing endpoint half the time, so the
   advertised one-in-ten error rate showed up as one in twenty.
 - The Infrastructure Logs dashboard queried `env` and `service` labels this
@@ -82,9 +82,8 @@ handful of queries that had been quietly measuring the wrong thing.
 
 - `no-new-privileges` on every service; the demo image runs as `nobody`.
 - `GRAFANA_COOKIE_SECURE` marks the session cookie Secure (with strict
-  SameSite), and `just up` with the tunnel overlay refuses to expose the
-  stack without it, a
-  non-localhost `GRAFANA_ROOT_URL`, and non-default credentials.
+  SameSite), and `just up` with the tunnel overlay refuses to expose the stack
+  without it, a non-localhost `GRAFANA_ROOT_URL`, and non-default credentials.
 - GitHub Actions are pinned to commit SHAs, and `just infra-validate` runs
   against a copy of the sources so state and tfvars never enter the container.
 

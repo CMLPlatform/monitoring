@@ -1,10 +1,9 @@
 # Sending telemetry from your project
 
 This stack collects logs, traces, and metrics from CML projects and shows
-them side by side in one Grafana. Getting your project in takes an
-endpoint, a token, and a couple of naming conventions. Then pick the
-template that matches how your project runs — if it's a Python/FastAPI
-service, Template 1 needs no code changes at all.
+them side by side in one Grafana. You need an endpoint, a token, and a
+couple of naming conventions. Then pick the template that matches how your
+project runs; a Python/FastAPI service needs no code changes at all.
 
 ## The endpoint
 
@@ -26,10 +25,10 @@ directly.
   (`relab-api`, not `relab-api-prod-2`). Dashboards key on it.
 - **`env`** is `prod`, `staging`, or `dev`, set as a resource attribute.
 - **Keep labels low-cardinality.** Prometheus turns every distinct label
-  value into a series. User IDs, request IDs, and timestamps therefore
-  don't belong in resource attributes or metric labels. Put them in the log
-  line or in span attributes instead; they stay filterable at query time
-  without the storage blowing up.
+  value into a series, so user IDs, request IDs, and timestamps do not
+  belong in resource attributes or metric labels. Put them in the log line
+  or in span attributes: still filterable at query time, without the storage
+  blowing up.
 - **In Loki, only the identity labels are index labels**: `service.name`,
   `project`, `env`, `host.name` (the authoritative list lives in
   `config/loki.yaml`). Every other attribute, `service.instance.id`
@@ -40,8 +39,7 @@ directly.
 The Service Health dashboard and the error-rate alert key on the standard
 HTTP server metrics (`http_server_request_duration_seconds`), which the
 auto-instrumentation below emits out of the box. Traces add per-request
-drill-down on top. Start with the templates below and you get all three
-signals at once.
+drill-down on top.
 
 ## Template 1 — Python/FastAPI, zero code changes
 
@@ -61,9 +59,9 @@ export OTEL_SEMCONV_STABILITY_OPT_IN=http
 opentelemetry-instrument uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
-That's the whole integration: traces, RED metrics, and logs that carry
-their trace context, without a line of OTel code in the app. The working
-example is this repo's own [`demo/`](../demo/) service plus
+That is the whole integration: traces, RED metrics, and logs carrying their
+trace context, with no OTel code in the app. A working example is this
+repo's [`demo/`](../demo/) service plus
 [`compose.demo.yml`](../compose.demo.yml).
 
 ## Template 2 — any language, plain OTLP
@@ -79,10 +77,10 @@ OTEL_RESOURCE_ATTRIBUTES=env=prod
 
 ## Container logs, host metrics, per-container metrics
 
-Everything the application cannot report about itself — other containers' stdout, host
-resources, container lifecycle — is shipped by one Grafana Alloy agent per host. It is
-vendored from `templates/`, not written per project, and it rides the same OTLP endpoint
-and token as Templates 1 and 2: no second hostname, no second credential.
+One Grafana Alloy agent per host ships everything the application cannot report about
+itself: other containers' stdout, host resources, container lifecycle. It is vendored
+from `templates/`, not written per project, and rides the same OTLP endpoint and token
+as Templates 1 and 2 — no second hostname, no second credential.
 
 Run `./bootstrap.sh <project> <env>` on the monitoring host and follow what it prints.
 See [templates/README.md](../templates/README.md).

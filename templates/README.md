@@ -29,12 +29,12 @@ Under an hour, most of it waiting for the first scrape.
 ## Bootstrap creates the safety net, not the telemetry
 
 A host can ship perfect telemetry and still be unmonitored: the rule that notices its
-*silence* lives on this stack, not on the host. Skipping `bootstrap.sh` therefore
-leaves a project uncovered, with no error anywhere.
+*silence* lives on this stack, not on the host. Skipping `bootstrap.sh` leaves a
+project uncovered, with no error anywhere.
 
-The backstop for skipping it anyway is `ProjectsUncovered`, regenerated on every
-bootstrap run: it fires on any series carrying a `project` label with no rendered rule
-file. It is the detector for a missing detector.
+The backstop is `ProjectsUncovered`, regenerated on every bootstrap run: it fires on
+any series carrying a `project` label with no rendered rule file. It is the detector
+for a missing detector.
 
 ## Two things that silently produce nothing
 
@@ -72,13 +72,12 @@ Three GPU rules are worth adding per GPU host. They are not provisioned by
 
 XIDs are the GPU analogue of the crash-loop blind spot: a stuck kernel, an
 uncorrectable memory fault, or a card that has fallen off the bus are all invisible to
-utilisation graphs, and they are what silently kills a twelve-hour training run.
+utilisation graphs, and any of them silently kills a twelve-hour training run.
 
-The dashboards for both are provisioned centrally on the monitoring stack: `dashboards/gpu.json`
-(vendored from [14574](https://grafana.com/grafana/dashboards/14574); its multi-GPU
-companion is 25547 if a host ever grows a second card) and
-`dashboards/host-containers.json` for per-container resources. Nothing to import on
-the project host.
+Both dashboards are provisioned centrally: `dashboards/gpu.json` (vendored from
+[14574](https://grafana.com/grafana/dashboards/14574); its multi-GPU companion is
+25547 if a host ever grows a second card) and `dashboards/host-containers.json` for
+per-container resources. Nothing to import on the project host.
 
 ## Removing a project
 
@@ -110,9 +109,9 @@ listing the removed one as covered.
   project/environment, so that is the onboarding ceiling: about six environments.
 - **Prometheus's OTLP receiver is documented as "not an efficient way of ingesting
   samples"**, for "specific low-volume use cases". A few hundred series per host at 30s
-  is exactly the case that sentence carves out. The trigger for revisiting is volume: a
-  host past a few thousand active series should move infrastructure metrics to
-  `remote_write` behind an authenticating proxy, leaving app metrics on OTLP.
+  is exactly that case. Revisit on volume: a host past a few thousand active series
+  should move infrastructure metrics to `remote_write` behind an authenticating proxy,
+  leaving app metrics on OTLP.
 
 ## Verifying, from the monitoring host
 

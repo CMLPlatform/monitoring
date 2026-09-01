@@ -13,7 +13,7 @@
   "refresh": "30s",
   "schemaVersion": 39,
   "editable": null,
-  "description": "Per-host and per-container resources for any onboarded project, from the Alloy agent's node-exporter and cAdvisor. Container series exist only where the agent runs with cgroup: host \u2014 without it cAdvisor reports the root cgroup alone and every container panel here is empty.",
+  "description": "Per-host and per-container resources for any onboarded project, from the Alloy agent's node-exporter and cAdvisor. Container panels are empty unless the agent runs with cgroup: host \u2014 without it cAdvisor reports the root cgroup alone.",
   "templating": {
     "list": [
       {
@@ -247,7 +247,7 @@
     {
       "type": "timeseries",
       "title": "Container Restarts (1h)",
-      "description": "ContainerRestarting fires above 3. This is the 668-restart incident's detector, drawn.",
+      "description": "ContainerRestarting fires above 3.",
       "gridPos": {
         "h": 8,
         "w": 12,

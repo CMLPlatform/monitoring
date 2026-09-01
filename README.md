@@ -6,10 +6,10 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 Central monitoring for CML's research software. One host runs Grafana, Loki,
-Tempo, Prometheus, and an OpenTelemetry Collector, wired together so logs,
-traces, and metrics cross-reference each other. Projects send their telemetry
-here over OTLP (the OpenTelemetry protocol) and it lands in one place,
-queryable side by side.
+Tempo, Prometheus, and an OpenTelemetry Collector, wired so logs, traces, and
+metrics cross-reference each other. Projects send telemetry here over OTLP
+(the OpenTelemetry protocol) and it lands in one place, queryable side by
+side.
 
 ## Try it in one command
 
@@ -23,17 +23,16 @@ just demo
 ```
 
 This starts the full stack plus a small FastAPI service under constant
-artificial load (`compose.demo.yml`). The service is instrumented with
-OpenTelemetry auto-instrumentation and fails about one request in ten, on
-purpose. Give it a minute, then open Grafana at <http://localhost:3000>
-(admin / change-me) and look at:
+artificial load (`compose.demo.yml`). It uses OpenTelemetry
+auto-instrumentation and fails about one request in ten, on purpose. Give it
+a minute, then open Grafana at <http://localhost:3000> (admin / change-me):
 
 - **Dashboards → Service Health (RED)** — request rate, error rate, and
   latency. The dots on the latency panel are exemplars: click one and Grafana
   opens the exact trace behind that measurement.
 - **Dashboards → Logs Overview** — log volume by service and level, an error
   feed, and a live tail of everything arriving over OTLP.
-- **Alerting → Alert rules** — the stack-health and error-rate rules Prometheus
+- **Alerting → Alert rules** — the stack-health and error-rate rules Grafana
   is evaluating. `HighErrorRate` trips on the demo service after five minutes:
   one request in ten failing is twice the 5% threshold.
 
@@ -44,9 +43,9 @@ running.
 
 ## How it works
 
-Everything enters through a single gateway, the OpenTelemetry Collector. A
-project only ever configures one endpoint, and a storage backend can be
-swapped later without touching any application. The Service Health dashboard
+Everything enters through one gateway, the OpenTelemetry Collector. A project
+configures a single endpoint, and a storage backend can be swapped later
+without touching any application. The Service Health dashboard
 and the error-rate alert read the standard HTTP metrics that OpenTelemetry
 auto-instrumentation emits; traces add per-request drill-down on top.
 
@@ -67,15 +66,15 @@ flowchart LR
 ```
 
 Solid arrows show telemetry being written; dotted arrows show Grafana reading
-at query time. Locally (`just up` or `just demo`) there is no tunnel involved:
+at query time. Locally (`just up` or `just demo`) there is no tunnel:
 everything talks over the compose network and Grafana is at `localhost:3000`.
 
 The stack runs on a single host; at CML's telemetry volume, distributed
 ingestion would add operational weight for no gain
 ([ADR 0001](docs/adr/0001-observability-stack.md) records the alternatives).
 The hub-and-spoke design for serving multiple CML projects is
-[ADR 0002](docs/adr/0002-hub-and-spoke-observability.md), and onboarding a
-project onto it is [templates/README.md](templates/README.md).
+[ADR 0002](docs/adr/0002-hub-and-spoke-observability.md); onboarding a project
+onto it is [templates/README.md](templates/README.md).
 
 ## Run it for real
 
@@ -90,32 +89,31 @@ Grafana: <http://localhost:3000> (admin / whatever you set).
 `COMPOSE_FILE` in `.env` names the overlays a host runs. Set
 `COMPOSE_FILE=compose.yml:compose.tunnel.yml` in the production `.env`, and
 every recipe (`up`, `logs`, `ps`, `backup`) acts on that same set. With the
-tunnel overlay active, `just up` refuses to run until the settings that only
-matter once the stack is reachable are real: a generated `OTLP_AUTH_TOKEN`, a
-changed `GRAFANA_ADMIN_PASSWORD`, `GRAFANA_ROOT_URL` pointing at the tunnel
-hostname, and `GRAFANA_COOKIE_SECURE=true` so the session cookie is marked
-Secure. An empty `HEARTBEAT_URL` only warns.
+tunnel overlay active, `just up` refuses to run until the settings that matter
+once the stack is reachable are real: a generated `OTLP_AUTH_TOKEN`, a changed
+`GRAFANA_ADMIN_PASSWORD`, `GRAFANA_ROOT_URL` pointing at the tunnel hostname,
+and `GRAFANA_COOKIE_SECURE=true`. An empty `HEARTBEAT_URL` only warns.
 
 In production the stack sits behind a Cloudflare Tunnel, and that edge is code
 too. The tunnel, its hostnames, DNS, and the Cloudflare Access rule that puts
-an email one-time-PIN in front of Grafana all live in `infra/` as a small
-OpenTofu configuration. Applying it produces the `CLOUDFLARE_TUNNEL_TOKEN` that
-the tunnel overlay needs; bootstrap steps are at the top of
+an email one-time-PIN in front of Grafana live in `infra/` as a small OpenTofu
+configuration. Applying it produces the `CLOUDFLARE_TUNNEL_TOKEN` the tunnel
+overlay needs; bootstrap steps are at the top of
 [infra/main.tf](infra/main.tf).
 
 `just check` validates compose files, Prometheus config, the collector, Loki
 and Tempo configs, YAML, workflows, OpenTofu formatting, and dashboard JSON.
-Every validator runs in a pinned container, so nothing needs to be installed on
-the host. Grafana's alerting provisioning has no offline validator, so `just
-smoke` covers it instead: it boots the stack, waits for Grafana to come up
-healthy, and checks that every dashboard and every alert rule provisioned. CI
-runs both on every push and pull request.
+Every validator runs in a pinned container, so nothing is installed on the
+host. Grafana's alerting provisioning has no offline validator, so `just smoke`
+covers it: it boots the stack, waits for Grafana to report healthy, and checks
+that every dashboard and every alert rule provisioned. CI runs both on every
+push and pull request.
 
 ## Sending telemetry from a project
 
-You need three things: the OTLP endpoint, the bearer token (`OTLP_AUTH_TOKEN`),
-and a few naming conventions. Copy-paste templates for the two application
-routes — zero-code Python/FastAPI, and plain OTLP environment variables — are in
+You need the OTLP endpoint, the bearer token (`OTLP_AUTH_TOKEN`), and a few
+naming conventions. Copy-paste templates for the two application routes —
+zero-code Python/FastAPI, and plain OTLP environment variables — are in
 **[docs/ONBOARDING.md](docs/ONBOARDING.md)**. Everything an application cannot
 report about itself comes from the vendored agent in
 **[templates/README.md](templates/README.md)**.
@@ -136,21 +134,20 @@ told".
 
 One rule, `Watchdog`, fires permanently by design and posts to `HEARTBEAT_URL`
 every five minutes. Point that at a dead man's switch such as healthchecks.io —
-a service that alerts when the pings *stop* — and you will also hear about the
-one failure the host cannot report itself: its own death. Set both: an unset
+a service that alerts when the pings *stop* — to hear about the one failure the
+host cannot report itself: its own death. Set both. An unset
 `ALERT_WEBHOOK_URL` drops every alert while the heartbeat keeps reporting
 healthy, so `just up` with the tunnel overlay refuses to start without it.
 
 ## Storage
 
 Everything persists to local Docker volumes (`loki_data`, `tempo_data`,
-`prometheus_data`, `grafana_data`), all of which `just
-backup` captures. A fifth, `otel_queue`, holds the collector's on-disk export
-queue: seconds of in-flight telemetry, worthless by the time anyone restores,
-so backups skip it. When local disk stops fitting, Loki and
-Tempo can move to any S3-compatible object store (Backblaze B2, Cloudflare R2,
-Hetzner, MinIO); `compose.storage-s3.yml` documents the concrete shape of that
-change.
+`prometheus_data`, `grafana_data`), all captured by `just backup`. A fifth,
+`otel_queue`, holds the collector's on-disk export queue: seconds of in-flight
+telemetry, worthless by the time anyone restores, so backups skip it. When
+local disk stops fitting, Loki and Tempo can move to any S3-compatible object
+store (Backblaze B2, Cloudflare R2, Hetzner, MinIO); `compose.storage-s3.yml`
+documents that change.
 
 ## Layout
 
@@ -172,11 +169,11 @@ infra/                  # OpenTofu: Cloudflare tunnel, ingress routes, DNS
 ```
 
 `dashboards/*.json` is the source of truth for what Grafana shows: the
-directory is mounted read-only and saving from the UI is disabled, so a change
-made in the browser lasts until the page is reloaded. Edit the JSON and
-provisioning picks it up within about 30 seconds; to keep something built
-interactively, export the dashboard as JSON (or copy a single panel's JSON out
-of *Inspect → Panel JSON*) and paste it back into the file.
+directory is mounted read-only and UI saves are disabled, so a change made in
+the browser lasts until the page reloads. Edit the JSON and provisioning picks
+it up within about 30 seconds. To keep something built interactively, export
+the dashboard as JSON (or copy one panel's JSON from *Inspect → Panel JSON*)
+and paste it back into the file.
 
 ## Documentation
 

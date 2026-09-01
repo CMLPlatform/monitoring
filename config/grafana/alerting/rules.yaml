@@ -2,8 +2,8 @@
 # and Grafana rules can query Loki as well as Prometheus.
 #
 # Shape note, true for every rule here: the PromQL carries its own comparison, so it
-# returns a series only when the alert should fire, and the threshold node just asks
-# whether anything came back — no reduce/threshold pair to decode.
+# returns a series only when the alert should fire, and the threshold node only asks
+# whether anything came back.
 #
 # Keep the total under about ten. These are the generic rules; the per-project keystone
 # lives in project-<project>-<env>.yaml beside this file, rendered by bootstrap.sh.
@@ -37,9 +37,9 @@ groups:
               instant: true
               editorMode: code
               expr: vector(1)
-          # Identical on every rule (see the shape note up top): defined once
-          # here, aliased as `- *firing` below.
           - &firing
+            # Identical on every rule (see the shape note up top): defined once
+            # here, aliased as `- *firing` below.
             refId: FIRING
             datasourceUid: __expr__
             model:
@@ -56,7 +56,7 @@ groups:
           summary: "Alerting-pipeline heartbeat (always firing)"
           description: "Routed to a dead man's switch. Investigate if the pings stop."
       # Cannot page when the path it reports on is the broken one — that is what the
-      # heartbeat is for. Its job is to make the state visible instead of silent.
+      # heartbeat is for. It makes the state visible instead of silent.
       - uid: alert-delivery-failing
         title: AlertDeliveryFailing
         condition: FIRING
@@ -129,9 +129,7 @@ groups:
               instant: true
               editorMode: code
               expr: >
-                sum by (exporter) (rate(otelcol_exporter_send_failed_spans[5m])) > 0
-                or sum by (exporter) (rate(otelcol_exporter_send_failed_metric_points[5m])) > 0
-                or sum by (exporter) (rate(otelcol_exporter_send_failed_log_records[5m])) > 0
+                sum by (exporter) (rate(otelcol_exporter_send_failed_spans[5m])) > 0 or sum by (exporter) (rate(otelcol_exporter_send_failed_metric_points[5m])) > 0 or sum by (exporter) (rate(otelcol_exporter_send_failed_log_records[5m])) > 0
           - *firing
         labels:
           severity: warning
@@ -162,8 +160,7 @@ groups:
               instant: true
               editorMode: code
               expr: >
-                (node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay"}
-                / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay"}) < 0.2
+                (node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay"}) < 0.2
           - *firing
         labels:
           severity: warning
@@ -248,8 +245,7 @@ groups:
               instant: true
               editorMode: code
               expr: >
-                sum by (job) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m]))
-                / sum by (job) (rate(http_server_request_duration_seconds_count[5m])) > 0.05
+                sum by (job) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m])) / sum by (job) (rate(http_server_request_duration_seconds_count[5m])) > 0.05
           - *firing
         labels:
           severity: warning
