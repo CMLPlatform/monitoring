@@ -2,8 +2,11 @@
 # straight from the environment and no secret is written to disk.
 #
 # An unset variable leaves the URL empty and every notification fails — silently, from
-# the outside. AlertDeliveryFailing and the heartbeat are what surface that; the guard
-# in `just up-tunnel` is what prevents it.
+# the outside. Nothing here catches that: AlertDeliveryFailing routes to this same
+# webhook, so it fails exactly the way it is detecting, and the heartbeat rides its own
+# contact point and stays green throughout. The guard in `just up-tunnel` is the only
+# control. AlertDeliveryFailing earns its place for the other case — a URL that is set
+# but whose receiver is rejecting or flapping, where a later retry does get through.
 
 apiVersion: 1
 

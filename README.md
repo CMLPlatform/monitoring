@@ -76,8 +76,8 @@ The stack deliberately runs on a single host. At CML's telemetry volume,
 distributed ingestion would add operational weight for no gain. The reasoning,
 and the alternatives we considered, are recorded in
 [ADR 0001](docs/adr/0001-observability-stack.md). The hub-and-spoke target for
-serving multiple CML projects is [ADR 0002](docs/adr/0002-hub-and-spoke-observability.md),
-Onboarding a project onto it is [templates/README.md](templates/README.md).
+serving multiple CML projects is [ADR 0002](docs/adr/0002-hub-and-spoke-observability.md), and onboarding a project
+onto it is [templates/README.md](templates/README.md).
 
 ## Run it for real
 
@@ -114,10 +114,11 @@ runs both on every push and pull request.
 ## Sending telemetry from a project
 
 You need three things: the OTLP endpoint, the bearer token (`OTLP_AUTH_TOKEN`),
-and a few naming conventions. Copy-paste templates for each route — zero-code
-Python/FastAPI, plain OTLP environment variables, the Loki Docker driver, and
-Grafana Alloy for log files — are in
-**[docs/ONBOARDING.md](docs/ONBOARDING.md)**.
+and a few naming conventions. Copy-paste templates for the two application
+routes — zero-code Python/FastAPI, and plain OTLP environment variables — are in
+**[docs/ONBOARDING.md](docs/ONBOARDING.md)**. Everything an application cannot
+report about itself comes from the vendored agent in
+**[templates/README.md](templates/README.md)**.
 
 > [!WARNING]
 > Never publish ports 4317/4318 to the internet. The compose file binds them to

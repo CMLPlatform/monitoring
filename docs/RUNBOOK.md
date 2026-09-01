@@ -123,12 +123,6 @@ survives with no indication that it has.
 
 ## Changing the Cloudflare edge
 
-> Unverified: the Cloudflare Zero Trust free-plan seat count that the Access policy
-> below assumes. The widely-cited figure appears only in third-party posts, never in
-> Cloudflare's own documentation. Check it against your plan before adding people, not
-> after they cannot log in.
-
-
 The tunnel, its ingress rules, both DNS records, and the Cloudflare Access
 policy that fronts Grafana are all OpenTofu in `infra/`. Change them there,
 not in the Zero Trust dashboard: the next apply reverts anything clicked in
@@ -145,7 +139,10 @@ cd infra && tofu apply
   removed address keeps working until their Access session expires (24h),
   so for an urgent revocation also revoke the session in Zero Trust. At
   least one address has to remain — the variable's validation rejects an
-  empty list, which would lock everyone out of Grafana.
+  empty list, which would lock everyone out of Grafana. Check your plan's Zero
+  Trust seat count before adding people: the free-plan figure ADR 0002 cites
+  appears only in third-party posts, never in Cloudflare's own documentation,
+  so confirm it before someone cannot log in rather than after.
 - **Per-user Grafana logins:** by default everyone who clears Access then
   shares the one admin password. Setting `GRAFANA_JWT_AUTH=true` and
   `CF_ACCESS_TEAM_DOMAIN=<team>` in `.env` makes Grafana verify the Access
