@@ -15,7 +15,7 @@ otlp:
   # so alerts and dashboards see no project/env/host. Promoting them puts the
   # identity labels ADR 0002 requires on every series. service.name and
   # service.instance.id already become job/instance without being listed.
-  promote_resource_attributes: [project, env, host.name]
+  promote_resource_attributes: [department, project, env, host.name]
 
 # No rule_files and no alerting block: Grafana owns both evaluation and
 # notification (ADR 0002). Prometheus is a store and a query engine here.

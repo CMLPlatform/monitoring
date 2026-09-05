@@ -27,6 +27,17 @@ receivers:
           authenticator: bearertokenauth
 
 processors:
+  # The department every signal belongs to. Stamped here rather than at the app
+  # edge: it is the same value for everything this gateway accepts, and upsert
+  # means a sender cannot claim someone else's department. project, env and
+  # service.name still come from the sender, which is the only thing that knows
+  # them.
+  resource/department:
+    attributes:
+      - key: department
+        value: ${env:DEPARTMENT}
+        action: upsert
+
   # Absolute, not percentage: percentages are read against the cgroup, and an
   # unbounded container makes that the whole host. Sized to the container's
   # mem_limit (512m in compose.yml) — change both together.
@@ -72,15 +83,15 @@ service:
   pipelines:
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, resource/department, batch]
       exporters: [otlp_http/loki]
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, resource/department, batch]
       exporters: [otlp_grpc/tempo]
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, resource/department, batch]
       exporters: [otlp_http/prometheus]
   telemetry:
     metrics:

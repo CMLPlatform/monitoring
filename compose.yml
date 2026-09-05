@@ -51,6 +51,7 @@ services:
     command: ["--config=/etc/otelcol/config.yaml"]
     environment:
       OTLP_AUTH_TOKEN: ${OTLP_AUTH_TOKEN:?set OTLP_AUTH_TOKEN in .env}
+      DEPARTMENT: ${DEPARTMENT:-cml}
     # Keep in step with memory_limiter in config/otel-collector.yaml.
     mem_limit: 512m
     cap_drop: [ALL]

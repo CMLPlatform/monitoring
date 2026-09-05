@@ -127,7 +127,7 @@ check:
     {{compose_smoke}} config -q
     images="$(docker compose config --images)" && \
       docker run --rm --network none -v ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro --entrypoint promtool $(echo "$images" | grep prom/prometheus) check config /etc/prometheus/prometheus.yaml && \
-      docker run --rm --network none -e OTLP_AUTH_TOKEN=dummy -v ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro $(echo "$images" | grep opentelemetry-collector) validate --config=/etc/otelcol/config.yaml && \
+      docker run --rm --network none -e OTLP_AUTH_TOKEN=dummy -e DEPARTMENT=dummy -v ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro $(echo "$images" | grep opentelemetry-collector) validate --config=/etc/otelcol/config.yaml && \
       docker run --rm --network none -v ./config/loki.yaml:/etc/loki/loki.yaml:ro $(echo "$images" | grep grafana/loki) -config.file=/etc/loki/loki.yaml -verify-config && \
       docker run --rm --network none -v ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro $(echo "$images" | grep grafana/tempo) -config.file=/etc/tempo/tempo.yaml -config.verify=true
     # line-length at 120, not the default 80: digest-pinned image refs need

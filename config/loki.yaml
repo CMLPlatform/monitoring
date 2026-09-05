@@ -46,16 +46,18 @@ limits_config:
   otlp_config:
     resource_attributes:
       # ignore_defaults keeps Loki from indexing every resource attribute it is
-      # handed. These four are the identity labels ADR 0002 requires on every
+      # handed. These five are the identity labels ADR 0002 requires on every
       # signal, and they have to be real stream LABELS, not structured metadata:
       # a `project` template variable is a stream selector, and label_values()
-      # cannot see structured metadata. All four are bounded — one value per
-      # project, environment and host — so indexing them costs nothing.
+      # cannot see structured metadata. All five are bounded — one value per
+      # department, project, environment and host — so indexing them costs
+      # nothing.
       ignore_defaults: true
       attributes_config:
         - action: index_label
           attributes:
             - service.name
+            - department
             - project
             - env
             - host.name
