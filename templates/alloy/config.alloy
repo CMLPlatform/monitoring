@@ -11,7 +11,7 @@
 // Everything else — databases, caches, proxies, frontends, batch jobs — only writes to
 // stdout, so this agent picks those up and forwards them on the same OTLP endpoint with
 // the same token. Nothing new is published at the edge: the monitoring stack exposes
-// `otlp.` and does not expose Loki, which has no authentication of its own.
+// `otel.` and does not expose Loki, which has no authentication of its own.
 
 // The host's own name, read from its /etc/hostname through the rootfs mount rather than
 // taken as an operator input: one less thing to set per host. The container's own

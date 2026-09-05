@@ -8,7 +8,7 @@ account_id = "your-account-id"
 # Zone ID of the domain the hostnames live under (same overview sidebar).
 zone_id = "your-zone-id"
 
-# Apex domain → grafana.<domain>, otlp.<domain>.
+# Apex domain → grafana.<domain>, otel.<domain>.
 domain = "example.org"
 
 # Emails allowed through Cloudflare Access to Grafana (one-time PIN).

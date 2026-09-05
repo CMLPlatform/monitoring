@@ -37,7 +37,7 @@ variable "zone_id" {
 
 variable "domain" {
   type        = string
-  description = "Apex domain, e.g. example.org → grafana.example.org, otlp.example.org."
+  description = "Apex domain, e.g. example.org → grafana.example.org, otel.example.org."
 }
 
 variable "grafana_allowed_emails" {
@@ -67,7 +67,7 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "monitoring" {
       },
       {
         # OTLP HTTP ingestion; the collector enforces bearer-token auth.
-        hostname = "otlp.${var.domain}"
+        hostname = "otel.${var.domain}"
         service  = "http://otel-collector:4318"
       },
       {
@@ -87,9 +87,16 @@ resource "cloudflare_dns_record" "grafana" {
   ttl     = 1
 }
 
-resource "cloudflare_dns_record" "otlp" {
+# Renamed from `otlp` (2026-09): `moved` keeps the existing record and renames it
+# in place, instead of destroying and recreating it with a gap in between.
+moved {
+  from = cloudflare_dns_record.otlp
+  to   = cloudflare_dns_record.otel
+}
+
+resource "cloudflare_dns_record" "otel" {
   zone_id = var.zone_id
-  name    = "otlp.${var.domain}"
+  name    = "otel.${var.domain}"
   type    = "CNAME"
   content = "${cloudflare_zero_trust_tunnel_cloudflared.monitoring.id}.cfargotunnel.com"
   proxied = true
@@ -98,7 +105,7 @@ resource "cloudflare_dns_record" "otlp" {
 
 # Cloudflare Access in front of Grafana: email one-time-PIN at the edge, so
 # the public hostname never reaches Grafana's login page unauthenticated.
-# The OTLP hostname is NOT behind Access — machines authenticate with the
+# The ingestion hostname is NOT behind Access — machines authenticate with the
 # bearer token instead.
 resource "cloudflare_zero_trust_access_application" "grafana" {
   account_id       = var.account_id
