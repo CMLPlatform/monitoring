@@ -30,7 +30,7 @@ directly.
   or in span attributes: still filterable at query time, without the storage
   blowing up.
 - **In Loki, only the identity labels are index labels**: `service.name`,
-  `project`, `env`, `host.name` (the authoritative list lives in
+  `department`, `project`, `env`, `host.name` (the authoritative list lives in
   `config/loki.yaml`). Every other attribute, `service.instance.id`
   included, is stored as structured metadata, so a query starts from the
   stream selector and filters after it:

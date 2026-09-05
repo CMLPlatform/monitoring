@@ -47,15 +47,24 @@ queries that had been measuring the wrong thing.
 
 ### Changed
 
+- **Ingestion hostname is `otel.<domain>`**, not `otlp.<domain>` — one
+  department-wide name for machine telemetry alongside `grafana.<domain>` for
+  humans. The tunnel ingress and the DNS record move together (a `moved` block
+  renames the record in place); every spoke's `OTEL_EXPORTER_OTLP_ENDPOINT` and
+  any edge rule matching the old host have to follow.
+- **`department` on every signal**: the gateway collector stamps it from
+  `DEPARTMENT` in `.env` and Prometheus and Loki carry it as an identity label.
+  It is set at the hub rather than by the sender, so a spoke cannot ship
+  telemetry attributed to someone else.
 - **Overlays are host config now**: `COMPOSE_FILE` in `.env` names the compose
   file set, and every recipe — `up`, `logs`, `ps`, `backup` — acts on that
   same set. `just up-tunnel` is gone; its exposure guards run automatically
   whenever the tunnel overlay is active.
-- **Loki indexes only the identity labels** (`service.name`, `project`, `env`,
-  `host.name` — the authoritative list lives in `config/loki.yaml`). Everything
-  else, `service.instance.id` included, is structured metadata now — one stream
-  per service instead of one per sender restart. Existing streams keep their
-  old labels until they age out (30 days).
+- **Loki indexes only the identity labels** (`service.name`, `department`,
+  `project`, `env`, `host.name` — the authoritative list lives in
+  `config/loki.yaml`). Everything else, `service.instance.id` included, is
+  structured metadata now — one stream per service instead of one per sender
+  restart. Existing streams keep their old labels until they age out (30 days).
 - **Dashboards are provisioned, not editable**: `dashboards/*.json` is mounted
   read-only and UI saves are off, making the files the source of truth.
 - The collector's `memory_limiter` is sized in absolute MiB against the

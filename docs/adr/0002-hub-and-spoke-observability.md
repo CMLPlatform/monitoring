@@ -40,9 +40,11 @@ Three tiers, each owning distinct signals:
 
 Contracts that make it scale:
 
-- **Four identity labels on every signal**, enforced by the shared agent config:
-  `project`, `env`, `service.name`, `host_name` (Prometheus form; OTel form is
-  `host.name`). Cardinality rule: user ids, request ids and timestamps go in
+- **Five identity labels on every signal**: `project`, `env`, `service.name` and
+  `host_name` (Prometheus form; OTel form is `host.name`) come from the shared
+  agent config, and `department` is stamped by the gateway collector, which is
+  the only component that knows it and the only one a sender cannot override.
+  Cardinality rule: user ids, request ids and timestamps go in
   bodies and span attributes, never labels.
 - **Each signal has exactly one producer.** Alloy owns all container logs (SDK
   log exporters stay off); native app metrics own RED; cAdvisor owns container
