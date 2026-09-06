@@ -3,7 +3,9 @@
 #
 # Bootstrap (owner-run, once):
 #   cp terraform.tfvars.example terraform.tfvars   # then fill it in
-#   export CLOUDFLARE_API_TOKEN=...   # needs Tunnel:Edit, DNS:Edit, Access:Edit
+#   export CLOUDFLARE_API_TOKEN=...   # needs Tunnel:Edit, DNS:Edit, Access:Edit, and
+#                                     # "Access: Organizations, Identity Providers, and
+#                                     # Groups: Read" for the team-domain data source
 #   cd infra && tofu init
 #   ./generate-imports.sh > imports.tf   # the edge already exists: adopt it first
 #   tofu plan                            # expect "0 to add"; see the script's header
