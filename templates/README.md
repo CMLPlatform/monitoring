@@ -32,8 +32,8 @@ stack's own alert rules.
 Skipping `bootstrap.sh` leaves a project unmonitored with no error anywhere.
 The rule that notices a host's *silence* lives on this stack, not on the
 host. The backstop is `ProjectsUncovered`, regenerated on every bootstrap
-run: it fires on any series with a `project` label that has no rendered rule
-file.
+run: it fires on any project the gateway counts telemetry for that has no
+rendered rule file, whichever signal that project sends.
 
 ## Two settings that silently produce nothing
 
@@ -107,9 +107,9 @@ project/environment, so about six environments fit.
 ## Verifying, from the monitoring host
 
 ```promql
-count({project="<project>",env="<env>"})                          # non-zero within ~2 min
-count(container_start_time_seconds{project="<project>",name!=""}) # one per container
-count({job="<service.name>"})                                     # app's own SDK metrics
+count(telemetry_datapoints_total{project="<project>",env="<env>"})  # non-zero within ~2 min
+count(container_start_time_seconds{project="<project>",name!=""})  # one per container
+count({job="<service.name>"})                                      # app's own SDK metrics
 ```
 
 If the first is still zero after five minutes, `ProjectTelemetrySilent`

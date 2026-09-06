@@ -15,17 +15,20 @@ the config syntax. 1.0 waits for a second consumer to confirm the contract.
 
 - Point every spoke's `OTEL_EXPORTER_OTLP_ENDPOINT` at `otel.<domain>`. The
   old `otlp.<domain>` name is gone.
-- Set `DEPARTMENT` in the hub's `.env`. The collector stamps it on every
-  signal.
 - Set `COMPOSE_FILE` in `.env` to name the overlays this host runs
   (`compose.yml:compose.tunnel.yml` in production). `just up-tunnel` is gone;
   `just up` runs the exposure guards whenever the tunnel overlay is active.
 - Remove the orphaned `alertmanager_data` volume when convenient. Alerting is
   Grafana-managed (ADR 0002).
 - Re-vendor the templates on each spoke at `v0.3.0` (`bootstrap.sh` prints
-  the commands): the Alloy agent gains a memory limiter, and the overlay
-  declares the `egress` network it joins.
+  the commands): the Alloy agent gains a memory limiter, keeps only the four
+  cAdvisor metrics this stack reads, and drops its own histogram buckets; the
+  overlay declares the `egress` network it joins.
 - Loki streams keep their old label set until they age out (30 days).
+- Set `project` as well as `env` in every sender's
+  `OTEL_RESOURCE_ATTRIBUTES`. A sender that omits either is now counted as
+  `unknown` and raises `ProjectsUncovered` instead of arriving unattributed
+  and unnoticed.
 
 ### Added
 
@@ -39,6 +42,13 @@ the config syntax. 1.0 waits for a second consumer to confirm the contract.
   and Tempo too. `HostDiskFilling` (full within 3 days at the current rate)
   and `PrometheusCardinalityHigh` (over 100k active series) warn ahead of the
   80% disk backstop.
+- **Per-project ingest counters**: the gateway counts what arrives and emits
+  `telemetry_{datapoints,logs,spans,metrics}_total` by project and
+  environment. `ProjectTelemetrySilent` and `ProjectsUncovered` key on those
+  instead of scanning every project-labelled series, so their cost is flat in
+  fleet size, and a project that sends only logs or only traces is covered at
+  last: it reached no Prometheus series before. Stack Health gains an Ingest
+  by Project panel.
 - **`infra/generate-imports.sh`** emits OpenTofu `import` blocks for the
   tunnel, DNS records and Access app built by hand, so the first plan does
   not create duplicates.
@@ -65,6 +75,14 @@ the config syntax. 1.0 waits for a second consumer to confirm the contract.
 - **Loki indexes only the identity labels** (`service.name`, `department`,
   `project`, `env`, `host.name`). Everything else is structured metadata, so
   a sender restart no longer mints a new stream.
+- **Half the series are gone.** Prometheus drops the histogram buckets from
+  the Grafana, Loki and Tempo self-scrapes, the hub's node-exporter runs the
+  same nine-collector allowlist the spokes' Alloy does, and the agent keeps
+  only the four cAdvisor metrics this stack reads and drops its own buckets.
+  Measured on the hub with one spoke: 14.1k active series to 7.0k, 438
+  samples/s to 206. Nothing that a dashboard, alert or runbook reads was
+  dropped; `_sum` and `_count` survive, so latency is still there to explore.
+  `PrometheusCardinalityHigh`'s 100k ceiling is ~14x the baseline now.
 - **Dashboards are provisioned, not editable**: `dashboards/*.json` is the
   source of truth; UI saves are off.
 - **Tempo stores traces and nothing else**: its metrics generator is gone.
@@ -85,6 +103,9 @@ the config syntax. 1.0 waits for a second consumer to confirm the contract.
   so child spans diluted the ratio, and it aggregated by job alone, so a
   healthy prod service masked a broken staging one. It now reads the HTTP
   server metrics, keyed on job, project and env.
+- Both onboarding templates and the demo set `env` but not `project` in
+  `OTEL_RESOURCE_ATTRIBUTES`, so an app that followed them shipped telemetry
+  no alert or dashboard could attribute to a project.
 - Trace links from the latency panel resolved to nothing: exemplars carry
   `traceID`, the datasource looked for `trace_id`.
 - The Infrastructure Logs dashboard queried labels this stack never set. The
