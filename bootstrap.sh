@@ -49,16 +49,26 @@ fi
 # Flat, not a subdirectory: Grafana's alerting provisioner does not recurse. It skips a
 # nested directory with a warning, not an error, so that layout looks like it worked and
 # provisions nothing. The project- prefix keeps the files grouped in `ls`.
-out_dir="config/grafana/alerting"
+# BOOTSTRAP_OUT_DIR is for `just lint`: it renders the templates into a scratch dir and
+# lints the result, so a template edit that Grafana would reject fails in CI instead of
+# on the next onboarding. With it set, nothing past the rendering runs.
+out_dir="${BOOTSTRAP_OUT_DIR:-config/grafana/alerting}"
+# The vendored templates and the paths they are printed under, used twice below.
+templates="alloy/config.alloy:deploy/alloy/config.alloy compose.telemetry.yml:compose.telemetry.yml compose.telemetry.gpu.yml:compose.telemetry.gpu.yml run_scheduled.sh:scripts/run_scheduled.sh"
 
-# Pinned tag for the vendoring curl, with no fallback to a branch. A moving ref would let
-# two projects vendor two different agent configs and call it the same template.
-tag="$(git -C "$root" describe --tags --abbrev=0 2>/dev/null)" \
-    || { echo "error: no release tag to pin the vendoring curls to; tag a release first" >&2; exit 1; }
-# The tag must also contain the templates, or every curl 404s.
-git -C "$root" rev-parse -q --verify "${tag}:templates/alloy/config.alloy" >/dev/null \
-    || { echo "error: tag ${tag} predates templates/; tag a new release before onboarding" >&2; exit 1; }
-repo_raw="https://raw.githubusercontent.com/CMLPlatform/monitoring/${tag}/templates"
+if [[ -z "${BOOTSTRAP_OUT_DIR:-}" ]]; then
+    # Pinned tag for the vendoring curl, with no fallback to a branch. A moving ref would
+    # let two projects vendor two different agent configs and call it the same template.
+    tag="$(git -C "$root" describe --tags --abbrev=0 2>/dev/null)" \
+        || { echo "error: no release tag to pin the vendoring curls to; tag a release first" >&2; exit 1; }
+    # The tag must also contain every template, or a curl 404s and the hash printed for
+    # it below is the hash of nothing.
+    for pair in $templates; do
+        git -C "$root" rev-parse -q --verify "${tag}:templates/${pair%%:*}" >/dev/null \
+            || { echo "error: tag ${tag} predates templates/${pair%%:*}; tag a new release before onboarding" >&2; exit 1; }
+    done
+    repo_raw="https://raw.githubusercontent.com/CMLPlatform/monitoring/${tag}/templates"
+fi
 
 # --------------------------------------------------------------- 1. the keystone rules
 # Every covered project/environment, read back from the COVERS marker in each rendered
@@ -89,6 +99,7 @@ sed -e "s@__COVERED__@${covered}@" \
     -e "s@__COVERED_EXPR__@${covered_expr}@" \
     templates/alerting/coverage.yaml.tmpl > "${out_dir}/coverage.yaml"
 echo "rendered  ${out_dir}/coverage.yaml  (covering: ${covered})"
+[[ -z "${BOOTSTRAP_OUT_DIR:-}" ]] || exit 0
 
 # ------------------------------------------------------------------ 3. reload Grafana
 if docker compose ps --status running --services 2>/dev/null | grep -qx grafana; then
@@ -97,6 +108,23 @@ if docker compose ps --status running --services 2>/dev/null | grep -qx grafana;
     docker compose up -d --force-recreate grafana >/dev/null 2>&1 \
         && echo "reloaded  grafana (restarted)" \
         || echo "WARNING: could not restart grafana; run 'docker compose up -d --force-recreate grafana'" >&2
+    # A restart is not proof: Grafana skips a malformed alert group with a log line and
+    # comes up healthy without it. Read the rule back. Same single-key read as the
+    # healthchecks key above, for the same reason.
+    if [[ -z "${GRAFANA_ADMIN_PASSWORD:-}" && -f .env ]]; then
+        GRAFANA_ADMIN_PASSWORD="$(sed -n 's/^GRAFANA_ADMIN_PASSWORD=//p' .env | tail -1)"
+    fi
+    uid="proj-silent-${project}-${env_name}"
+    for _ in $(seq 30); do
+        sleep 2
+        if printf 'user = "admin:%s"\n' "$GRAFANA_ADMIN_PASSWORD" \
+            | curl -sf -K - "http://localhost:3000/api/v1/provisioning/alert-rules/${uid}" >/dev/null; then
+            echo "verified  rule ${uid} is provisioned"
+            uid=""
+            break
+        fi
+    done
+    [[ -z "$uid" ]] || { echo "error: grafana restarted but rule ${uid} is not provisioned; check 'just logs grafana' for the rejected file" >&2; exit 1; }
 else
     echo "note      grafana is not running; the rules apply next time it starts"
 fi
@@ -118,6 +146,15 @@ if [[ -n "${HEALTHCHECKS_API_KEY:-}" ]]; then
 else
     echo "note      HEALTHCHECKS_API_KEY unset; ${hc_note}"
 fi
+
+# Computed before the heredoc: a substitution inside `cat <<EOF` cannot fail the script,
+# and a missing template would print sha256("") as if it were authoritative.
+hashes=""
+for pair in $templates; do
+    sum="$(git -C "$root" show "${tag}:templates/${pair%%:*}" | sha256sum | cut -d' ' -f1)"
+    hashes="${hashes}${sum}  ${pair#*:}"$'\n'
+done
+hashes="${hashes%$'\n'}"
 
 cat <<SUMMARY
 
@@ -143,15 +180,7 @@ curl -fsSL -o scripts/run_scheduled.sh    ${repo_raw}/run_scheduled.sh
 Verify before executing anything. The hashes come from the ${tag} tag, so a
 repo compromise after tagging cannot silently change what project hosts run:
 sha256sum -c <<'SUM'
-$(for pair in "alloy/config.alloy deploy/alloy/config.alloy" \
-              "compose.telemetry.yml compose.telemetry.yml" \
-              "compose.telemetry.gpu.yml compose.telemetry.gpu.yml" \
-              "run_scheduled.sh scripts/run_scheduled.sh"; do
-      # Word splitting is intended here: each pair is "<src> <dest>".
-      # shellcheck disable=SC2086
-      set -- $pair
-      printf '%s  %s\n' "$(git -C "$root" show "${tag}:templates/$1" | sha256sum | cut -d' ' -f1)" "$2"
-  done)
+${hashes}
 SUM
 chmod +x scripts/run_scheduled.sh
 

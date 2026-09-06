@@ -110,19 +110,31 @@ configuration. Applying it produces the `CLOUDFLARE_TUNNEL_TOKEN` the tunnel
 overlay needs; bootstrap steps are at the top of
 [infra/main.tf](infra/main.tf).
 
-`just check` validates compose files, Prometheus config, the collector, Loki
-and Tempo configs, the vendored Alloy config, YAML, workflows, shell scripts,
-the demo app's Python, OpenTofu formatting, dashboard JSON, and git history
-for leaked secrets.
-Every validator runs in a pinned container, so nothing is installed on the
-host.
+`just check` is two halves. `just lint` is the static half: compose files,
+the rendered alert templates, YAML, workflows, shell scripts, the demo app's
+Python, OpenTofu formatting, dashboard JSON and the datasources it names, and
+git history for leaked secrets. `just validate` runs the Prometheus, collector,
+Loki, Tempo and Alloy configs through the exact images the stack runs. Every
+validator runs in a pinned container, so nothing is installed on the host;
+`just fmt` (yamlfmt) is containerized the same way, and `lint` enforces it.
+`just hooks` installs the git hooks via [prek](https://github.com/j178/prek):
+gitleaks on the staged diff and `just lint` at commit, a Conventional Commits
+check on the message, `just validate` at push, and `just infra-validate` at
+push when `infra/` changed.
 
 Grafana's alerting provisioning has no offline validator. `just smoke` covers
-it: it boots the stack, waits for Grafana to report healthy, and checks that
-every dashboard and every alert rule provisioned. It runs under its own compose
-project on its own ports, so it cannot disturb a stack already running on the
-host. `just smoke` is safe on the production box, and `just smoke-down` cleans
-it up. CI runs `just check` and `just smoke` on every push and pull request.
+it and everything else that only shows once the stack runs: it boots the stack
+in production shape (JWT auth on) and asserts, uid for uid, that every
+dashboard and alert rule provisioned; that the contact points carry the URLs
+from the environment; that Grafana honours the JWT settings and refuses a
+forged token; that every scrape target is up; and that one metric and one log
+posted through the collector's bearer auth come back out of Prometheus and
+Loki with the promoted project/env/department labels. The assertions live in
+[scripts/smoke.sh](scripts/smoke.sh). It runs under its own compose project on
+its own port, so it cannot disturb a stack already running on the host:
+`just smoke` is safe on the production box, `just restore-check` rehearses
+backup and restore on its volumes, and `just smoke-down` cleans up. CI runs
+`lint` on one job and `validate` plus `smoke` on another, on every push and pull request.
 
 ## Sending telemetry from a project
 
@@ -175,6 +187,7 @@ compose.tunnel.yml      # production overlay: Cloudflare Tunnel
 compose.demo.yml        # demo overlay: sample telemetry source
 compose.sandbox.yml     # isolation overlay for `just demo` and `just smoke`
 demo/                   # the demo FastAPI service
+scripts/smoke.sh        # what `just smoke` asserts against the booted stack
 config/
   otel-collector.yaml   # ingestion gateway (OTLP in → Loki/Tempo/Prometheus out)
   loki.yaml             # logs

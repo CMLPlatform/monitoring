@@ -7,9 +7,9 @@
 # would fail to bind, and on a host where the stack is down it would quietly
 # answer on a port something else expects to own.
 #
-# This overlay drops the ingestion ports entirely (nothing ships telemetry during
-# a smoke run) and moves Grafana to SANDBOX_PORT, which the assertions in
-# `just smoke` and `just demo` probe.
+# This overlay drops the ingestion ports entirely (the demo app and the smoke
+# assertions reach the collector over the project network) and moves Grafana to
+# SANDBOX_PORT, which `just smoke` probes and `just demo` serves.
 services:
   otel-collector:
     ports: !override []

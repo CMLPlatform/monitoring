@@ -113,6 +113,9 @@ services:
       timeout: 3s
       retries: 5
       start_period: 30s
+      # Probe often while starting: `--wait` (just up/smoke) returns on the
+      # first pass, and both are ready well inside one 15s interval.
+      start_interval: 2s
     mem_limit: 2g
     pids_limit: 1024
     cap_drop: [ALL]
@@ -194,6 +197,9 @@ services:
       timeout: 3s
       retries: 5
       start_period: 30s
+      # Probe often while starting: `--wait` (just up/smoke) returns on the
+      # first pass, and both are ready well inside one 15s interval.
+      start_interval: 2s
     mem_limit: 1g
     pids_limit: 1024
     cap_drop: [ALL]

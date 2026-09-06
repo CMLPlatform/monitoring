@@ -35,9 +35,24 @@ queries that had been measuring the wrong thing.
   argv.
 - **Wider validation**: `just check` also verifies the Loki and Tempo configs,
   the vendored Alloy config, shell scripts, the demo app's Python, OpenTofu
-  formatting, and git history for secrets; `just smoke` asserts every
-  dashboard and alert rule provisioned; CI also runs `just infra-validate`
-  and a new `just demo-build`.
+  formatting, the datasource uids dashboards reference, the alert templates
+  `bootstrap.sh` renders, and git history for secrets; CI also runs
+  `just infra-validate`; `lint` also enforces yamlfmt and ruff formatting.
+  `check` splits into `lint` (static) and `validate` (the stack's own images);
+  CI runs the two on separate jobs so a lint failure never waits on the stack
+  images. `just hooks` installs git hooks via prek: gitleaks on the staged
+  diff and `lint` at commit, a Conventional Commits check on the message,
+  `validate` at push, `infra-validate` at push when `infra/` changed.
+- **`just smoke` boots the production shape and asserts the data paths**: JWT
+  auth on with a forged Access token refused, dashboards and alert rules
+  compared uid for uid (not by count) with no rule paused, contact points
+  checked against the exact URLs given, every scrape target up, and a metric
+  and a log round-tripped through the collector into Prometheus and Loki with
+  the promoted `project`/`env`/`department` labels. The assertions moved to
+  `scripts/smoke.sh` (functions, shellcheck). `just restore-check` rehearses
+  backup and restore on the smoke volumes. `just demo-build` is gone: the
+  demo is a local fixture (`just demo`), not a CI step.
+- `just fmt` runs yamlfmt in a container like every other tool.
 - **Isolated smoke and demo**: each runs under its own compose project and
   Grafana port (`compose.sandbox.yml`), so neither can adopt or recreate a
   stack already running on the host.
@@ -95,6 +110,14 @@ queries that had been measuring the wrong thing.
 
 ### Fixed
 
+- `just backup` fails (instead of exiting 0) when the unpause after the copy
+  fails and the stack is left paused. `just lint`'s exposure-guard self-test
+  lost the status of its positive half; a guard that rejected every valid
+  `.env` passed CI. The smoke provisioning check could pass with an empty
+  dashboard list if reading the uids failed. `bootstrap.sh` printed the hash
+  of empty input for a template missing from the tag, and re-reads its rule
+  from Grafana after the restart instead of trusting the restart.
+  `infra/generate-imports.sh` reported a failed DNS API call as "no record".
 - **Spoke overlay declared no `egress` network**: `compose.telemetry.yml`
   joined it without defining it, so the documented `up -d` failed on any host
   whose own compose file did not happen to name one. `just check` now renders

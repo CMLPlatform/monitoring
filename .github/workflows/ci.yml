@@ -1,5 +1,7 @@
 # Thin wrapper around the `just` contract: everything CI runs, you can run
-# locally with the same command.
+# locally with the same command. `just check` locally is `lint` + `validate`;
+# here they split so a lint failure reports in seconds without pulling the
+# stack images, which the smoke job pulls anyway.
 name: CI
 
 on:
@@ -10,27 +12,26 @@ on:
 permissions:
   contents: read
 
-# A push to an open PR supersedes the run already in flight; both jobs boot a
-# full stack, so leaving them stacked wastes a runner per push.
+# A push to an open PR supersedes the run already in flight; the smoke job
+# boots a full stack, so leaving them stacked wastes a runner per push.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  check:
+  lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        # `just check` scans git history for secrets; the default shallow clone
+        # `just lint` scans git history for secrets; the default shallow clone
         # would give it one commit and pass vacuously.
         with:
           fetch-depth: 0
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
       - run: cp .env.example .env
-      - run: just check
+      - run: just lint
       - run: just infra-validate
-      - run: just demo-build
 
   smoke:
     runs-on: ubuntu-latest
@@ -39,6 +40,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
       - run: cp .env.example .env
+      - run: just validate
       - run: just smoke
       # Every smoke failure message points at the logs, which are only useful if
       # they outlive the job.

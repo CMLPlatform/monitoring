@@ -19,3 +19,5 @@
   [tool.ruff.lint]
     pydocstyle.convention = "google"
     select                = ["ALL"]
+    # COM812 fights the formatter (`ruff format --check` runs in `just lint`).
+    ignore                = ["COM812"]

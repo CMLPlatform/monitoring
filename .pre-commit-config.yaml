@@ -1,0 +1,51 @@
+# Installed by `just hooks` (prek). Stages sized to their cost:
+#   pre-commit  gitleaks on the staged diff (~0.5s; a secret is cheapest to
+#               catch before it is in history), then `just lint` (~6s warm).
+#   commit-msg  Conventional Commits shape on the first line.
+#   pre-push    `just validate` (the stack's images; seconds on a host that
+#               runs the stack) and `just infra-validate`, only when infra/
+#               is in the push: it downloads the provider every time.
+# `prek run` runs the pre-commit stage on demand; `--hook-stage pre-push` the rest.
+repos:
+  - repo: local
+    hooks:
+      - id: gitleaks
+        name: gitleaks (staged)
+        entry: >-
+          docker run --rm --network none -v .:/repo
+          zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+          git --pre-commit --staged --redact --no-banner /repo
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+      - id: lint
+        name: just lint
+        entry: just lint
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+      - id: commit-msg
+        name: conventional commit message
+        entry: >-
+          sh -c 'head -n1 "$1"
+          | grep -Eq "^((build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9._/-]+\))?!?:
+          [a-z].{0,70}|(Merge|Revert|fixup!|squash!) .*)$"
+          || { echo "commit message must be type(scope): lower-case summary, at most 72 chars" >&2; exit 1; }' --
+        language: system
+        stages: [commit-msg]
+      - id: validate
+        name: just validate
+        entry: just validate
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+      - id: infra-validate
+        name: just infra-validate
+        entry: just infra-validate
+        language: system
+        pass_filenames: false
+        files: ^infra/
+        stages: [pre-push]

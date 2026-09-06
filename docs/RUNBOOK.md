@@ -202,7 +202,7 @@ cd infra && tofu apply
 ## Upgrading images
 
 Dependabot opens PRs that bump the pinned versions, and CI runs
-`just check` on each one. The validators (promtool, otelcol) read their image
+`just validate` and `just smoke` on each one. The validators (promtool, otelcol) read their image
 versions from `compose.yml`, so every bump is checked with the exact
 binaries the stack will run. A new version that changes its config syntax
 fails CI before it reaches the host. Patch bumps arrive grouped, one PR for

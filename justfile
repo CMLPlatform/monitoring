@@ -1,9 +1,21 @@
 set dotenv-load
 
-# Stateful services and their volumes, shared by backup/restore. The volume
-# names assume the compose project name "monitoring" (see guard in backup).
+# Stateful services. Their volumes are <project>_<service>_data, which is how
+# _backup and _restore find them for whichever compose project they act on.
 stateful := "grafana prometheus loki tempo"
-backup_mounts := "-v monitoring_grafana_data:/data/grafana -v monitoring_prometheus_data:/data/prometheus -v monitoring_loki_data:/data/loki -v monitoring_tempo_data:/data/tempo"
+
+# Helper and lint images, pinned once. `lint` pulls the lint set in parallel
+# up front: serial first-use pulls are most of a cold run.
+alpine := "alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b"
+jq := "ghcr.io/jqlang/jq:1.8.1"
+yamllint := "pipelinecomponents/yamllint:0.35.13"
+yamlfmt := "ghcr.io/google/yamlfmt:0.17.2"
+actionlint := "rhysd/actionlint:1.7.12"
+shellcheck := "koalaman/shellcheck:v0.11.0"
+ruff := "ghcr.io/astral-sh/ruff:0.14.2"
+tofu := "ghcr.io/opentofu/opentofu:1.12.3"
+gitleaks := "zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"
+lint_images := jq + " " + yamllint + " " + yamlfmt + " " + actionlint + " " + shellcheck + " " + ruff + " " + tofu + " " + gitleaks
 
 # `demo` and `smoke` each bring up a throwaway copy of the core stack, so both
 # run under their own compose project and their own Grafana port (see
@@ -13,33 +25,31 @@ backup_mounts := "-v monitoring_grafana_data:/data/grafana -v monitoring_prometh
 # explicit -f list also keeps a host's COMPOSE_FILE (tunnel) out of both.
 demo_project := "monitoring-demo"
 demo_port := env("DEMO_PORT", "3002")
-demo_url := "http://localhost:" + demo_port
 compose_demo := "SANDBOX_PORT=" + demo_port + " docker compose -p " + demo_project + " -f compose.yml -f compose.demo.yml -f compose.sandbox.yml"
 
 # What compose will actually name the project for the up-paths, so the queue
-# volume gets chowned where the collector will look for it.
+# volume gets chowned where the collector will look for it, and backup/restore
+# mount the volumes the running stack uses.
 core_project := env("COMPOSE_PROJECT_NAME", "monitoring")
 
 # Same isolation for smoke, on its own project and port so a smoke run and a
-# demo stack can also coexist.
+# demo stack can also coexist. The smoke stack boots in production shape:
+# Grafana with JWT auth on (the Cloudflare Access path, otherwise only ever
+# schema-checked) and fixed notification URLs so the contact-point assertion
+# can check exact values instead of "not empty".
 smoke_project := "monitoring-smoke"
 smoke_port := env("SMOKE_PORT", "3001")
-smoke_url := "http://localhost:" + smoke_port
-compose_smoke := "SANDBOX_PORT=" + smoke_port + " docker compose -p " + smoke_project + " -f compose.yml -f compose.sandbox.yml"
+smoke_env := "SANDBOX_PORT=" + smoke_port + " GRAFANA_JWT_AUTH=true CF_ACCESS_TEAM_DOMAIN=smoke CF_ACCESS_AUD=smoke ALERT_WEBHOOK_URL=https://smoke.invalid/alerts HEARTBEAT_URL=https://smoke.invalid/heartbeat"
+compose_smoke := smoke_env + " docker compose -p " + smoke_project + " -f compose.yml -f compose.sandbox.yml"
 
-# dashboards/*.json as the paths they get when mounted at /dashboards, shared
-# by check and smoke. 2>/dev/null so an empty dashboards/ doesn't abort every
-# recipe in this file, including the teardown ones.
+# dashboards/*.json as the paths they get when mounted at /dashboards. 2>/dev/null
+# so an empty dashboards/ doesn't abort every recipe in this file, including the
+# teardown ones; `lint` refuses the empty list instead.
 dash_paths := `ls dashboards/*.json 2>/dev/null | sed 's|^dashboards|/dashboards|' | tr '\n' ' '`
 
+# List the recipes.
 default:
     @just --list
-
-# backup/restore mount volumes by literal name, which assumes compose's default
-# project name (compose.yml sets `name: monitoring`). COMPOSE_PROJECT_NAME
-# overrides it, so they would silently target volumes nothing uses.
-_project-guard:
-    @[ -z "${COMPOSE_PROJECT_NAME:-}" ] || { echo "error: COMPOSE_PROJECT_NAME is set; this recipe expects the monitoring_* volume names" >&2; exit 1; }
 
 # The collector's queue volume must be writable by the image's uid 10001, but
 # a fresh named volume is root-owned and the image is distroless (no chown at
@@ -47,7 +57,7 @@ _project-guard:
 # project name because smoke brings the stack up under a different one.
 _queue-volume project:
     @docker volume create {{project}}_otel_queue > /dev/null
-    @docker run --rm --network none -v {{project}}_otel_queue:/q alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b chown 10001:10001 /q
+    @docker run --rm --network none -v {{project}}_otel_queue:/q {{alpine}} chown 10001:10001 /q
 
 # Overlays are host config: COMPOSE_FILE in .env names the file set (see
 # .env.example), and every recipe here (up, down, logs, ps, backup) acts on
@@ -72,6 +82,7 @@ _expose-guards:
     @[ -n "${HEARTBEAT_URL:-}" ] || echo "WARNING: HEARTBEAT_URL is empty; the stack goes live without a dead-man's switch" >&2
     @[ -n "${ALERT_WEBHOOK_URL:-}" ] || { echo "error: ALERT_WEBHOOK_URL is empty; every alert would fire into an empty webhook URL and be dropped. The heartbeat keeps pinging either way, so this failure looks healthy from the outside. Set it, or comment out this guard" >&2; exit 1; }
 
+# Stop the stack; volumes stay.
 down:
     docker compose down --remove-orphans
 
@@ -80,11 +91,6 @@ down:
 # Core stack plus a demo telemetry source, isolated from any running stack.
 demo: (_queue-volume demo_project)
     {{compose_demo}} up -d --build
-
-# Used by CI to catch a broken demo app before it merges.
-# Build the demo image without starting anything.
-demo-build:
-    {{compose_demo}} build
 
 # Removes only the demo services; the demo project's own core stack keeps
 # running. `just demo-destroy` takes the whole thing down.
@@ -98,9 +104,11 @@ demo-down:
 demo-destroy:
     {{compose_demo}} down --remove-orphans --volumes
 
+# Follow logs, optionally of one service.
 logs service="":
     docker compose logs -f {{service}}
 
+# Container status of the stack.
 ps:
     docker compose ps
 
@@ -109,6 +117,7 @@ ps:
 restart service: _guard-if-exposed
     docker compose restart {{service}}
 
+# Pull the pinned images.
 pull:
     docker compose pull
 
@@ -116,18 +125,25 @@ pull:
 tail service:
     docker compose logs -f --no-log-prefix {{service}} | jq -R 'fromjson? // .'
 
-# All validators run in containers: no host installs, no network. The
-# promtool/otelcol images are read from compose.yml so they can't drift from
-# the versions the stack actually runs.
+# Every check in this file runs in a container: no host installs, no network.
+# `lint` is the static half in small tool images; `validate` runs the stack's
+# own images against its configs. Both are seconds warm, so the pre-push hook
+# (`just hooks`) runs both; CI puts `lint` on its own job so a lint failure
+# never waits on the stack images, which the smoke job pulls anyway.
 # Validate every config in the repo.
-check:
-    docker compose config -q
+check: lint validate
+
+# Static checks in small tool images (~130 MB cold, seconds warm).
+lint:
+    @printf '%s\n' {{lint_images}} | xargs -P 8 -n 1 docker pull -q >/dev/null
+    # `-f compose.yml` on the first line, not the host's COMPOSE_FILE: on a
+    # tunnel host that would validate the tunnel set with no dummy token, so
+    # `just lint` would mean something different there than in CI.
+    docker compose -f compose.yml config -q
     CLOUDFLARE_TUNNEL_TOKEN=dummy docker compose -f compose.yml -f compose.tunnel.yml config -q
     {{compose_demo}} config -q
+    # Also the JWT interpolation in compose.yml: compose_smoke turns it on.
     {{compose_smoke}} config -q
-    # The tunnel set with JWT auth on, so the JWK URL and claims interpolation
-    # in compose.tunnel.yml is at least schema-checked; nothing else enables it.
-    CLOUDFLARE_TUNNEL_TOKEN=dummy GRAFANA_JWT_AUTH=true CF_ACCESS_TEAM_DOMAIN=dummy CF_ACCESS_AUD=dummy docker compose -f compose.yml -f compose.tunnel.yml config -q
     # The spoke overlays every project host layers onto its own compose.yml; a
     # bad interpolation or a network they forget to declare otherwise first
     # fails on a client machine, after vendoring.
@@ -136,30 +152,52 @@ check:
     # documented default must be refused on its own. Nothing else runs them:
     # CI never sets COMPOSE_FILE to the tunnel overlay.
     @good="OTLP_AUTH_TOKEN=t GRAFANA_ADMIN_PASSWORD=p GRAFANA_ROOT_URL=https://g.example GRAFANA_COOKIE_SECURE=true GRAFANA_JWT_AUTH=true CF_ACCESS_TEAM_DOMAIN=d CF_ACCESS_AUD=a HEARTBEAT_URL=https://h ALERT_WEBHOOK_URL=https://w"; \
-      env $good just _expose-guards; \
+      env $good just _expose-guards || { echo "error: exposure guards rejected a fully set environment" >&2; exit 1; }; \
       for bad in OTLP_AUTH_TOKEN=local-dev-token GRAFANA_ADMIN_PASSWORD=change-me GRAFANA_ROOT_URL=http://g.example GRAFANA_COOKIE_SECURE=false CF_ACCESS_AUD= ALERT_WEBHOOK_URL=; do \
         ! env $good $bad just _expose-guards 2>/dev/null || { echo "error: exposure guards accepted $bad" >&2; exit 1; }; \
       done
-    images="$(docker compose config --images)" && \
-      docker run --rm --network none -v ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro --entrypoint promtool $(echo "$images" | grep prom/prometheus) check config /etc/prometheus/prometheus.yaml && \
-      docker run --rm --network none -e OTLP_AUTH_TOKEN=dummy -e DEPARTMENT=dummy -v ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro $(echo "$images" | grep opentelemetry-collector) validate --config=/etc/otelcol/config.yaml && \
-      docker run --rm --network none -v ./config/loki.yaml:/etc/loki/loki.yaml:ro $(echo "$images" | grep grafana/loki) -config.file=/etc/loki/loki.yaml -verify-config && \
-      docker run --rm --network none -v ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro $(echo "$images" | grep grafana/tempo) -config.file=/etc/tempo/tempo.yaml -config.verify=true
     # line-length at 120, not the default 80: digest-pinned image refs need
     # ~130 but count as non-breakable mappings. The rendered project-*/coverage
     # rules are ignored: bootstrap.sh writes them, and their expr lines grow
-    # with every onboarded project.
-    docker run --rm --network none -v .:/code:ro pipelinecomponents/yamllint:0.35.13 yamllint -d '{extends: relaxed, rules: {line-length: {max: 120, allow-non-breakable-inline-mappings: true}}, ignore: [.git/, backups/, infra/.terraform/, config/grafana/alerting/project-*.yaml, config/grafana/alerting/coverage.yaml]}' .
-    docker run --rm --network none -v .:/repo:ro -w /repo rhysd/actionlint:1.7.12 -color
-    docker run --rm --network none -v .:/mnt:ro koalaman/shellcheck:v0.11.0 bootstrap.sh templates/run_scheduled.sh infra/generate-imports.sh
-    docker run --rm --network none -v ./demo:/demo:ro ghcr.io/astral-sh/ruff:0.14.2 check --no-cache /demo
-    docker run --rm --network none -v ./infra:/infra:ro -w /infra ghcr.io/opentofu/opentofu:1.12.3 fmt -check
-    docker run --rm --network none -v ./dashboards:/dashboards:ro ghcr.io/jqlang/jq:1.8.1 empty {{dash_paths}}
+    # with every onboarded project. The templates they come from are checked
+    # by rendering them through bootstrap.sh itself into a scratch dir, so a
+    # template edit Grafana would reject fails here and not on the next
+    # onboarding.
+    docker run --rm --network none -v .:/code:ro {{yamllint}} yamllint -d '{extends: relaxed, rules: {line-length: {max: 120, allow-non-breakable-inline-mappings: true}}, ignore: [.git/, backups/, infra/.terraform/, config/grafana/alerting/project-*.yaml, config/grafana/alerting/coverage.yaml]}' .
+    @d=$(mktemp -d) && BOOTSTRAP_OUT_DIR="$d" ./bootstrap.sh dummy dummy >/dev/null && docker run --rm --network none -v "$d":/code:ro {{yamllint}} yamllint -d '{extends: relaxed, rules: {line-length: disable}}' .; rc=$?; rm -rf "$d"; exit $rc
+    docker run --rm --network none -v .:/repo:ro -w /repo {{actionlint}} -color
+    docker run --rm --network none -v .:/mnt:ro {{shellcheck}} bootstrap.sh scripts/smoke.sh templates/run_scheduled.sh infra/generate-imports.sh
+    docker run --rm --network none -v ./demo:/demo:ro {{ruff}} check --no-cache /demo
+    docker run --rm --network none -v ./demo:/demo:ro {{ruff}} format --check --no-cache /demo
+    # Formatting is enforced, not just linted: `just fmt` is the fix.
+    docker run --rm --network none -v .:/code:ro -w /code {{yamlfmt}} -lint .
+    docker run --rm --network none -v ./infra:/infra:ro -w /infra {{tofu}} fmt -check
+    # Dashboards: valid JSON, and every datasource they name is one that
+    # datasources.yaml provisions (plus Grafana's built-in). A typo here
+    # provisions fine and renders empty panels.
+    @[ -n "{{dash_paths}}" ] || { echo "error: no dashboards/*.json to check" >&2; exit 1; }
+    docker run --rm --network none -v ./dashboards:/dashboards:ro {{jq}} empty {{dash_paths}}
+    @bad=$(docker run --rm --network none -v ./dashboards:/dashboards:ro {{jq}} -r '.. | objects | select(has("datasource")) | .datasource | (if type == "object" then .uid else . end) | strings' {{dash_paths}} | sort -u | grep -vxF "$(sed -n 's/^ *uid: *//p' config/grafana/datasources.yaml; echo grafana)"); \
+      [ -z "$bad" ] || { echo "error: dashboards reference datasource uids that are not provisioned:" $bad >&2; exit 1; }
     # Secrets that reached git history. Scans commits, not the working tree, so
     # it sees exactly what is in the repo and never the gitignored .env. A
     # working-tree scan flags .env's real tokens and fails on every dev machine.
     # Needs full history: a shallow CI clone has one commit and passes vacuously.
-    docker run --rm --network none -v .:/repo:ro zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f git --redact --no-banner /repo
+    docker run --rm --network none -v .:/repo:ro {{gitleaks}} git --redact --no-banner /repo
+
+# Image ref of one compose.yml service, so the validators below can't drift
+# from the versions the stack runs. (`config --images <svc>` also lists the
+# service's dependencies, hence the json route.)
+_image service:
+    @docker compose -f compose.yml config --format json | docker run --rm -i {{jq}} -er '.services["{{service}}"].image // error("no service {{service}} in compose.yml")'
+
+# The validators run in the images the stack itself runs. ~300 MB cold.
+# Run each config through the binary that will load it.
+validate:
+    docker run --rm --network none -v ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro --entrypoint promtool $(just _image prometheus) check config /etc/prometheus/prometheus.yaml
+    docker run --rm --network none -e OTLP_AUTH_TOKEN=dummy -e DEPARTMENT=dummy -v ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro $(just _image otel-collector) validate --config=/etc/otelcol/config.yaml
+    docker run --rm --network none -v ./config/loki.yaml:/etc/loki/loki.yaml:ro $(just _image loki) -config.file=/etc/loki/loki.yaml -verify-config
+    docker run --rm --network none -v ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro $(just _image tempo) -config.file=/etc/tempo/tempo.yaml -config.verify=true
     # The one config vendored verbatim onto every project host; a syntax error
     # here otherwise first surfaces as a crash-looping agent on a client machine.
     # Image ref matches templates/compose.telemetry.yml; keep them in step.
@@ -169,35 +207,57 @@ check:
 # container, which needs network access to fetch the provider.
 # Full OpenTofu validation (downloads the provider, so not part of `check`).
 infra-validate:
-    @d=$(mktemp -d) && cp infra/main.tf infra/.terraform.lock.hcl "$d"/ && docker run --rm --entrypoint sh -v "$d":/src:ro ghcr.io/opentofu/opentofu:1.12.3 -c 'mkdir /work && cp /src/main.tf /src/.terraform.lock.hcl /work && cd /work && tofu init -backend=false -input=false >/dev/null && tofu validate'; rc=$?; rm -rf "$d"; exit $rc
+    @d=$(mktemp -d) && cp infra/main.tf infra/.terraform.lock.hcl "$d"/ && docker run --rm --entrypoint sh -v "$d":/src:ro {{tofu}} -c 'mkdir /work && cp /src/main.tf /src/.terraform.lock.hcl /work && cd /work && tofu init -backend=false -input=false >/dev/null && tofu validate'; rc=$?; rm -rf "$d"; exit $rc
 
-# Format YAML in place (needs yamlfmt on the host; optional).
+# Same container-only rule as `lint`; --user so the rewritten files stay yours.
+# Format YAML in place.
 fmt:
-    yamlfmt .
+    docker run --rm --network none --user "$(id -u):$(id -g)" -v .:/code -w /code {{yamlfmt}} .
+
+# Install the git hooks: gitleaks + lint on commit, validate on push (see .pre-commit-config.yaml).
+hooks:
+    prek install --hook-type pre-commit --hook-type commit-msg --hook-type pre-push
 
 # The tarball is mode 0600: it contains the Grafana DB and webhook secrets, so
-# copy it off-host and keep it private. Services are paused during the copy and
-# unpaused unconditionally afterwards: `pause` is per-container and can fail
-# halfway, so an unpause reached only on success would leave the stack frozen.
+# copy it off-host and keep it private.
 # Snapshot all stateful volumes to backups/<timestamp>.tar.gz.
-backup: _project-guard
-    mkdir -p backups
-    -docker compose unpause {{stateful}} 2>/dev/null
-    rc=0; docker compose pause {{stateful}} && docker run --rm {{backup_mounts}} -v ./backups:/backups alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b sh -c 'umask 077 && tar czf /backups/monitoring-$(date +%Y%m%d-%H%M%S).tar.gz -C /data .' || rc=$?; docker compose unpause {{stateful}}; exit $rc
-    @ls -lh backups/ | tail -1
+backup: (_backup core_project "backups")
+
+# gzip -1: the stack is paused for as long as the tar runs, and the TSDB
+# chunks are already compressed, so the higher levels cost time for nothing.
+# Services are paused during the copy and unpaused unconditionally afterwards:
+# `pause` is per-container and can fail halfway, so an unpause reached only on
+# success would leave the stack frozen. A failed unpause fails the recipe for
+# the same reason: a green exit with the stack still SIGSTOPped is worse.
+_backup project dir:
+    mkdir -p {{dir}}
+    @-docker compose -p {{project}} unpause {{stateful}} >/dev/null 2>&1
+    @rc=0; m=$(for s in {{stateful}}; do printf -- '-v {{project}}_%s_data:/data/%s ' $s $s; done); docker compose -p {{project}} pause {{stateful}} && docker run --rm --network none $m -v {{absolute_path(dir)}}:/backups {{alpine}} sh -c 'umask 077 && tar cf - -C /data . | gzip -1 > /backups/monitoring-$(date +%Y%m%d-%H%M%S).tar.gz' || rc=$?; docker compose -p {{project}} unpause {{stateful}} || { echo "error: unpause failed; the stack is still paused" >&2; rc=1; }; exit $rc
+    @ls -lh {{dir}}/ | tail -1
+
+# Restore a backup tarball into the volumes (stops the stack; wipes current state).
+restore file: (_restore core_project file "backups")
+    @echo "Restored {{file}}. Run 'just up' to start the stack."
 
 # The wipe is unrecoverable, so the current state is snapshotted first: if the
 # extract dies halfway (full disk, wrong volume set) the volumes are left
-# partial, and backups/pre-restore-*.tar.gz is the only way back.
-# Restore a backup tarball into the volumes (stops the stack; wipes current state).
-restore file: _project-guard
+# partial, and <dir>/pre-restore-*.tar.gz is the only way back.
+_restore project file dir:
     @[ -f "{{file}}" ] || { echo "error: {{file}} not found" >&2; exit 1; }
-    docker run --rm --network none -v {{absolute_path(file)}}:/backup.tar.gz:ro alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b tar tzf /backup.tar.gz > /dev/null
-    docker compose down --remove-orphans
-    mkdir -p backups
-    docker run --rm --network none {{backup_mounts}} -v ./backups:/backups alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b sh -c 'umask 077 && tar czf /backups/pre-restore-$(date +%Y%m%d-%H%M%S).tar.gz -C /data .'
-    docker run --rm --network none {{backup_mounts}} -v {{absolute_path(file)}}:/backup.tar.gz:ro alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b sh -c 'for d in /data/*; do find "$d" -mindepth 1 -delete; done && tar xzf /backup.tar.gz -C /data'
-    @echo "Restored {{file}}. Run 'just up' to start the stack."
+    docker run --rm --network none -v {{absolute_path(file)}}:/backup.tar.gz:ro {{alpine}} tar tzf /backup.tar.gz > /dev/null
+    docker compose -p {{project}} down --remove-orphans
+    mkdir -p {{dir}}
+    m=$(for s in {{stateful}}; do printf -- '-v {{project}}_%s_data:/data/%s ' $s $s; done); docker run --rm --network none $m -v {{absolute_path(dir)}}:/backups {{alpine}} sh -c 'umask 077 && tar czf /backups/pre-restore-$(date +%Y%m%d-%H%M%S).tar.gz -C /data .'
+    m=$(for s in {{stateful}}; do printf -- '-v {{project}}_%s_data:/data/%s ' $s $s; done); docker run --rm --network none $m -v {{absolute_path(file)}}:/backup.tar.gz:ro {{alpine}} sh -c 'for d in /data/*; do find "$d" -mindepth 1 -delete; done && tar xzf /backup.tar.gz -C /data'
+
+# The only rehearsal of the one recipe that wipes state: backs up the smoke
+# stack's volumes, restores them, and asserts Grafana's database came back.
+# Needs a booted smoke stack (`just smoke`); `just smoke-down` cleans up after.
+# Not in CI: it is a rehearsal for an operator, and 35s per push buys nothing a
+# run after touching _backup/_restore does not.
+# Round-trip backup and restore on the smoke stack.
+restore-check:
+    @d=$(mktemp -d) && just _backup {{smoke_project}} "$d" && f=$(ls "$d"/monitoring-*.tar.gz) && just _restore {{smoke_project}} "$f" "$d" && docker run --rm --network none -v {{smoke_project}}_grafana_data:/g:ro {{alpine}} test -s /g/grafana.db && echo "Backup round-trip ok"; rc=$?; rm -rf "$d"; exit $rc
 
 # `--wait` does the readiness and crash-loop work: it blocks on the grafana and
 # prometheus healthchecks in compose.yml and fails if any container exits, so
@@ -205,37 +265,13 @@ restore file: _project-guard
 # A service with no healthcheck of its own (otel-collector, loki, tempo) still
 # fails the wait while it is restarting, so a crash-looping collector is caught.
 # That costs the full --wait-timeout to report, where an explicit exit check
-# failed immediately.
-# What `--wait` cannot see is provisioning. Grafana answers /api/health long
-# before it has read the provisioning dirs, and skips a broken dashboard or a
-# malformed alert group silently, so the assertions below cover that. They share
-# one loop because both land asynchronously.
-# Boot an isolated copy of the core stack and assert it provisioned everything.
+# failed immediately. What `--wait` cannot see is everything that lands after
+# /api/health answers: provisioning, scrapes, the data paths. scripts/smoke.sh
+# asserts those.
+# Boot an isolated copy of the core stack and assert it works end to end.
 smoke: (_queue-volume smoke_project)
     {{compose_smoke}} up -d --wait --wait-timeout 120
-    @want_dash="$(docker run --rm --network none -v ./dashboards:/dashboards:ro ghcr.io/jqlang/jq:1.8.1 -r .uid {{dash_paths}})"; want_rules=$(grep -h '^ *title:' config/grafana/alerting/*.yaml | wc -l); auth="user = \"admin:${GRAFANA_ADMIN_PASSWORD}\""; n=0; while :; do \
-        search=$(printf '%s\n' "$auth" | curl -sf -K - '{{smoke_url}}/api/search?type=dash-db&limit=5000') && rules=$(printf '%s\n' "$auth" | curl -sf -K - {{smoke_url}}/api/v1/provisioning/alert-rules) || { echo "error: Grafana API request failed. Check GRAFANA_ADMIN_PASSWORD, and that Grafana answers on {{smoke_url}}" >&2; exit 1; }; \
-        have=$(printf '%s' "$search" | docker run --rm -i ghcr.io/jqlang/jq:1.8.1 -r '.[].uid'); got=$(printf '%s' "$rules" | docker run --rm -i ghcr.io/jqlang/jq:1.8.1 length); \
-        missing=""; for uid in $want_dash; do printf '%s' "$have" | grep -qx "$uid" || missing="$missing $uid"; done; \
-        [ -z "$missing" ] && [ "$want_rules" = "$got" ] && break; \
-        n=$((n+3)); [ $n -ge 60 ] && { echo "error: not provisioned after 60s. Dashboards missing:${missing:- none}; alert rules $got/$want_rules (a malformed file provisions none of its group). See just smoke-logs" >&2; exit 1; }; \
-        sleep 3; \
-      done
-    # Provisioning proved the rules exist; this proves they can be delivered
-    # and that the data path works. Grafana expands $VAR in the alerting
-    # provisioning files. A Grafana that stopped doing so would store the
-    # literal name and every notification would fail silently (see
-    # contact-points.yaml). Then one OTLP log through the collector's bearer
-    # auth, asserted back out of Loki with the department label the collector
-    # stamps: the label chain the keystone rules key on, end to end.
-    @auth="user = \"admin:${GRAFANA_ADMIN_PASSWORD}\""; \
-      printf '%s\n' "$auth" | curl -sf -K - {{smoke_url}}/api/v1/provisioning/contact-points | docker run --rm -i ghcr.io/jqlang/jq:1.8.1 -e '[.[] | select(.uid | startswith("cp-")) | .settings.url] | all(startswith("$") | not)' >/dev/null || { echo "error: a contact point still carries a literal \$VAR; Grafana did not expand the alerting provisioning file" >&2; exit 1; }; \
-      ts="$(date +%s)000000000"; body='{"resourceLogs":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"smoke"}},{"key":"project","value":{"stringValue":"smoke"}},{"key":"env","value":{"stringValue":"ci"}}]},"scopeLogs":[{"logRecords":[{"timeUnixNano":"'"$ts"'","body":{"stringValue":"smoke"}}]}]}]}'; \
-      docker run --rm --network {{smoke_project}}_default alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b wget -qO- --header="Authorization: Bearer ${OTLP_AUTH_TOKEN}" --header='Content-Type: application/json' --post-data="$body" http://otel-collector:4318/v1/logs >/dev/null || { echo "error: the collector refused an OTLP log with the .env token" >&2; exit 1; }; \
-      n=0; until printf '%s\n' "$auth" | curl -sf -K - -G --data-urlencode "query={project=\"smoke\",env=\"ci\",department=\"${DEPARTMENT:-cml}\"}" '{{smoke_url}}/api/datasources/proxy/uid/loki/loki/api/v1/query_range' | grep -q '"smoke"'; do \
-        n=$((n+3)); [ $n -ge 60 ] && { echo "error: the smoke log never reached Loki with its department label; see just smoke-logs" >&2; exit 1; }; sleep 3; \
-      done
-    @echo "Stack healthy"
+    {{smoke_env}} SMOKE_URL=http://localhost:{{smoke_port}} SMOKE_PROJECT={{smoke_project}} scripts/smoke.sh
 
 # Logs from the smoke stack (its own project, so `just logs` will not show it).
 smoke-logs:
@@ -243,6 +279,6 @@ smoke-logs:
 
 # Safe: -p scopes it to the smoke project, so it cannot touch a real stack on
 # the same host.
-# Tear down the smoke stack and its throwaway volumes.
+# Tear down the smoke stack and its throwaway volumes (-t 1: nothing in it is worth a graceful stop).
 smoke-down:
-    {{compose_smoke}} down --remove-orphans --volumes
+    {{compose_smoke}} down --remove-orphans --volumes -t 1
