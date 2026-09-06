@@ -5,9 +5,9 @@ Date: 2026-07-03. Status: accepted (records a decision already in production).
 ## Context
 
 CML runs several long-lived research platforms (RELab and others) that need
-their logs, traces, and metrics in one place. The volume is modest — a handful
-of services at single-digit requests per second — but one small team maintains
-all of it, so whatever we run must stay cheap and auditable.
+their logs, traces, and metrics in one place. The volume is modest: a handful
+of services at single-digit requests per second. One small team maintains all of
+it, so whatever we run must stay cheap and auditable.
 
 ## Decision
 
@@ -38,12 +38,12 @@ endpoints via Cloudflare Tunnel; bind everything else to `127.0.0.1`.
 
 ## Consequences
 
-- The host is a single point of failure — acceptable, because the monitored
+- The host is a single point of failure. That is acceptable: the monitored
   platforms degrade gracefully when telemetry stops (OTLP export is
-  fire-and-forget) and the stack rebuilds from this repo in minutes.
+  fire-and-forget), and the stack rebuilds from this repo in minutes.
 - Local disk bounds retention (30d logs/metrics, 7d traces). The escape hatch,
   reached before any move to distributed ingest, is S3-compatible storage for
-  Loki and Tempo — see the appendix below.
+  Loki and Tempo (see the appendix below).
 - Every image is pinned and validated by `just check` in CI, so the stack
   stays reproducible.
 
@@ -51,8 +51,8 @@ endpoints via Cloudflare Tunnel; bind everything else to `127.0.0.1`.
 
 When local volumes stop fitting, Loki and Tempo move their object storage to
 any S3-compatible backend (Cloudflare R2, Backblaze B2, Hetzner, MinIO)
-without touching the collector, Prometheus, or any client project. Not wired
-up — don't start until credentials and a bucket exist. The concrete shape:
+without touching the collector, Prometheus, or any client project. It is not
+wired up: don't start until credentials and a bucket exist. The concrete shape:
 
 1. Create s3 variants of the configs. `config/loki.s3.yaml` replaces
    `common.storage.filesystem` with:
@@ -83,7 +83,7 @@ up — don't start until credentials and a bucket exist. The concrete shape:
 
 2. Add a `compose.storage-s3.yml` overlay to `COMPOSE_FILE` in `.env` that
    mounts the s3 config variants over the originals and re-declares each
-   service's `command` with `-config.expand-env=true` appended — neither Loki
+   service's `command` with `-config.expand-env=true` appended. Neither Loki
    nor Tempo expands `${...}` in its config by default, and compose replaces
    `command` wholesale rather than merging it. Pass `S3_ENDPOINT`,
    `S3_ACCESS_KEY_ID`, and `S3_SECRET_ACCESS_KEY` through each service's

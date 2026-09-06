@@ -3,3 +3,4 @@
 # in config/grafana/alerting/ every time yamlfmt runs.
 formatter:
   scan_folded_as_literal: true
+  retain_line_breaks_single: true

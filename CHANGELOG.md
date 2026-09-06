@@ -14,17 +14,19 @@ queries that had been measuring the wrong thing.
 
 - **Durable export queue**: the collector's send queues are file-backed on a
   new `otel_queue` volume, so telemetry buffered during a backend outage
-  survives a collector restart. `just up` (and `demo`, `smoke`)
-  prepares the volume's ownership; it is deliberately not backed up.
+  survives a collector restart. `just up` (and `demo`, `smoke`) prepares the
+  volume's ownership. `just backup` skips the volume, whose contents are
+  worthless by the time anyone restores.
 - **Full-stack scraping**: Prometheus now scrapes Grafana, Loki, and Tempo as
   well, so `TargetDown` covers every service.
 - **Per-user Grafana logins**, optional: `GRAFANA_JWT_AUTH` plus
   `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` make Grafana verify the
-  Cloudflare Access JWT — pinned to this app's `aud` tag, both values enforced
-  by the exposure guards — instead of everyone sharing the admin password.
+  Cloudflare Access JWT (pinned to this app's `aud` tag, with both values
+  enforced by the exposure guards) instead of everyone sharing the admin
+  password.
 - **Memory ceilings** (`mem_limit`) on every service, sized from observed
-  usage, so one runaway component cannot OOM the host; the spoke Alloy agent
-  gains a matching in-pipeline memory limiter so a long hub outage sheds load
+  usage, so one runaway component cannot OOM the host. The spoke Alloy agent
+  gains a matching in-pipeline memory limiter, so a long hub outage sheds load
   instead of OOM-killing the agent and its loss counters with it.
 - **Tighter container defaults**: every service drops all capabilities,
   node-exporter (which holds `pid: host` and the host filesystem) runs
@@ -51,7 +53,7 @@ queries that had been measuring the wrong thing.
 
 ### Changed
 
-- **Ingestion hostname is `otel.<domain>`**, not `otlp.<domain>` — one
+- **Ingestion hostname is `otel.<domain>`**, not `otlp.<domain>`: one
   department-wide name for machine telemetry alongside `grafana.<domain>` for
   humans. Every spoke's `OTEL_EXPORTER_OTLP_ENDPOINT` and any edge rule matching
   the old host have to follow.
@@ -60,13 +62,13 @@ queries that had been measuring the wrong thing.
   It is set at the hub rather than by the sender, so a spoke cannot ship
   telemetry attributed to someone else.
 - **Overlays are host config now**: `COMPOSE_FILE` in `.env` names the compose
-  file set, and every recipe — `up`, `logs`, `ps`, `backup` — acts on that
-  same set. `just up-tunnel` is gone; its exposure guards run automatically
+  file set, and every recipe (`up`, `logs`, `ps`, `backup`) acts on that same
+  set. `just up-tunnel` is gone; its exposure guards run automatically
   whenever the tunnel overlay is active.
 - **Loki indexes only the identity labels** (`service.name`, `department`,
-  `project`, `env`, `host.name` — the authoritative list lives in
+  `project`, `env`, `host.name`; the authoritative list lives in
   `config/loki.yaml`). Everything else, `service.instance.id` included, is
-  structured metadata now — one stream per service instead of one per sender
+  structured metadata now: one stream per service instead of one per sender
   restart. Existing streams keep their old labels until they age out (30 days).
 - **Dashboards are provisioned, not editable**: `dashboards/*.json` is mounted
   read-only and UI saves are off, making the files the source of truth.
@@ -84,7 +86,7 @@ queries that had been measuring the wrong thing.
 
 ### Removed
 
-- **Alertmanager**: alerting is Grafana-managed now (ADR 0002) — rules are
+- **Alertmanager**: alerting is Grafana-managed now (ADR 0002). Rules are
   provisioned from `config/grafana/alerting/`, and delivery still posts to
   `ALERT_WEBHOOK_URL`. Its `alertmanager_data` volume is left behind on an
   upgraded host; the runbook says when to remove it.
@@ -122,8 +124,8 @@ queries that had been measuring the wrong thing.
   need before `${...}` in their configs expands at all.
 - **`HighErrorRate` merged environments**: aggregating by job alone let a
   healthy prod service dilute a broken staging one sharing the job name below
-  the threshold; it now keys on job, project and env like the other
-  multi-tenant rules, and `HostDiskSpaceLow` says whose disk is filling.
+  the threshold. It now keys on job, project and env like the other
+  multi-tenant rules. `HostDiskSpaceLow` says whose disk is filling.
 - With `GRAFANA_JWT_AUTH=true` but no team domain set, Grafana fetched its
   JWT signing keys from a placeholder `cloudflareaccess.com` subdomain any
   Cloudflare customer could claim; the fallback is gone and the guards refuse
@@ -184,7 +186,7 @@ First tagged release: the stack is runnable, demoable, and validated in CI.
 
 ### Added
 
-- `just demo`: one-command demo: an auto-instrumented FastAPI service under
+- `just demo`: a one-command demo. An auto-instrumented FastAPI service under
   constant load populates Grafana with correlated traces, metrics, and logs.
 - `just check`: validation gate (compose syntax, Prometheus config + alert
   rules, collector config, YAML, workflows, dashboard JSON), all in pinned

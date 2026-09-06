@@ -1,6 +1,6 @@
 # Ingestion gateway. Receives OTLP from all projects and fans out to the
-# appropriate backend. Keep this config dumb — do shaping/enrichment at the
-# app edge (per-project collector) where it has context.
+# appropriate backend. Keep this config dumb. Shaping and enrichment belong at
+# the app edge (per-project collector), which has the context for them.
 
 # All senders must present "Authorization: Bearer <OTLP_AUTH_TOKEN>". The
 # OTLP hostnames are public behind the tunnel, so ingestion needs auth.
@@ -9,7 +9,7 @@ extensions:
     token: ${env:OTLP_AUTH_TOKEN}
   # Backs the exporter queues below so buffered telemetry survives collector
   # restarts (every image bump is one). The volume must be writable by the
-  # image's uid 10001 — `just up` handles that (see _queue-volume).
+  # image's uid 10001; `just up` chowns it (see _queue-volume in the justfile).
   file_storage:
     directory: /var/lib/otelcol/queue
     create_directory: true
@@ -40,7 +40,7 @@ processors:
 
   # Absolute, not percentage: percentages are read against the cgroup, and an
   # unbounded container makes that the whole host. Sized to the container's
-  # mem_limit (512m in compose.yml) — change both together.
+  # mem_limit (512m in compose.yml); keep the two in step.
   memory_limiter:
     check_interval: 2s
     limit_mib: 400
@@ -49,13 +49,12 @@ processors:
     timeout: 5s
     send_batch_size: 1024
 
-# The queue/retry settings are pinned rather than left to upstream defaults,
-# because the RUNBOOK's "buffers about five minutes" promise is exactly those
-# numbers. Defined once on the loki exporter, aliased onto the other two. The
-# queue is file-backed, so both a backend outage and a collector restart are
-# ridden out.
+# The queue and retry settings are pinned: the RUNBOOK's "buffers about five
+# minutes" promise is exactly these numbers. Defined once on the loki exporter
+# and aliased onto the other two. The queue is file-backed, so it rides out both
+# a backend outage and a collector restart.
 exporters:
-  # Loki 3.x accepts OTLP natively — no Promtail / loki exporter needed.
+  # Loki 3.x accepts OTLP natively, so no Promtail or loki exporter is needed.
   otlp_http/loki:
     endpoint: http://loki:3100/otlp
     sending_queue: &queue

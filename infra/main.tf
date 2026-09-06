@@ -7,12 +7,12 @@
 #   export CLOUDFLARE_API_TOKEN=...   # needs Tunnel:Edit, DNS:Edit, Access:Edit
 #   cd infra && tofu init
 #   ./generate-imports.sh > imports.tf   # the edge already exists: adopt it first
-#   tofu plan                            # expect "0 to add" — see the script's header
+#   tofu plan                            # expect "0 to add"; see the script's header
 #   tofu apply && rm imports.tf
 #   tofu output -raw tunnel_token     # → CLOUDFLARE_TUNNEL_TOKEN in ../.env
 #
-# State is local (infra/terraform.tfstate, gitignored) — one host, one
-# operator; move it to R2 the day a second operator exists.
+# State is local (infra/terraform.tfstate, gitignored): one host, one operator.
+# Move it to R2 the day a second operator exists.
 
 terraform {
   required_version = ">= 1.8"
@@ -106,7 +106,7 @@ resource "cloudflare_dns_record" "otel" {
 
 # Cloudflare Access in front of Grafana: email one-time-PIN at the edge, so
 # the public hostname never reaches Grafana's login page unauthenticated.
-# The ingestion hostname is NOT behind Access — machines authenticate with the
+# The ingestion hostname is NOT behind Access; machines authenticate with the
 # bearer token instead.
 resource "cloudflare_zero_trust_access_application" "grafana" {
   account_id       = var.account_id

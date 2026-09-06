@@ -49,7 +49,7 @@ for a missing detector.
 
 ## GPU hosts
 
-Include `compose.telemetry.gpu.yml` as well and set `GPU_METRICS=1`. The agent config
+Include `compose.telemetry.gpu.yml` as well. Set `GPU_METRICS=1`. The agent config
 already discovers the exporter by its Compose service label, so nothing else changes:
 a GPU host is an ordinary host plus one overlay.
 
@@ -70,9 +70,9 @@ Three GPU rules are worth adding per GPU host. They are not provisioned by
   time() - nvidia_smi_xid_last_timestamp_seconds{xid=~"48|62|64|74|79|95|119|120"} < 300
   ```
 
-XIDs are the GPU analogue of the crash-loop blind spot: a stuck kernel, an
-uncorrectable memory fault, or a card that has fallen off the bus are all invisible to
-utilisation graphs, and any of them silently kills a twelve-hour training run.
+XIDs are the GPU analogue of the crash-loop blind spot. A stuck kernel, an
+uncorrectable memory fault, and a card that has fallen off the bus are all invisible to
+utilisation graphs. Any of them silently kills a twelve-hour training run.
 
 Both dashboards are provisioned centrally: `dashboards/gpu.json` (vendored from
 [14574](https://grafana.com/grafana/dashboards/14574); its multi-GPU companion is
@@ -82,26 +82,28 @@ per-container resources. Nothing to import on the project host.
 ## Removing a project
 
 Deleting `config/grafana/alerting/project-<project>-<env>.yaml` is **not** enough.
-Grafana provisioning creates and updates rules from files but never deletes a rule
-because its file vanished, and the API refuses to delete a provisioned rule (409, even
+Grafana provisioning creates and updates rules from files, but it never deletes a rule
+because its file vanished. The API refuses to delete a provisioned rule too (409, even
 with `X-Disable-Provenance`). The orphan keeps evaluating and firing.
 
 Delete the file, then drop the rule explicitly with a one-off provisioning file:
 
 ```yaml
-# config/grafana/alerting/zz-delete.yaml — temporary
+# config/grafana/alerting/zz-delete.yaml (temporary)
 apiVersion: 1
 deleteRules:
   - orgId: 1
     uid: proj-silent-<project>-<env>
 ```
 
-Restart Grafana, confirm the group is gone, then remove `zz-delete.yaml` and restart
-again. It has to be temporary: left in place it would delete the rule again the next
-time `bootstrap.sh` renders it for that project.
+The file has to be temporary. Left in place, it would delete the rule again the next
+time `bootstrap.sh` renders it for that project. So:
 
-Finally re-run `bootstrap.sh` for a project that remains, so `coverage.yaml` stops
-listing the removed one as covered.
+1. Restart Grafana.
+2. Confirm the rule group is gone.
+3. Remove `zz-delete.yaml` and restart Grafana again.
+4. Re-run `bootstrap.sh` for a project that remains, so `coverage.yaml` stops listing
+   the removed one as covered.
 
 ## Budgets to plan against
 

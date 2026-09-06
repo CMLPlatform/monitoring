@@ -39,8 +39,8 @@ limits_config:
   # Keep ingestion generous for a single-tenant homelab.
   ingestion_rate_mb: 16
   ingestion_burst_size_mb: 32
-  # Index only the identity labels listed below — the authoritative set; the
-  # docs point here. Loki's default OTLP mapping also indexes
+  # Index only the identity labels listed below. That list is the authoritative
+  # set, and the docs point here. Loki's default OTLP mapping also indexes
   # service.instance.id, which mints a fresh stream on every sender restart;
   # it is now structured metadata, so query it with `| service_instance_id=...`.
   otlp_config:
@@ -49,9 +49,8 @@ limits_config:
       # handed. These five are the identity labels ADR 0002 requires on every
       # signal, and they have to be real stream LABELS, not structured metadata:
       # a `project` template variable is a stream selector, and label_values()
-      # cannot see structured metadata. All five are bounded — one value per
-      # department, project, environment and host — so indexing them costs
-      # nothing.
+      # cannot see structured metadata. All five are bounded (one value per
+      # department, project, environment and host), so indexing them is cheap.
       ignore_defaults: true
       attributes_config:
         - action: index_label

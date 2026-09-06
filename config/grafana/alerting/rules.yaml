@@ -15,8 +15,8 @@ groups:
     folder: Stack alerts
     interval: 1m
     rules:
-      # Always firing on purpose; its ARRIVAL is the proof. execErrState Error is
-      # deliberate: if the query breaks the heartbeat stops and the switch alarms.
+      # Always firing; its arrival is the proof. execErrState is Error so that a
+      # broken query stops the heartbeat and the switch alarms.
       - uid: watchdog-heartbeat
         title: Watchdog
         condition: FIRING
@@ -53,8 +53,8 @@ groups:
         annotations:
           summary: "Alerting-pipeline heartbeat (always firing)"
           description: "Routed to a dead man's switch. Investigate if the pings stop."
-      # Cannot page when the path it reports on is the broken one — that is what the
-      # heartbeat is for. It makes the state visible instead of silent.
+      # Cannot page when the path it reports on is the broken one; the heartbeat
+      # covers that case. It makes the state visible instead of silent.
       - uid: alert-delivery-failing
         title: AlertDeliveryFailing
         condition: FIRING

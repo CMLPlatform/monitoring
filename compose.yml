@@ -8,9 +8,9 @@ name: monitoring
 #   Grafana         →  UI
 #
 # Projects ship telemetry to this host via OTLP. Do NOT publish :4317/:4318
-# directly to the public internet — expose via Cloudflare Tunnel, Tailscale,
-# WireGuard, or similar. The port bindings below are bound to 127.0.0.1 so
-# they are only reachable from the host / tunnel sidecar.
+# directly to the public internet. Expose them via Cloudflare Tunnel, Tailscale,
+# WireGuard, or similar. The ports below bind to 127.0.0.1, so only the host and
+# the tunnel sidecar reach them.
 
 x-logging: &default-logging
   driver: json-file
@@ -23,11 +23,11 @@ x-security: &default-security
 
 # Every service also drops all capabilities and carries a pids limit: they all
 # run unprivileged uids, write only to named volumes, and need none. The client
-# templates go further (read-only roots) — see templates/compose.telemetry.yml.
+# templates go further, with read-only roots (templates/compose.telemetry.yml).
 
-# The mem_limit on each service is sized from observed steady-state usage with
-# generous headroom for bursts. They are ceilings, not reservations: the point
-# is that one runaway component can't OOM a host that also runs production.
+# Each mem_limit is sized from observed steady-state usage with headroom for
+# bursts. They are ceilings, not reservations: they stop one runaway component
+# from OOMing a host that also runs production.
 
 services:
   otel-collector:
@@ -46,7 +46,8 @@ services:
     volumes:
       - ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro
       # File-backed exporter queue: telemetry buffered during a backend outage
-      # survives a collector restart. Owned by uid 10001 — see justfile.
+      # survives a collector restart. The volume must be owned by uid 10001;
+      # `just up` chowns it.
       - otel_queue:/var/lib/otelcol/queue
     command: ["--config=/etc/otelcol/config.yaml"]
     environment:
@@ -83,7 +84,7 @@ services:
       - ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro
       - tempo_data:/var/tempo
     command: ["-config.file=/etc/tempo/tempo.yaml"]
-    # Distroless too — see the note on loki.
+    # Distroless too, so no healthcheck (see loki).
     mem_limit: 2g
     pids_limit: 1024
     cap_drop: [ALL]
@@ -125,8 +126,8 @@ services:
     command: ["--path.rootfs=/host"]
     pid: host
     mem_limit: 128m
-    # Hardened hardest of the set: it holds pid:host plus the whole host
-    # filesystem read-only, so a compromise here sees the most.
+    # Holds pid:host plus the whole host filesystem, so a compromise here sees
+    # more than in any other service: hence the tightest limits of the set.
     cap_drop: [ALL]
     read_only: true
     pids_limit: 64
@@ -134,7 +135,7 @@ services:
     volumes:
       # No rslave: unsupported on Docker Desktop; only affects mounts added after start.
       # No network_mode:host either, so node_network_* describes the container
-      # veth, not host NICs — fine while nothing alerts on network metrics.
+      # veth, not host NICs. Fine while nothing alerts on network metrics.
       - /:/host:ro
     networks: [backend]
     logging: *default-logging
@@ -159,28 +160,27 @@ services:
       - grafana_data:/var/lib/grafana
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
-      # Expanded by Grafana into the provisioned contact points. Alertmanager needed
-      # a url_file written by an entrypoint because it cannot read env vars; Grafana
-      # can, so that hack is gone along with its tmpfs.
+      # Expanded by Grafana into the provisioned contact points.
       ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
       HEARTBEAT_URL: ${HEARTBEAT_URL:-}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
       # Land on Stack Health instead of the empty welcome page.
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/stack-health.json
-      # Secure cookies would break plain-http localhost logins, so this is
-      # opt-in; with the tunnel overlay active, `just up` refuses to expose
-      # Grafana without it.
+      # Opt-in: secure cookies would break plain-http localhost logins. With
+      # the tunnel overlay active, `just up` refuses to expose Grafana without
+      # it.
       GF_SECURITY_COOKIE_SECURE: ${GRAFANA_COOKIE_SECURE:-false}
       GF_SECURITY_COOKIE_SAMESITE: strict
       # Opt-in per-user identity from Cloudflare Access, replacing the shared
       # admin login. Off until GRAFANA_JWT_AUTH=true plus CF_ACCESS_TEAM_DOMAIN
       # and CF_ACCESS_AUD are set in .env (the exposure guards enforce the
-      # pair); new users land on the org's default role (Viewer). No fallback
-      # domain: an unset team name must fail closed, not fetch signing keys
-      # from a claimable cloudflareaccess.com subdomain. The aud pin matters
-      # because the JWK set is team-wide — without it a token minted for any
-      # other Access app in the team is accepted here too.
+      # pair). New users land on the org's default role (Viewer).
+      # No fallback domain: an unset team name must fail closed, not fetch
+      # signing keys from a claimable cloudflareaccess.com subdomain.
+      # The aud pin matters because the JWK set is team-wide. Without it, a
+      # token minted for any other Access app in the team is accepted here
+      # too.
       GF_AUTH_JWT_ENABLED: ${GRAFANA_JWT_AUTH:-false}
       GF_AUTH_JWT_HEADER_NAME: Cf-Access-Jwt-Assertion
       GF_AUTH_JWT_JWK_SET_URL: https://${CF_ACCESS_TEAM_DOMAIN:-}.cloudflareaccess.com/cdn-cgi/access/certs
@@ -204,8 +204,8 @@ services:
 # Loki, Prometheus and Tempo have no authentication of their own, so they live
 # on a network with no gateway that only Grafana and the collector can reach.
 # cloudflared (compose.tunnel.yml) stays on `default`: its ingress list is
-# fetched from Cloudflare at runtime, and this is what keeps an edited ingress
-# from publishing a backend the token gate on the collector never sees.
+# fetched from Cloudflare at runtime, so an edited ingress cannot publish a
+# backend that skips the collector's token gate.
 networks:
   backend:
     internal: true
@@ -215,6 +215,6 @@ volumes:
   tempo_data:
   prometheus_data:
   grafana_data:
-  # Deliberately not in `just backup`: queue contents are seconds of in-flight
-  # telemetry, worthless by restore time.
+  # Not in `just backup`: queue contents are seconds of in-flight telemetry,
+  # worthless by restore time.
   otel_queue:

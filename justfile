@@ -50,7 +50,7 @@ _queue-volume project:
     @docker run --rm --network none -v {{project}}_otel_queue:/q alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b chown 10001:10001 /q
 
 # Overlays are host config: COMPOSE_FILE in .env names the file set (see
-# .env.example), and every recipe here — up, down, logs, ps, backup — acts on
+# .env.example), and every recipe here (up, down, logs, ps, backup) acts on
 # that same set. With the tunnel overlay active, this refuses to start until the
 # exposure guards pass.
 # Start the stack (Grafana at http://localhost:3000).
@@ -70,12 +70,12 @@ _expose-guards:
     @[ "${GRAFANA_COOKIE_SECURE:-false}" = "true" ] || { echo "error: GRAFANA_COOKIE_SECURE must be true when Grafana is served over HTTPS; set it in .env" >&2; exit 1; }
     @[ "${GRAFANA_JWT_AUTH:-false}" != "true" ] || { [ -n "${CF_ACCESS_TEAM_DOMAIN:-}" ] && [ -n "${CF_ACCESS_AUD:-}" ]; } || { echo "error: GRAFANA_JWT_AUTH=true needs CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD in .env (cd infra && tofu output -raw grafana_access_aud)" >&2; exit 1; }
     @[ -n "${HEARTBEAT_URL:-}" ] || echo "WARNING: HEARTBEAT_URL is empty; the stack goes live without a dead-man's switch" >&2
-    @[ -n "${ALERT_WEBHOOK_URL:-}" ] || { echo "error: ALERT_WEBHOOK_URL is empty; every alert would fire into an empty webhook URL and be dropped. The heartbeat keeps pinging either way, so this failure looks healthy from the outside — set it, or comment out this guard deliberately" >&2; exit 1; }
+    @[ -n "${ALERT_WEBHOOK_URL:-}" ] || { echo "error: ALERT_WEBHOOK_URL is empty; every alert would fire into an empty webhook URL and be dropped. The heartbeat keeps pinging either way, so this failure looks healthy from the outside. Set it, or comment out this guard" >&2; exit 1; }
 
 down:
     docker compose down --remove-orphans
 
-# See compose.demo.yml; watch it arrive at http://localhost:3002 (DEMO_PORT) —
+# See compose.demo.yml; watch it arrive at http://localhost:3002 (DEMO_PORT):
 # its own Grafana, not the one `just up` serves on :3000.
 # Core stack plus a demo telemetry source, isolated from any running stack.
 demo: (_queue-volume demo_project)
@@ -116,7 +116,7 @@ pull:
 tail service:
     docker compose logs -f --no-log-prefix {{service}} | jq -R 'fromjson? // .'
 
-# All validators run in containers — no host installs, no network. The
+# All validators run in containers: no host installs, no network. The
 # promtool/otelcol images are read from compose.yml so they can't drift from
 # the versions the stack actually runs.
 # Validate every config in the repo.
@@ -133,7 +133,7 @@ check:
     # fails on a client machine, after vendoring.
     ENVIRONMENT=dummy PROJECT=dummy COMPOSE_PROJECT_NAME=dummy OTEL_EXPORTER_OTLP_ENDPOINT=https://dummy OTLP_AUTH_TOKEN=dummy docker compose -f templates/compose.telemetry.yml -f templates/compose.telemetry.gpu.yml config -q
     # The exposure guards, both ways: a fully set .env must pass, and each
-    # documented default must be refused on its own. Nothing else runs them —
+    # documented default must be refused on its own. Nothing else runs them:
     # CI never sets COMPOSE_FILE to the tunnel overlay.
     @good="OTLP_AUTH_TOKEN=t GRAFANA_ADMIN_PASSWORD=p GRAFANA_ROOT_URL=https://g.example GRAFANA_COOKIE_SECURE=true GRAFANA_JWT_AUTH=true CF_ACCESS_TEAM_DOMAIN=d CF_ACCESS_AUD=a HEARTBEAT_URL=https://h ALERT_WEBHOOK_URL=https://w"; \
       env $good just _expose-guards; \
@@ -147,22 +147,22 @@ check:
       docker run --rm --network none -v ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro $(echo "$images" | grep grafana/tempo) -config.file=/etc/tempo/tempo.yaml -config.verify=true
     # line-length at 120, not the default 80: digest-pinned image refs need
     # ~130 but count as non-breakable mappings. The rendered project-*/coverage
-    # rules are ignored — machine-written by bootstrap.sh, their expr lines
-    # grow with every onboarded project.
+    # rules are ignored: bootstrap.sh writes them, and their expr lines grow
+    # with every onboarded project.
     docker run --rm --network none -v .:/code:ro pipelinecomponents/yamllint:0.35.13 yamllint -d '{extends: relaxed, rules: {line-length: {max: 120, allow-non-breakable-inline-mappings: true}}, ignore: [.git/, backups/, infra/.terraform/, config/grafana/alerting/project-*.yaml, config/grafana/alerting/coverage.yaml]}' .
     docker run --rm --network none -v .:/repo:ro -w /repo rhysd/actionlint:1.7.12 -color
     docker run --rm --network none -v .:/mnt:ro koalaman/shellcheck:v0.11.0 bootstrap.sh templates/run_scheduled.sh infra/generate-imports.sh
     docker run --rm --network none -v ./demo:/demo:ro ghcr.io/astral-sh/ruff:0.14.2 check --no-cache /demo
     docker run --rm --network none -v ./infra:/infra:ro -w /infra ghcr.io/opentofu/opentofu:1.12.3 fmt -check
     docker run --rm --network none -v ./dashboards:/dashboards:ro ghcr.io/jqlang/jq:1.8.1 empty {{dash_paths}}
-    # The one config vendored verbatim onto every project host; a syntax error
-    # here otherwise first surfaces as a crash-looping agent on a client machine.
-    # Image ref matches templates/compose.telemetry.yml — keep them in step.
     # Secrets that reached git history. Scans commits, not the working tree, so
-    # it sees exactly what is in the repo and never the gitignored .env — a
+    # it sees exactly what is in the repo and never the gitignored .env. A
     # working-tree scan flags .env's real tokens and fails on every dev machine.
     # Needs full history: a shallow CI clone has one commit and passes vacuously.
     docker run --rm --network none -v .:/repo:ro zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f git --redact --no-banner /repo
+    # The one config vendored verbatim onto every project host; a syntax error
+    # here otherwise first surfaces as a crash-looping agent on a client machine.
+    # Image ref matches templates/compose.telemetry.yml; keep them in step.
     docker run --rm --network none -v ./templates/alloy/config.alloy:/etc/alloy/config.alloy:ro -e COMPOSE_PROJECT_NAME=dummy -e ENVIRONMENT=dummy -e PROJECT=dummy -e OTEL_EXPORTER_OTLP_ENDPOINT=https://dummy -e OTLP_AUTH_TOKEN=dummy -e TELEMETRY_EDGE_KEY= grafana/alloy:v1.18.1@sha256:0f4434c92b3e6cdac38bb129b344e1790c246f7b6e2eaffcc16a5fa363240e33 validate /etc/alloy/config.alloy
 
 # Runs against a copy of the sources only: state and tfvars never enter the
@@ -175,8 +175,8 @@ infra-validate:
 fmt:
     yamlfmt .
 
-# The tarball is mode 0600 — it contains the Grafana DB and webhook secrets;
-# copy it off-host, keep it private. Services are paused during the copy and
+# The tarball is mode 0600: it contains the Grafana DB and webhook secrets, so
+# copy it off-host and keep it private. Services are paused during the copy and
 # unpaused unconditionally afterwards: `pause` is per-container and can fail
 # halfway, so an unpause reached only on success would leave the stack frozen.
 # Snapshot all stateful volumes to backups/<timestamp>.tar.gz.
@@ -197,43 +197,43 @@ restore file: _project-guard
     mkdir -p backups
     docker run --rm --network none {{backup_mounts}} -v ./backups:/backups alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b sh -c 'umask 077 && tar czf /backups/pre-restore-$(date +%Y%m%d-%H%M%S).tar.gz -C /data .'
     docker run --rm --network none {{backup_mounts}} -v {{absolute_path(file)}}:/backup.tar.gz:ro alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b sh -c 'for d in /data/*; do find "$d" -mindepth 1 -delete; done && tar xzf /backup.tar.gz -C /data'
-    @echo "Restored {{file}} — run 'just up' to start the stack."
+    @echo "Restored {{file}}. Run 'just up' to start the stack."
 
 # `--wait` does the readiness and crash-loop work: it blocks on the grafana and
 # prometheus healthchecks in compose.yml and fails if any container exits, so
 # there is no poll loop or `ps --status=exited` check to hand-roll here.
-# Measured, because it is not obvious: a service with no healthcheck of its own
-# (otel-collector, loki, tempo) still fails the wait while it is restarting, so
-# a crash-looping collector is caught. It costs the full --wait-timeout to
-# report, where the old explicit check failed immediately.
-# What it cannot see is provisioning — Grafana answers /api/health long before
-# it has read the provisioning dirs, and skips a broken dashboard or a malformed
-# alert group silently — so that part is asserted below, on a single loop
-# because both land asynchronously.
+# A service with no healthcheck of its own (otel-collector, loki, tempo) still
+# fails the wait while it is restarting, so a crash-looping collector is caught.
+# That costs the full --wait-timeout to report, where an explicit exit check
+# failed immediately.
+# What `--wait` cannot see is provisioning. Grafana answers /api/health long
+# before it has read the provisioning dirs, and skips a broken dashboard or a
+# malformed alert group silently, so the assertions below cover that. They share
+# one loop because both land asynchronously.
 # Boot an isolated copy of the core stack and assert it provisioned everything.
 smoke: (_queue-volume smoke_project)
     {{compose_smoke}} up -d --wait --wait-timeout 120
     @want_dash="$(docker run --rm --network none -v ./dashboards:/dashboards:ro ghcr.io/jqlang/jq:1.8.1 -r .uid {{dash_paths}})"; want_rules=$(grep -h '^ *title:' config/grafana/alerting/*.yaml | wc -l); auth="user = \"admin:${GRAFANA_ADMIN_PASSWORD}\""; n=0; while :; do \
-        search=$(printf '%s\n' "$auth" | curl -sf -K - '{{smoke_url}}/api/search?type=dash-db&limit=5000') && rules=$(printf '%s\n' "$auth" | curl -sf -K - {{smoke_url}}/api/v1/provisioning/alert-rules) || { echo "error: Grafana API request failed — wrong GRAFANA_ADMIN_PASSWORD, or Grafana is not answering on {{smoke_url}}" >&2; exit 1; }; \
+        search=$(printf '%s\n' "$auth" | curl -sf -K - '{{smoke_url}}/api/search?type=dash-db&limit=5000') && rules=$(printf '%s\n' "$auth" | curl -sf -K - {{smoke_url}}/api/v1/provisioning/alert-rules) || { echo "error: Grafana API request failed. Check GRAFANA_ADMIN_PASSWORD, and that Grafana answers on {{smoke_url}}" >&2; exit 1; }; \
         have=$(printf '%s' "$search" | docker run --rm -i ghcr.io/jqlang/jq:1.8.1 -r '.[].uid'); got=$(printf '%s' "$rules" | docker run --rm -i ghcr.io/jqlang/jq:1.8.1 length); \
         missing=""; for uid in $want_dash; do printf '%s' "$have" | grep -qx "$uid" || missing="$missing $uid"; done; \
         [ -z "$missing" ] && [ "$want_rules" = "$got" ] && break; \
-        n=$((n+3)); [ $n -ge 60 ] && { echo "error: not provisioned after 60s — dashboards missing:${missing:- none}; alert rules $got/$want_rules (a malformed file provisions none of its group). See just smoke-logs" >&2; exit 1; }; \
+        n=$((n+3)); [ $n -ge 60 ] && { echo "error: not provisioned after 60s. Dashboards missing:${missing:- none}; alert rules $got/$want_rules (a malformed file provisions none of its group). See just smoke-logs" >&2; exit 1; }; \
         sleep 3; \
       done
     # Provisioning proved the rules exist; this proves they can be delivered
     # and that the data path works. Grafana expands $VAR in the alerting
-    # provisioning files — a Grafana that stopped doing so would store the
+    # provisioning files. A Grafana that stopped doing so would store the
     # literal name and every notification would fail silently (see
     # contact-points.yaml). Then one OTLP log through the collector's bearer
     # auth, asserted back out of Loki with the department label the collector
     # stamps: the label chain the keystone rules key on, end to end.
     @auth="user = \"admin:${GRAFANA_ADMIN_PASSWORD}\""; \
-      printf '%s\n' "$auth" | curl -sf -K - {{smoke_url}}/api/v1/provisioning/contact-points | docker run --rm -i ghcr.io/jqlang/jq:1.8.1 -e '[.[] | select(.uid | startswith("cp-")) | .settings.url] | all(startswith("$") | not)' >/dev/null || { echo "error: a contact point still carries a literal \$VAR — Grafana did not expand the alerting provisioning file" >&2; exit 1; }; \
+      printf '%s\n' "$auth" | curl -sf -K - {{smoke_url}}/api/v1/provisioning/contact-points | docker run --rm -i ghcr.io/jqlang/jq:1.8.1 -e '[.[] | select(.uid | startswith("cp-")) | .settings.url] | all(startswith("$") | not)' >/dev/null || { echo "error: a contact point still carries a literal \$VAR; Grafana did not expand the alerting provisioning file" >&2; exit 1; }; \
       ts="$(date +%s)000000000"; body='{"resourceLogs":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"smoke"}},{"key":"project","value":{"stringValue":"smoke"}},{"key":"env","value":{"stringValue":"ci"}}]},"scopeLogs":[{"logRecords":[{"timeUnixNano":"'"$ts"'","body":{"stringValue":"smoke"}}]}]}]}'; \
       docker run --rm --network {{smoke_project}}_default alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b wget -qO- --header="Authorization: Bearer ${OTLP_AUTH_TOKEN}" --header='Content-Type: application/json' --post-data="$body" http://otel-collector:4318/v1/logs >/dev/null || { echo "error: the collector refused an OTLP log with the .env token" >&2; exit 1; }; \
       n=0; until printf '%s\n' "$auth" | curl -sf -K - -G --data-urlencode "query={project=\"smoke\",env=\"ci\",department=\"${DEPARTMENT:-cml}\"}" '{{smoke_url}}/api/datasources/proxy/uid/loki/loki/api/v1/query_range' | grep -q '"smoke"'; do \
-        n=$((n+3)); [ $n -ge 60 ] && { echo "error: the smoke log never reached Loki with its department label — see just smoke-logs" >&2; exit 1; }; sleep 3; \
+        n=$((n+3)); [ $n -ge 60 ] && { echo "error: the smoke log never reached Loki with its department label; see just smoke-logs" >&2; exit 1; }; sleep 3; \
       done
     @echo "Stack healthy"
 

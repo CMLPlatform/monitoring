@@ -6,8 +6,8 @@ global:
 
 storage:
   tsdb:
-    # OTel's guide requires this for OTLP ingestion — without it, late
-    # batches are silently dropped.
+    # Required for OTLP ingestion: without it, late batches are silently
+    # dropped.
     out_of_order_time_window: 30m
 
 otlp:

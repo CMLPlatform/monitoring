@@ -11,6 +11,7 @@ updates:
     groups:
       hub-patches:
         update-types: ["patch"]
+
   # The spoke images every project host runs (Alloy, socket proxy, GPU
   # exporter). Digest pins keep them reproducible, not patched.
   - package-ecosystem: "docker-compose"
@@ -20,6 +21,7 @@ updates:
     groups:
       spoke-patches:
         update-types: ["patch"]
+
   # The demo is a toy: one PR per month for all of it.
   - package-ecosystem: "docker"
     directory: "/demo"
@@ -28,6 +30,7 @@ updates:
     groups:
       demo:
         patterns: ["*"]
+
   - package-ecosystem: "pip"
     directory: "/demo"
     schedule:
@@ -35,12 +38,14 @@ updates:
     groups:
       demo:
         patterns: ["*"]
+
   # Cloudflare provider for infra/. Dependabot bumps the constraint in
-  # main.tf but not the hashes in .terraform.lock.hcl — see the runbook.
+  # main.tf but not the hashes in .terraform.lock.hcl; see the runbook.
   - package-ecosystem: "terraform"
     directory: "/infra"
     schedule:
       interval: "monthly"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

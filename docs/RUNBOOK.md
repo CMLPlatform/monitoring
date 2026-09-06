@@ -18,10 +18,10 @@ just restart <service>
 ```
 
 Two alerts point here. `TargetDown` fires after two minutes when
-Prometheus cannot scrape a target. It scrapes every service — collector,
-node-exporter, Grafana, Loki, Tempo, and itself — so the alert names
-whichever one went quiet. `OtelExportFailures` means the collector is up but
-a backend is rejecting its data: read that backend's logs, not the
+Prometheus cannot scrape a target. Prometheus scrapes every service
+(collector, node-exporter, Grafana, Loki, Tempo, and itself), so the alert
+names whichever one went quiet. `OtelExportFailures` means the collector is up
+but a backend is rejecting its data: read that backend's logs, not the
 collector's.
 
 ## Disk filling up (`HostDiskSpaceLow`)
@@ -30,9 +30,9 @@ Retention is only partially size-bounded:
 
 | Data | Time limit | Size limit |
 | --- | --- | --- |
-| Container stdout logs | — | json-file 10m × 3 per service |
+| Container stdout logs | none | json-file 10m × 3 per service |
 | Prometheus TSDB | 30d | 15GB (`--storage.tsdb.retention.size`) |
-| Loki chunks | 30d | none — Loki cannot cap total size |
+| Loki chunks | 30d | none (Loki cannot cap total size) |
 | Tempo blocks | 7d | none |
 
 Loki and Tempo have no total-size knob, so the disk alert at 80% is the
@@ -81,20 +81,21 @@ host is the intended setup.
   `OTEL_EXPORTER_OTLP_HEADERS`. Senders still on the old token get 401s
   (export errors on their side) until updated. A running demo overlay counts
   as a sender: re-run `just demo` to recreate it with the new token.
-  The token is shared and the collector does not verify `project`/`env`
-  against the sender, so every project host is trusted with every other
-  project's telemetry identity: a compromised host could spoof another
-  project's labels (and so quiet its silence alarm). Per-project tokens with
-  a collector-side identity check are the upgrade if that trust ever stops
-  being acceptable.
+  The token is shared, and the collector does not check `project`/`env`
+  against the sender. Every project host is therefore trusted with every
+  other project's telemetry identity. A compromised host could spoof another
+  project's labels, and so quiet that project's silence alarm. Per-project
+  tokens with a collector-side identity check are the upgrade if that trust
+  ever stops being acceptable.
 - **Tunnel token:** the tunnel is OpenTofu-managed, so read the token back
   from there, not from the dashboard. Rotate the tunnel secret in Cloudflare
-  Zero Trust, then `cd infra && tofu apply` (which refreshes the token data
-  source) and `tofu output -raw tunnel_token`. To rotate entirely from code,
+  Zero Trust. Then run `cd infra && tofu apply`, which refreshes the token
+  data source. Then read the new value with `tofu output -raw tunnel_token`.
+  To rotate entirely from code instead, expect ingestion and Grafana to be
+  unreachable for the minute or so it takes.
   `tofu apply -replace=cloudflare_zero_trust_tunnel_cloudflared.monitoring`
-  builds a new tunnel and repoints both CNAMEs at it; ingestion and Grafana
-  are unreachable for the minute or so that takes. Either way: new token into
-  `CLOUDFLARE_TUNNEL_TOKEN` in `.env`, then `just up`.
+  builds a new tunnel and repoints both CNAMEs at it. Either way: new token
+  into `CLOUDFLARE_TUNNEL_TOKEN` in `.env`, then `just up`.
 - **Grafana admin password:** change `GRAFANA_ADMIN_PASSWORD` in `.env`,
   then `docker compose up -d grafana`.
 - **Alert webhook and heartbeat URLs:** both are capability URLs, so the URL
@@ -170,7 +171,7 @@ cd infra && tofu apply
   so for an urgent revocation also revoke the session in Zero Trust. At
   least one address has to remain; the variable's validation rejects an empty
   list, which would lock everyone out. Before adding people, check your plan's
-  Zero Trust seat limit in the Cloudflare dashboard — Cloudflare does not
+  Zero Trust seat limit in the Cloudflare dashboard. Cloudflare does not
   document the free-plan figure.
 - **Per-user Grafana logins:** by default everyone who clears Access shares
   the one admin password. Set `GRAFANA_JWT_AUTH=true`,
@@ -178,8 +179,8 @@ cd infra && tofu apply
   `tofu output -raw grafana_access_aud`) in `.env` to make Grafana verify the
   Access JWT instead: each address signs in as itself, and new ones land on
   the org's default role (Viewer). The aud pin is required because the JWK
-  set is team-wide — without it a token minted for any other Access app in
-  the team would be accepted here too; the `just up` exposure guards refuse
+  set is team-wide. Without it, a token minted for any other Access app in
+  the team would be accepted here too. The `just up` exposure guards refuse
   to start JWT auth without both values.
 - **Adding a hostname:** add an `ingress` entry pointing at the service's
   container port, plus a matching `cloudflare_dns_record`. The catch-all
@@ -190,17 +191,18 @@ cd infra && tofu apply
   app. Run `infra/generate-imports.sh > infra/imports.tf` first, check the
   plan reads 0 to add for the imported resources, apply, then delete
   `imports.tf`; it is a one-time instruction and gitignored.
-- **State lives on this host only, and it is a secret.** `infra/terraform.tfstate`
-  is gitignored and `just backup` does not touch it. Copy it off-host next to
-  the backups, with the same care as `.env`: state stores the tunnel secret
-  and every API response in plain text, so whoever can read it can run the
-  tunnel. Losing it orphans the Cloudflare resources: they keep running, but the next
-  apply creates duplicates, and recovery is `tofu import` by hand.
+- **State lives on this host only, and it is a secret.** State stores the
+  tunnel secret and every API response in plain text, so whoever can read it
+  can run the tunnel. `infra/terraform.tfstate` is gitignored, and
+  `just backup` does not touch it. Copy it off-host next to the backups, with
+  the same care as `.env`. Losing it orphans the Cloudflare resources: they
+  keep running, but the next apply creates duplicates, and recovery is
+  `tofu import` by hand.
 
 ## Upgrading images
 
-Dependabot opens PRs that bump the pinned versions, and CI runs `just
-check` on each one. The validators (promtool, otelcol) read their image
+Dependabot opens PRs that bump the pinned versions, and CI runs
+`just check` on each one. The validators (promtool, otelcol) read their image
 versions from `compose.yml`, so every bump is checked with the exact
 binaries the stack will run. A new version that changes its config syntax
 fails CI before it reaches the host. Patch bumps arrive grouped, one PR for
@@ -222,8 +224,9 @@ Dependabot ecosystem covers a justfile, so bump those by hand.
 After merging, on the host: `git pull && just pull && just up`. Coming from
 a release that still ran Alertmanager, its volume outlives the service:
 `docker volume rm monitoring_alertmanager_data` once the new stack is up, and
-`config/alertmanager.yaml` can go with it. Use `just
-up`, not `docker compose up -d`: the recipe first chowns the collector's
-queue volume to uid 10001. Where that volume is new, a raw compose up leaves
-it root-owned and the collector crash-looping on a queue directory it cannot
-write.
+`config/alertmanager.yaml` can go with it.
+
+Use `just up`, not `docker compose up -d`. The recipe first chowns the
+collector's queue volume to uid 10001. Where that volume is new, a raw compose
+up leaves it root-owned and the collector crash-looping on a queue directory it
+cannot write.

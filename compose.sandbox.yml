@@ -1,14 +1,15 @@
 # Isolation overlay shared by `just smoke` and `just demo`.
 #
 # Smoke runs the core stack under its own compose project name (see the justfile),
-# which already gives it separate containers and volumes. The one thing a project
-# name cannot separate is host port bindings: compose.yml publishes 3000, 4317 and
-# 4318 on 127.0.0.1, so a smoke run on a host that is already serving the stack
-# would fail to bind — or, worse on a host where the stack is down, quietly answer
-# on the port something else expects to own.
+# which already gives it separate containers and volumes. Host port bindings are
+# the one thing a project name cannot separate: compose.yml publishes 3000, 4317
+# and 4318 on 127.0.0.1. A smoke run on a host that already serves the stack
+# would fail to bind, and on a host where the stack is down it would quietly
+# answer on a port something else expects to own.
 #
-# So: drop the ingestion ports entirely (nothing ships telemetry during a smoke
-# run) and move Grafana to SANDBOX_PORT, which the assertions in `just smoke` and `just demo` probe.
+# This overlay drops the ingestion ports entirely (nothing ships telemetry during
+# a smoke run) and moves Grafana to SANDBOX_PORT, which the assertions in
+# `just smoke` and `just demo` probe.
 services:
   otel-collector:
     ports: !override []

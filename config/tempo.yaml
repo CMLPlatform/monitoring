@@ -21,16 +21,15 @@ storage:
     local:
       path: /var/tempo/blocks
 
-# No metrics_generator: RED comes from the applications' own OTLP metrics (ADR 0002).
-# Deriving it from traces as well meant two producers for one number, a Prometheus
-# remote-write path that existed for nothing else, and a cardinality backstop to
-# maintain. Tempo is trace storage now, which makes it disposable on its next
-# breaking upgrade.
+# No metrics_generator: RED comes from the applications' own OTLP metrics (ADR
+# 0002). Deriving it from traces too would give two producers for one number.
+# Tempo stores traces and nothing else.
 
 overrides:
   defaults:
     compaction:
-      block_retention: 168h # 7 days — traces are bulky, tune to disk budget
+      # 7 days. Traces are bulky; tune this to the disk budget.
+      block_retention: 168h
 
 usage_report:
   reporting_enabled: false

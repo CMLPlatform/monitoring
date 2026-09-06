@@ -1,6 +1,6 @@
-# compose.telemetry.gpu.yml — VENDORED from the central monitoring repo at a pinned tag.
+# compose.telemetry.gpu.yml, VENDORED from the CML monitoring repository at a pinned tag.
 #
-# OPTIONAL OVERLAY — GPU metrics on a host with NVIDIA hardware.
+# OPTIONAL OVERLAY: GPU metrics on a host with NVIDIA hardware.
 #
 # Adds a GPU exporter that the Alloy agent discovers and scrapes automatically. Include
 # it only on hosts that have a card:
@@ -9,17 +9,16 @@
 #
 # or set GPU_METRICS=1 in the host's root `.env` and let the deploy recipes include it.
 #
-# Why nvidia_gpu_exporter and not dcgm-exporter, which is the reflex answer: DCGM's
-# advantage is its DCGM_FI_PROF_* profiling fields, and NVIDIA document those as
-# datacentre-only hardware features. On a GeForce card they are simply absent, which
-# removes the entire reason to prefer DCGM while keeping its SYS_ADMIN requirement and
-# its 2021-vintage dashboard. Consumer cards also have no framebuffer ECC, so the ECC
-# fields are empty too. What remains is the NVML field set, which is exactly what this
-# exporter reads.
+# Why nvidia_gpu_exporter and not dcgm-exporter: DCGM's advantage is its DCGM_FI_PROF_*
+# profiling fields, which NVIDIA document as datacentre-only hardware features. On a
+# GeForce card they are absent, which removes the reason to prefer DCGM while keeping its
+# SYS_ADMIN requirement and its 2021-vintage dashboard. Consumer cards also have no
+# framebuffer ECC, so the ECC fields are empty too. What remains is the NVML field set,
+# which is what this exporter reads.
 #
-# If the department ever buys datacentre silicon (A100/H100/L40S), profiling, ECC, NVLink and MIG
-# all light up and dcgm-exporter becomes strictly better. That is a one-container swap
-# plus one dashboard — do not pre-build for it.
+# On datacentre silicon (A100/H100/L40S), profiling, ECC, NVLink and MIG all light up and
+# dcgm-exporter becomes the better choice. That is a one-container swap plus one
+# dashboard; do not pre-build for it.
 
 services:
   nvidia-gpu-exporter:

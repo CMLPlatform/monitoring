@@ -9,7 +9,7 @@ project runs; a Python/FastAPI service needs no code changes at all.
 
 | | |
 | --- | --- |
-| Production (via tunnel) | `https://otel.<domain>` — OTLP **HTTP** (`http/protobuf`) only |
+| Production (via tunnel) | `https://otel.<domain>`, OTLP **HTTP** (`http/protobuf`) only |
 | Private network / same host | `<host>:4317` (gRPC) or `<host>:4318` (HTTP) |
 | Auth | `Authorization: Bearer <OTLP_AUTH_TOKEN>` (ask the stack operator) |
 
@@ -41,7 +41,7 @@ HTTP server metrics (`http_server_request_duration_seconds`), which the
 auto-instrumentation below emits out of the box. Traces add per-request
 drill-down on top.
 
-## Template 1 — Python/FastAPI, zero code changes
+## Template 1: Python/FastAPI, zero code changes
 
 ```sh
 pip install opentelemetry-distro opentelemetry-exporter-otlp opentelemetry-instrumentation-fastapi
@@ -64,7 +64,7 @@ trace context, with no OTel code in the app. A working example is this
 repo's [`demo/`](../demo/) service plus
 [`compose.demo.yml`](../compose.demo.yml).
 
-## Template 2 — any language, plain OTLP
+## Template 2: any language, plain OTLP
 
 Every OpenTelemetry SDK understands the same four environment variables:
 
@@ -78,9 +78,9 @@ OTEL_RESOURCE_ATTRIBUTES=env=prod
 ## Container logs, host metrics, per-container metrics
 
 One Grafana Alloy agent per host ships everything the application cannot report about
-itself: other containers' stdout, host resources, container lifecycle. It is vendored
-from `templates/`, not written per project, and rides the same OTLP endpoint and token
-as Templates 1 and 2 — no second hostname, no second credential.
+itself: other containers' stdout, host resources, container lifecycle. The agent config
+is vendored from `templates/`, not written per project. It rides the same OTLP endpoint
+and token as Templates 1 and 2: no second hostname, no second credential.
 
-Run `./bootstrap.sh <project> <env>` on the monitoring host and follow what it prints.
-See [templates/README.md](../templates/README.md).
+Run `./bootstrap.sh <project> <env>` on the monitoring host. Follow what it prints. See
+[templates/README.md](../templates/README.md).

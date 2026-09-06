@@ -1,12 +1,12 @@
-# Rendered by bootstrap.sh into config/grafana/alerting/, flat — Grafana's alerting
-# provisioner does not recurse. Do not edit the rendered files by hand: re-run
+# Rendered by bootstrap.sh into config/grafana/alerting/, flat: Grafana's alerting
+# provisioner does not recurse. Do not edit the rendered files by hand. Re-run
 # bootstrap.sh, or edit this template so every project gets the fix.
 #
-# This is the keystone: nothing on a spoke can detect its own absence. A project that
-# ships telemetry but never had bootstrap.sh run is silently uncovered — that is what
-# the ProjectsUncovered rule in coverage.yaml exists to catch, one level up.
+# This is the keystone: nothing on a project host can detect its own absence. A project
+# that ships telemetry but never had bootstrap.sh run is silently uncovered, which is
+# what the ProjectsUncovered rule in coverage.yaml catches one level up.
 #
-# The marker below is read back by bootstrap.sh to regenerate that coverage rule. It is
+# bootstrap.sh reads the marker below back to regenerate that coverage rule. It carries
 # the pair, not the filename, because both halves may contain a dash: `project-a-b-c`
 # cannot be split back into the project and env that produced it.
 # COVERS: relab staging
@@ -19,8 +19,8 @@ groups:
     folder: Stack alerts
     interval: 1m
     rules:
-      # A label-only selector, deliberately not target_info: agents attach the identity
-      # labels to the series themselves, so target_info carries none of them. absent()
+      # A label-only selector, not target_info: agents attach the identity labels to
+      # the series themselves, so target_info carries none of them. absent()
       # yields nothing while telemetry flows, so NoData is the HEALTHY state and must
       # map to OK or the rule reads inverted.
       - uid: proj-silent-relab-staging
