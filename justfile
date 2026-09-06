@@ -37,10 +37,12 @@ core_project := env("COMPOSE_PROJECT_NAME", "monitoring")
 # demo stack can also coexist. The smoke stack boots in production shape:
 # Grafana with JWT auth on (the Cloudflare Access path, otherwise only ever
 # schema-checked) and fixed notification URLs so the contact-point assertion
-# can check exact values instead of "not empty".
+# can check exact values instead of "not empty". The team domain has a dot,
+# which no real Zero Trust team name can, so the JWK URL can never resolve to
+# a team someone registers.
 smoke_project := "monitoring-smoke"
 smoke_port := env("SMOKE_PORT", "3001")
-smoke_env := "SANDBOX_PORT=" + smoke_port + " GRAFANA_JWT_AUTH=true CF_ACCESS_TEAM_DOMAIN=smoke CF_ACCESS_AUD=smoke ALERT_WEBHOOK_URL=https://smoke.invalid/alerts HEARTBEAT_URL=https://smoke.invalid/heartbeat"
+smoke_env := "SANDBOX_PORT=" + smoke_port + " GRAFANA_JWT_AUTH=true CF_ACCESS_TEAM_DOMAIN=smoke.invalid CF_ACCESS_AUD=smoke ALERT_WEBHOOK_URL=https://smoke.invalid/alerts HEARTBEAT_URL=https://smoke.invalid/heartbeat"
 compose_smoke := smoke_env + " docker compose -p " + smoke_project + " -f compose.yml -f compose.sandbox.yml"
 
 # dashboards/*.json as the paths they get when mounted at /dashboards. 2>/dev/null

@@ -115,9 +115,11 @@ host is the intended setup.
 
 ### Where every secret lives
 
-Three files hold everything, all gitignored, none backed up by `just backup`.
-Copy `.env` and `infra/terraform.tfstate` off-host together with the backups
-and treat the copies the way you treat the originals.
+Three files hold everything, all gitignored. `just backup` archives none of
+them, but the tarball does contain Grafana's database, and Grafana stores the
+expanded contact points there: the webhook and heartbeat URLs are inside every
+backup. Copy `.env` and `infra/terraform.tfstate` off-host together with the
+backups and treat all three the way you treat the originals.
 
 | Secret | Lives in | Comes from |
 | --- | --- | --- |

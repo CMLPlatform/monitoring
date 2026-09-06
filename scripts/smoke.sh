@@ -81,9 +81,12 @@ poll all_up || die "not all $n_jobs scrape targets are up: $(promq up | jq -r '.
 # with Grafana's wget: it is on the same network and needs no extra image.
 ts="$(date +%s)000000000"
 res='{"attributes":[{"key":"service.name","value":{"stringValue":"smoke"}},{"key":"project","value":{"stringValue":"smoke"}},{"key":"env","value":{"stringValue":"ci"}}]}'
+# The token goes in on stdin: on the production host this is the real
+# OTLP_AUTH_TOKEN (dotenv), and argv is world-readable in ps.
 otlp() {
-    docker compose -p "$project" exec -T grafana wget -qO- --header="Authorization: Bearer ${OTLP_AUTH_TOKEN}" \
-        --header='Content-Type: application/json' --post-data="$2" "http://otel-collector:4318/v1/$1" >/dev/null
+    docker compose -p "$project" exec -T grafana sh -c \
+        'read -r t; wget -qO- --header="Authorization: Bearer $t" --header="Content-Type: application/json" --post-data="$1" "http://otel-collector:4318/v1/$2"' \
+        _ "$2" "$1" <<<"$OTLP_AUTH_TOKEN" >/dev/null
 }
 otlp metrics '{"resourceMetrics":[{"resource":'"$res"',"scopeMetrics":[{"metrics":[{"name":"smoke_up","gauge":{"dataPoints":[{"asInt":"1","timeUnixNano":"'"$ts"'"}]}}]}]}]}' \
     || die "the collector refused an OTLP metric with the .env token"

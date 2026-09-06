@@ -103,6 +103,9 @@ echo "rendered  ${out_dir}/coverage.yaml  (covering: ${covered})"
 
 # ------------------------------------------------------------------ 3. reload Grafana
 if docker compose ps --status running --services 2>/dev/null | grep -qx grafana; then
+    # Same guards as `just up`: with the tunnel overlay in COMPOSE_FILE this recreates
+    # an exposed Grafana, and a drifted .env must refuse here too.
+    just _guard-if-exposed || exit 1
     # A restart, not SIGHUP: Grafana re-reads alert provisioning only at startup, and
     # a SIGHUP reports success while changing nothing.
     docker compose up -d --force-recreate grafana >/dev/null 2>&1 \
