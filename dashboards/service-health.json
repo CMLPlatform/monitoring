@@ -29,7 +29,7 @@
           "query": "label_values(http_server_request_duration_seconds_count, project)",
           "refId": "var"
         },
-        "refresh": 2,
+        "refresh": 1,
         "sort": 1,
         "current": {},
         "options": [],
@@ -49,7 +49,7 @@
           "query": "label_values(http_server_request_duration_seconds_count{project=\"$project\"}, env)",
           "refId": "var"
         },
-        "refresh": 2,
+        "refresh": 1,
         "sort": 1,
         "current": {},
         "options": [],
@@ -69,7 +69,7 @@
           "query": "label_values(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\"}, job)",
           "refId": "var"
         },
-        "refresh": 2,
+        "refresh": 1,
         "sort": 1,
         "current": {},
         "options": [],
