@@ -147,6 +147,10 @@ volumes:
   alloy_data:
 
 networks:
+  # Alloy's way out to the hub, and where the GPU exporter overlay attaches. Declared
+  # here so the overlay stands on its own; a project that already defines `egress` in
+  # its compose.yml keeps its definition, Compose merges the two by name.
+  egress:
   # Carries only the proxied Docker API between the proxy and Alloy. Internal: it has
   # no gateway, so nothing on it can reach out and nothing outside can reach in.
   docker_socket:
