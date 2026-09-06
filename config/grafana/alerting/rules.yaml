@@ -1,6 +1,7 @@
 # Grafana-managed alert rules (ADR 0002). Every rule has the same shape: the
-# PromQL carries its own comparison and returns a series only when the alert
-# should fire; the threshold node only asks whether anything came back.
+# PromQL carries its own comparison and the threshold node fires on value > 0.
+# A comparison whose matching value can be 0 or negative (up == 0, a ratio,
+# predict_linear) needs `bool`, or the rule can never fire.
 #
 # Keep the total around a dozen. The per-project rules beside this file are
 # rendered by bootstrap.sh.
@@ -97,7 +98,7 @@ groups:
               refId: QUERY
               instant: true
               editorMode: code
-              expr: up == 0
+              expr: up == bool 0
           - *firing
         labels:
           severity: critical
@@ -157,7 +158,7 @@ groups:
               editorMode: code
               expr: >
                 (node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay"}
-                / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay"}) < 0.2
+                / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay"}) < bool 0.2
           - *firing
         labels:
           severity: warning
@@ -187,7 +188,7 @@ groups:
               instant: true
               editorMode: code
               expr: >
-                predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay"}[6h], 3 * 86400) < 0
+                predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay"}[6h], 3 * 86400) < bool 0
                 and node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay"} > 10e9
           - *firing
         labels:
