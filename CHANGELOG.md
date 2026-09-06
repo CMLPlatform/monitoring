@@ -4,12 +4,13 @@ Notable changes to this stack. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [SemVer](https://semver.org/).
 
-## [1.0.0] - 2026-09-06
+## [0.3.0] - 2026-09-06
 
-The hub now runs the department's telemetry in production, and the contract a
-spoke vendors (hostname, labels, templates pinned by tag) is the one we intend
-to keep. This release hardens the stack around that contract and makes the
-checks prove the data paths, not just the config syntax.
+The hub runs the department's telemetry in production now, with a spoke
+contract (hostname, labels, templates pinned by tag) that one project uses.
+This release hardens the stack around that contract and makes the checks
+prove the data paths, not just the config syntax. 1.0 waits until a second
+consumer has confirmed the contract.
 
 ### Upgrade
 
@@ -22,7 +23,7 @@ checks prove the data paths, not just the config syntax.
   `just up` runs the exposure guards whenever the tunnel overlay is active.
 - Remove the orphaned `alertmanager_data` volume when convenient. Alerting is
   Grafana-managed (ADR 0002); delivery still posts to `ALERT_WEBHOOK_URL`.
-- Re-vendor the templates on each spoke at `v1.0.0` (`bootstrap.sh` prints
+- Re-vendor the templates on each spoke at `v0.3.0` (`bootstrap.sh` prints
   the commands): the Alloy agent gains an in-pipeline memory limiter, and the
   overlay declares the `egress` network it joins.
 - Loki streams keep their old label set until they age out (30 days).
