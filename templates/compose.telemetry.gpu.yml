@@ -5,6 +5,12 @@
 #
 #   docker compose ... -f compose.telemetry.yml -f compose.telemetry.gpu.yml up -d
 #
+# Deploy tooling that builds its `-f` list from the host's `.env` should key on
+# `GPU_METRICS=1`. Nothing in these templates reads it, but one name across every spoke
+# keeps the runbooks identical, and the switch has to exist: including this overlay on a
+# host without the NVIDIA container runtime makes `up` abort with "could not select
+# device driver".
+#
 # nvidia_gpu_exporter, not dcgm-exporter: DCGM's profiling fields are datacentre-only,
 # and on a consumer card it keeps only its SYS_ADMIN requirement.
 

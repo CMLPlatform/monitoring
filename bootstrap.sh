@@ -162,6 +162,8 @@ ENVIRONMENT=${env_name}
 OTEL_EXPORTER_OTLP_ENDPOINT=https://<otlp-hostname>
 OTLP_AUTH_TOKEN=<the stack's shared ingest token>
 TELEMETRY_EDGE_KEY=            # only if the project's egress crosses a WAF
+GPU_METRICS=                   # 1 on a host with an NVIDIA card, read by your deploy
+                               # tooling to include compose.telemetry.gpu.yml
 
 ────────────────────────────────────────────────────────────────────────────
 Vendor the templates on the project host (pinned at ${tag})

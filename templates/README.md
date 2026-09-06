@@ -52,6 +52,12 @@ rendered rule file, whichever signal that project sends.
 Include `compose.telemetry.gpu.yml` as well. The agent config discovers the
 exporter by its Compose service label, so nothing else changes.
 
+A host without the NVIDIA container runtime cannot include the overlay at all
+(`up` aborts with "could not select device driver"), so deploy tooling that
+assembles its `-f` list from the host's `.env` needs a switch. Use
+`GPU_METRICS=1` for it. None of the vendored files read that name; it is a
+convention, so that one runbook covers every spoke.
+
 The exporter is `nvidia_gpu_exporter`, not dcgm-exporter. DCGM's profiling
 fields are datacentre-only, so on a consumer card it offers nothing extra and
 still requires `SYS_ADMIN`.
