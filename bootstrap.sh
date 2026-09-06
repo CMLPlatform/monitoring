@@ -179,6 +179,6 @@ Then include the overlay and bring it up:
   docker compose -f compose.yml -f compose.telemetry.yml up -d
 
 Verify from the monitoring host, within ~2 minutes:
-  count({project="${project}",env="${env_name}"})            -> non-zero
+  count(telemetry_datapoints_total{project="${project}",env="${env_name}"})  -> non-zero
   count(container_start_time_seconds{project="${project}",name!=""})  -> one per container
 SUMMARY
