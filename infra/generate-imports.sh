@@ -159,9 +159,10 @@ EOF
 if [[ -n "$access_app_id" ]]; then
     cat <<EOF
 
+# Provider 5.x wants the scope spelled out for this one resource: '<accounts|zones>/<id>/<app_id>'.
 import {
   to = cloudflare_zero_trust_access_application.grafana
-  id = "$account/$access_app_id"
+  id = "accounts/$account/$access_app_id"
 }
 EOF
 fi
