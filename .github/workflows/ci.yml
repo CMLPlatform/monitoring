@@ -27,7 +27,8 @@ jobs:
         with:
           fetch-depth: 0
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
-      - run: cp .env.example .env
+      # 600, or the exposure guards refuse it as world-readable.
+      - run: install -m 600 .env.example .env
       - run: just lint
 
   smoke:
@@ -36,7 +37,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
-      - run: cp .env.example .env
+      # 600, or the exposure guards refuse it as world-readable.
+      - run: install -m 600 .env.example .env
       - run: just validate
       # SMOKE_ALERTS adds the TargetDown round trip (about 3 minutes).
       - run: just smoke
