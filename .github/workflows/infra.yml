@@ -3,11 +3,8 @@
 name: infra
 
 on:
-  push:
-    branches: [main]
-    paths: &infra ["infra/**"]
   pull_request:
-    paths: *infra
+    paths: ["infra/**"]
   workflow_dispatch:
 
 permissions:
