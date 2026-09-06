@@ -13,15 +13,14 @@ shellcheck := "koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f
 ruff := "ghcr.io/astral-sh/ruff:0.14.2@sha256:636e27f3feb43800e44b0ad48c72811b500a2c6309d094b641a9bf2247f4dbff"
 tofu := "ghcr.io/opentofu/opentofu:1.12.3@sha256:a0766d12f07b43e66f2ed40d7a8babe97d581d20339c68ad0ab561737af9a5b3"
 gitleaks := "zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"
-alloy := "grafana/alloy:v1.18.1@sha256:0f4434c92b3e6cdac38bb129b344e1790c246f7b6e2eaffcc16a5fa363240e33"
-lint_images := jq + " " + yamllint + " " + yamlfmt + " " + actionlint + " " + shellcheck + " " + ruff + " " + tofu + " " + gitleaks + " " + alloy
+lint_images := jq + " " + yamllint + " " + yamlfmt + " " + actionlint + " " + shellcheck + " " + ruff + " " + tofu + " " + gitleaks
 
 # `demo` and `smoke` each run a throwaway copy of the core stack under their own
 # compose project and Grafana port (compose.sandbox.yml), so neither can touch a
 # stack already running on this host. The explicit -f list keeps the host's
 # COMPOSE_FILE out of both.
 demo_project := "monitoring-demo"
-demo_port := env("DEMO_PORT", "3002")
+demo_port := "3002"
 compose_demo := "SANDBOX_PORT=" + demo_port + " docker compose -p " + demo_project + " -f compose.yml -f compose.demo.yml -f compose.sandbox.yml"
 
 # The project name compose will use, so the queue volume and backups target
@@ -33,9 +32,13 @@ core_project := env("COMPOSE_PROJECT_NAME", "monitoring")
 # real Zero Trust team name can, so the JWK URL can never resolve to a team
 # someone registers.
 smoke_project := "monitoring-smoke"
-smoke_port := env("SMOKE_PORT", "3001")
+smoke_port := "3001"
 smoke_env := "SANDBOX_PORT=" + smoke_port + " GRAFANA_JWT_AUTH=true CF_ACCESS_TEAM_DOMAIN=smoke.invalid CF_ACCESS_AUD=smoke ALERT_WEBHOOK_URL=https://smoke.invalid/alerts HEARTBEAT_URL=https://smoke.invalid/heartbeat"
 compose_smoke := smoke_env + " docker compose -p " + smoke_project + " -f compose.yml -f compose.sandbox.yml"
+
+# The spoke overlays interpolate these, so both rendering them and reading an
+# image ref out of them needs the set.
+spoke_env := "ENVIRONMENT=dummy PROJECT=dummy COMPOSE_PROJECT_NAME=dummy OTEL_EXPORTER_OTLP_ENDPOINT=https://dummy OTLP_AUTH_TOKEN=dummy"
 
 # dashboards/*.json as mounted at /dashboards. 2>/dev/null so an empty
 # dashboards/ doesn't abort every recipe; `lint` refuses the empty list instead.
@@ -115,7 +118,8 @@ check: lint validate
 
 # Static checks in tool images (~280 MB cold, seconds warm).
 lint:
-    @printf '%s\n' {{lint_images}} | xargs -P 8 -n 1 docker pull -q >/dev/null
+    # Digest-pinned, so anything already local is current; only fetch what is missing.
+    @printf '%s\n' {{lint_images}} | xargs -P 8 -I{} sh -c 'docker image inspect {} >/dev/null 2>&1 || docker pull -q {} >/dev/null'
     # Explicit -f, not the host's COMPOSE_FILE, so lint means the same here as in CI.
     docker compose -f compose.yml config -q
     CLOUDFLARE_TUNNEL_TOKEN=dummy docker compose -f compose.yml -f compose.tunnel.yml config -q
@@ -123,7 +127,7 @@ lint:
     # compose_smoke turns the JWT interpolation on.
     {{compose_smoke}} config -q
     # The spoke overlays, which otherwise first fail on a project host after vendoring.
-    ENVIRONMENT=dummy PROJECT=dummy COMPOSE_PROJECT_NAME=dummy OTEL_EXPORTER_OTLP_ENDPOINT=https://dummy OTLP_AUTH_TOKEN=dummy docker compose -f templates/compose.telemetry.yml -f templates/compose.telemetry.gpu.yml config -q
+    {{spoke_env}} docker compose -f templates/compose.telemetry.yml -f templates/compose.telemetry.gpu.yml config -q
     # The exposure guards, both ways: a fully set .env passes, and each
     # documented default is refused on its own.
     @good="OTLP_AUTH_TOKEN=t GRAFANA_ADMIN_PASSWORD=p GRAFANA_ROOT_URL=https://g.example GRAFANA_COOKIE_SECURE=true GRAFANA_JWT_AUTH=true CF_ACCESS_TEAM_DOMAIN=d CF_ACCESS_AUD=a HEARTBEAT_URL=https://h ALERT_WEBHOOK_URL=https://w"; \
@@ -152,27 +156,34 @@ lint:
     # Secrets in git history. Scans commits, not the working tree, so the
     # gitignored .env never trips it. Needs full history (see ci.yml).
     docker run --rm --network none -v .:/repo:ro {{gitleaks}} git --redact --no-banner /repo
-    # The agent config every project host vendors. Image ref matches
-    # templates/compose.telemetry.yml; keep them in step.
-    docker run --rm --network none -v ./templates/alloy/config.alloy:/etc/alloy/config.alloy:ro -e COMPOSE_PROJECT_NAME=dummy -e ENVIRONMENT=dummy -e PROJECT=dummy -e OTEL_EXPORTER_OTLP_ENDPOINT=https://dummy -e OTLP_AUTH_TOKEN=dummy -e TELEMETRY_EDGE_KEY= {{alloy}} validate /etc/alloy/config.alloy
+    # The agent config every project host vendors, checked by the Alloy build
+    # the template actually pins.
+    docker run --rm --network none -v ./templates/alloy/config.alloy:/etc/alloy/config.alloy:ro -e COMPOSE_PROJECT_NAME=dummy -e ENVIRONMENT=dummy -e PROJECT=dummy -e OTEL_EXPORTER_OTLP_ENDPOINT=https://dummy -e OTLP_AUTH_TOKEN=dummy -e TELEMETRY_EDGE_KEY= $({{spoke_env}} just _image templates/compose.telemetry.yml alloy) validate /etc/alloy/config.alloy
 
-# Image ref of one compose.yml service. (`config --images <svc>` also lists
-# the service's dependencies, hence the json route.)
-_image service:
-    @docker compose -f compose.yml config --format json | docker run --rm -i {{jq}} -er '.services["{{service}}"].image // error("no service {{service}} in compose.yml")'
+# Image ref of one service in a compose file. (`config --images <svc>` also
+# lists the service's dependencies, hence the json route.)
+_image file service:
+    @docker compose -f {{file}} config --format json | docker run --rm -i {{jq}} -er '.services["{{service}}"].image // error("no service {{service}} in {{file}}")'
 
-# Run each config through the binary that will load it.
+# One compose render feeds all four; each config goes through the binary that
+# will load it.
 validate:
-    docker run --rm --network none -v ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro --entrypoint promtool $(just _image prometheus) check config /etc/prometheus/prometheus.yaml
-    docker run --rm --network none -e OTLP_AUTH_TOKEN=dummy -e DEPARTMENT=dummy -v ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro $(just _image otel-collector) validate --config=/etc/otelcol/config.yaml
-    docker run --rm --network none -v ./config/loki.yaml:/etc/loki/loki.yaml:ro $(just _image loki) -config.file=/etc/loki/loki.yaml -verify-config
-    docker run --rm --network none -v ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro $(just _image tempo) -config.file=/etc/tempo/tempo.yaml -config.verify=true
+    @set -e; cfg=$(docker compose -f compose.yml config --format json); \
+      img() { printf '%s' "$cfg" | docker run --rm -i {{jq}} -er ".services[\"$1\"].image"; }; \
+      docker run --rm --network none -v ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro --entrypoint promtool $(img prometheus) check config /etc/prometheus/prometheus.yaml; \
+      docker run --rm --network none -e OTLP_AUTH_TOKEN=dummy -v ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro $(img otel-collector) validate --config=/etc/otelcol/config.yaml; \
+      docker run --rm --network none -v ./config/loki.yaml:/etc/loki/loki.yaml:ro $(img loki) -config.file=/etc/loki/loki.yaml -verify-config; \
+      docker run --rm --network none -v ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro $(img tempo) -config.file=/etc/tempo/tempo.yaml -config.verify=true
 
 # Runs against a copy of the sources: state and tfvars never enter the
 # container, which has network access to fetch the provider.
 # Full OpenTofu validation (downloads the provider, so not part of `check`).
 infra-validate:
     @d=$(mktemp -d) && cp infra/main.tf infra/.terraform.lock.hcl "$d"/ && docker run --rm --entrypoint sh -v "$d":/src:ro {{tofu}} -c 'mkdir /work && cp /src/main.tf /src/.terraform.lock.hcl /work && cd /work && tofu init -backend=false -input=false >/dev/null && tofu validate'; rc=$?; rm -rf "$d"; exit $rc
+
+# gitleaks over the staged diff (the pre-commit hook; see .pre-commit-config.yaml).
+_gitleaks-staged:
+    @docker run --rm --network none -v .:/repo:ro {{gitleaks}} git --pre-commit --staged --redact --no-banner /repo
 
 # Format YAML in place (--user so the rewritten files stay yours).
 fmt:
@@ -188,10 +199,13 @@ backup: (_backup core_project "backups")
 # gzip -1: the stack is paused for as long as the tar runs, and the chunks are
 # already compressed. The unpause runs unconditionally (`pause` can fail
 # halfway), and a failed unpause fails the recipe.
+_mounts project:
+    @for s in {{stateful}}; do printf -- '-v {{project}}_%s_data:/data/%s ' $s $s; done
+
 _backup project dir:
     mkdir -p {{dir}}
     @-docker compose -p {{project}} unpause {{stateful}} >/dev/null 2>&1
-    @rc=0; m=$(for s in {{stateful}}; do printf -- '-v {{project}}_%s_data:/data/%s ' $s $s; done); docker compose -p {{project}} pause {{stateful}} && docker run --rm --network none $m -v {{absolute_path(dir)}}:/backups {{alpine}} sh -c 'set -o pipefail; umask 077 && tar cf - -C /data . | gzip -1 > /backups/monitoring-$(date +%Y%m%d-%H%M%S).tar.gz' || rc=$?; docker compose -p {{project}} unpause {{stateful}} || { echo "error: unpause failed; the stack is still paused" >&2; rc=1; }; exit $rc
+    @rc=0; m=$(just _mounts {{project}}); docker compose -p {{project}} pause {{stateful}} && docker run --rm --network none $m -v {{absolute_path(dir)}}:/backups {{alpine}} sh -c 'set -o pipefail; umask 077 && tar cf - -C /data . | gzip -1 > /backups/monitoring-$(date +%Y%m%d-%H%M%S).tar.gz' || rc=$?; docker compose -p {{project}} unpause {{stateful}} || { echo "error: unpause failed; the stack is still paused" >&2; rc=1; }; exit $rc
     @ls -lh {{dir}}/ | tail -1
 
 # Restore a backup tarball into the volumes (stops the stack; wipes current state).
@@ -205,8 +219,8 @@ _restore project file dir:
     docker run --rm --network none -v {{absolute_path(file)}}:/backup.tar.gz:ro {{alpine}} tar tzf /backup.tar.gz > /dev/null
     docker compose -p {{project}} down --remove-orphans
     mkdir -p {{dir}}
-    m=$(for s in {{stateful}}; do printf -- '-v {{project}}_%s_data:/data/%s ' $s $s; done); docker run --rm --network none $m -v {{absolute_path(dir)}}:/backups {{alpine}} sh -c 'umask 077 && tar czf /backups/pre-restore-$(date +%Y%m%d-%H%M%S).tar.gz -C /data .'
-    m=$(for s in {{stateful}}; do printf -- '-v {{project}}_%s_data:/data/%s ' $s $s; done); docker run --rm --network none $m -v {{absolute_path(file)}}:/backup.tar.gz:ro {{alpine}} sh -c 'for d in /data/*; do find "$d" -mindepth 1 -delete; done && tar xzf /backup.tar.gz -C /data'
+    m=$(just _mounts {{project}}); docker run --rm --network none $m -v {{absolute_path(dir)}}:/backups {{alpine}} sh -c 'set -o pipefail; umask 077 && tar cf - -C /data . | gzip -1 > /backups/pre-restore-$(date +%Y%m%d-%H%M%S).tar.gz'
+    m=$(just _mounts {{project}}); docker run --rm --network none $m -v {{absolute_path(file)}}:/backup.tar.gz:ro {{alpine}} sh -c 'for d in /data/*; do find "$d" -mindepth 1 -delete; done && tar xzf /backup.tar.gz -C /data'
 
 # Needs a booted smoke stack (`just smoke`). Run it after touching _backup/_restore.
 # COMPOSE_FILE is pinned so the host's overlay list stays out, as for `smoke`.

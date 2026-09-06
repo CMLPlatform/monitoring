@@ -28,10 +28,12 @@ fi
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$root"
 
-# A bare ./bootstrap.sh does not load .env, so read this one key from it.
+# A bare ./bootstrap.sh does not load .env, so read single keys out of it.
 # Sourcing the whole file would drag the stack's secrets into scope.
-if [[ -z "${HEALTHCHECKS_API_KEY:-}" && -f .env ]]; then
-    HEALTHCHECKS_API_KEY="$(sed -n 's/^HEALTHCHECKS_API_KEY=//p' .env | tail -1)"
+env_get() { [[ -f .env ]] && sed -n "s/^$1=//p" .env | tail -1; }
+
+if [[ -z "${HEALTHCHECKS_API_KEY:-}" ]]; then
+    HEALTHCHECKS_API_KEY="$(env_get HEALTHCHECKS_API_KEY)"
     export HEALTHCHECKS_API_KEY
 fi
 # Flat, not a subdirectory: Grafana's alerting provisioner does not recurse, and
@@ -92,8 +94,8 @@ if docker compose ps --status running --services 2>/dev/null | grep -qx grafana;
         || echo "WARNING: could not restart grafana; run 'docker compose up -d --force-recreate grafana'" >&2
     # Grafana skips a malformed alert group with only a log line, so read the
     # rule back.
-    if [[ -z "${GRAFANA_ADMIN_PASSWORD:-}" && -f .env ]]; then
-        GRAFANA_ADMIN_PASSWORD="$(sed -n 's/^GRAFANA_ADMIN_PASSWORD=//p' .env | tail -1)"
+    if [[ -z "${GRAFANA_ADMIN_PASSWORD:-}" ]]; then
+        GRAFANA_ADMIN_PASSWORD="$(env_get GRAFANA_ADMIN_PASSWORD)"
     fi
     [[ -n "${GRAFANA_ADMIN_PASSWORD:-}" ]] \
         || { echo "error: GRAFANA_ADMIN_PASSWORD is not set and not readable from .env; cannot verify the rule" >&2; exit 1; }
@@ -125,9 +127,7 @@ else
 fi
 
 # ------------------------------------------------------- 4. healthchecks.io + printout
-hc_note="create these by hand at https://healthchecks.io and note their ping URLs"
 if [[ -n "${HEALTHCHECKS_API_KEY:-}" ]]; then
-    hc_note="created via API"
     # Default job set; override per project with HC_JOBS="backup nightly-sync" etc.
     for job in ${HC_JOBS:-backup watchdog restore-check}; do
         # Key via curl's stdin config, not -H: argv is readable in `ps`.
@@ -138,17 +138,20 @@ if [[ -n "${HEALTHCHECKS_API_KEY:-}" ]]; then
             | sed -n 's/.*"ping_url": *"\([^"]*\)".*/  PING_'"$(echo "$job" | tr 'a-z-' 'A-Z_')"'=\1/p'
     done
 else
-    echo "note      HEALTHCHECKS_API_KEY unset; ${hc_note}"
+    echo "note      HEALTHCHECKS_API_KEY unset; create these by hand at https://healthchecks.io and note their ping URLs"
 fi
 
 # Computed before the heredoc: a substitution inside `cat <<EOF` cannot fail
 # the script, and a missing template would print sha256("") as authoritative.
 hashes=""
+curls=""
 for pair in $templates; do
     sum="$(git -C "$root" show "${tag}:templates/${pair%%:*}" | sha256sum | cut -d' ' -f1)"
     hashes="${hashes}${sum}  ${pair#*:}"$'\n'
+    curls+="$(printf 'curl -fsSL -o %-24s %s/%s' "${pair#*:}" "$repo_raw" "${pair%%:*}")"$'\n'
 done
 hashes="${hashes%$'\n'}"
+curls="${curls%$'\n'}"
 
 cat <<SUMMARY
 
@@ -160,16 +163,12 @@ ENVIRONMENT=${env_name}
 OTEL_EXPORTER_OTLP_ENDPOINT=https://<otlp-hostname>
 OTLP_AUTH_TOKEN=<the stack's shared ingest token>
 TELEMETRY_EDGE_KEY=            # only if the project's egress crosses a WAF
-GPU_METRICS=                   # 1 on hosts with an NVIDIA card
 
 ────────────────────────────────────────────────────────────────────────────
 Vendor the templates on the project host (pinned at ${tag})
 ────────────────────────────────────────────────────────────────────────────
 mkdir -p deploy/alloy scripts
-curl -fsSL -o deploy/alloy/config.alloy   ${repo_raw}/alloy/config.alloy
-curl -fsSL -o compose.telemetry.yml       ${repo_raw}/compose.telemetry.yml
-curl -fsSL -o compose.telemetry.gpu.yml   ${repo_raw}/compose.telemetry.gpu.yml
-curl -fsSL -o scripts/run_scheduled.sh    ${repo_raw}/run_scheduled.sh
+${curls}
 
 Verify before executing anything (the hashes come from the ${tag} tag):
 sha256sum -c <<'SUM'

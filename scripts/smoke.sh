@@ -6,14 +6,13 @@ set -euo pipefail
 
 url="${SMOKE_URL:?}"
 project="${SMOKE_PROJECT:?}"
-dept="${DEPARTMENT:-cml}"
 command -v jq >/dev/null || { echo "error: jq is required" >&2; exit 1; }
 
 die() { echo "error: $*" >&2; exit 1; }
 # Admin basic auth through curl's stdin config: argv is world-readable in ps.
 gf() { printf 'user = "admin:%s"\n' "$GRAFANA_ADMIN_PASSWORD" | curl -sf -K - "$@"; }
 promq() { gf -G --data-urlencode "query=$1" "$url/api/datasources/proxy/uid/prometheus/api/v1/query"; }
-poll() { local n=0; until "$@"; do n=$((n + 1)); [[ $n -lt ${POLL_MAX:-60} ]] || return 1; sleep 1; done; }
+poll() { local n=0; until "$@"; do n=$((n + 1)); [[ $n -lt ${POLL_MAX:-60} ]] || return 1; sleep "${POLL_SLEEP:-1}"; done; }
 
 # ------------------------------------------------------------------ provisioning
 # Grafana skips a broken dashboard or a malformed alert group silently, so the
@@ -79,9 +78,9 @@ otlp metrics '{"resourceMetrics":[{"resource":'"$res"',"scopeMetrics":[{"metrics
     || die "the collector refused an OTLP metric with the .env token"
 otlp logs '{"resourceLogs":[{"resource":'"$res"',"scopeLogs":[{"logRecords":[{"timeUnixNano":"'"$ts"'","body":{"stringValue":"smoke"}}]}]}]}' \
     || die "the collector refused an OTLP log with the .env token"
-smoke_metric() { promq "smoke_up{job=\"smoke\",project=\"smoke\",env=\"ci\",department=\"$dept\"}" | jq -e '.data.result | length > 0' >/dev/null; }
+smoke_metric() { promq "smoke_up{job=\"smoke\",project=\"smoke\",env=\"ci\",department=\"cml\"}" | jq -e '.data.result | length > 0' >/dev/null; }
 smoke_log() {
-    gf -G --data-urlencode "query={project=\"smoke\",env=\"ci\",department=\"$dept\"}" \
+    gf -G --data-urlencode "query={project=\"smoke\",env=\"ci\",department=\"cml\"}" \
         "$url/api/datasources/proxy/uid/loki/loki/api/v1/query_range" \
         | jq -e 'any(.data.result[].values[][1]; . == "smoke")' >/dev/null
 }
@@ -99,7 +98,7 @@ if [[ "${SMOKE_ALERTS:-}" == 1 ]]; then
         gf "$url/api/prometheus/grafana/api/v1/rules" \
             | jq -e '.data.groups[].rules[] | select(.name == "TargetDown") | .state == "firing"' >/dev/null
     }
-    POLL_MAX=300 poll target_down_firing || die "TargetDown did not fire within 5 minutes of stopping node-exporter"
+    POLL_MAX=60 POLL_SLEEP=5 poll target_down_firing || die "TargetDown did not fire within 5 minutes of stopping node-exporter"
     docker compose -p "$project" start node-exporter >/dev/null
     echo "TargetDown fired for the stopped node-exporter"
 fi

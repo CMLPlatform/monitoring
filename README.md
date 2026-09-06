@@ -42,7 +42,7 @@ whole demo stack.
 
 The demo runs under its own compose project on its own port, so it never
 touches a stack already running on the host. The same holds for `just smoke`
-on :3001. Override the ports with `DEMO_PORT` and `SMOKE_PORT`.
+on :3001.
 
 ## How it works
 

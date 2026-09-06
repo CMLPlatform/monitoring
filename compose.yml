@@ -16,12 +16,24 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "3"
 
-x-security: &default-security
-  - no-new-privileges:true
-
 # Every service drops all capabilities and carries a pids limit. Each mem_limit
 # is a ceiling sized from observed usage, so one runaway component cannot OOM a
-# host that also runs production.
+# host that also runs production. Services that need a tighter pids_limit
+# override it after the merge.
+x-hardened: &hardened
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 1024
+  logging: *default-logging
+
+x-healthcheck: &healthcheck
+  interval: 15s
+  timeout: 3s
+  retries: 5
+  start_period: 30s
+  # Probe often while starting so `up --wait` returns on the first pass.
+  start_interval: 2s
 
 services:
   otel-collector:
@@ -44,14 +56,11 @@ services:
     command: ["--config=/etc/otelcol/config.yaml"]
     environment:
       OTLP_AUTH_TOKEN: ${OTLP_AUTH_TOKEN:?set OTLP_AUTH_TOKEN in .env}
-      DEPARTMENT: ${DEPARTMENT:-cml}
     # Keep in step with memory_limiter in config/otel-collector.yaml.
     mem_limit: 512m
+    !!merge <<: *hardened
     pids_limit: 512
-    cap_drop: [ALL]
-    security_opt: *default-security
     networks: [default, backend]
-    logging: *default-logging
 
   loki:
     image: grafana/loki:3.7.6@sha256:efd47c67f9bac88ca29bcf8cb997d9ab29d1848bd0aff579282295542a745952
@@ -62,11 +71,8 @@ services:
     command: ["-config.file=/etc/loki/loki.yaml"]
     # No healthcheck: the image is distroless, with no shell or wget to probe with.
     mem_limit: 2g
-    pids_limit: 1024
-    cap_drop: [ALL]
-    security_opt: *default-security
+    !!merge <<: *hardened
     networks: [backend]
-    logging: *default-logging
 
   tempo:
     image: grafana/tempo:3.0.3@sha256:0296560ac66f8a3600d7fb3014a52c189d4d9c3549ad6ff441bf2409855d68d5
@@ -77,11 +83,8 @@ services:
     command: ["-config.file=/etc/tempo/tempo.yaml"]
     # Distroless too, so no healthcheck.
     mem_limit: 2g
-    pids_limit: 1024
-    cap_drop: [ALL]
-    security_opt: *default-security
+    !!merge <<: *hardened
     networks: [backend]
-    logging: *default-logging
 
   prometheus:
     image: prom/prometheus:v3.13.2@sha256:508729e0e2d18e11fd742a5a5ca70e557b940a93948c3c95fd0123a6fd538b69
@@ -99,19 +102,11 @@ services:
       # Whichever limit hits first wins; the disk-space alert is the backstop.
       - --storage.tsdb.retention.size=15GB
     healthcheck:
+      !!merge <<: *healthcheck
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/ready"]
-      interval: 15s
-      timeout: 3s
-      retries: 5
-      start_period: 30s
-      # Probe often while starting so `up --wait` returns on the first pass.
-      start_interval: 2s
     mem_limit: 2g
-    pids_limit: 1024
-    cap_drop: [ALL]
-    security_opt: *default-security
+    !!merge <<: *hardened
     networks: [backend]
-    logging: *default-logging
 
   node-exporter:
     image: prom/node-exporter:v1.12.1@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0
@@ -119,17 +114,15 @@ services:
     command: ["--path.rootfs=/host"]
     pid: host
     mem_limit: 128m
+    !!merge <<: *hardened
     # Holds pid:host plus the whole host filesystem, hence the tightest limits.
-    cap_drop: [ALL]
     read_only: true
     pids_limit: 64
-    security_opt: *default-security
     volumes:
       # No rslave (unsupported on Docker Desktop) and no network_mode:host, so
       # node_network_* describes the container veth, not host NICs.
       - /:/host:ro
     networks: [backend]
-    logging: *default-logging
 
   grafana:
     image: grafana/grafana:13.1.4@sha256:9be3a3ccdb06bcbb127f888b0c4c1d151837443e478887897a63a27d7b348043
@@ -174,18 +167,11 @@ services:
       GF_AUTH_JWT_USERNAME_CLAIM: email
       GF_AUTH_JWT_AUTO_SIGN_UP: "true"
     healthcheck:
+      !!merge <<: *healthcheck
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
-      interval: 15s
-      timeout: 3s
-      retries: 5
-      start_period: 30s
-      start_interval: 2s
     mem_limit: 1g
-    pids_limit: 1024
-    cap_drop: [ALL]
-    security_opt: *default-security
+    !!merge <<: *hardened
     networks: [default, backend]
-    logging: *default-logging
 
 # Loki, Prometheus and Tempo have no authentication of their own, so only
 # Grafana and the collector can reach them. cloudflared stays on `default`: its

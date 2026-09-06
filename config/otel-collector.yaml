@@ -24,10 +24,13 @@ receivers:
 
 processors:
   # Stamped here with upsert, so a sender cannot claim another department.
+  # Literal rather than an env knob: one value has ever been correct, and as an
+  # indexed Loki stream label a second one would be an index dimension, not a
+  # filter. Make it a variable again when a second department federates.
   resource/department:
     attributes:
       - key: department
-        value: ${env:DEPARTMENT}
+        value: cml
         action: upsert
 
   # Sized to the container's mem_limit (512m in compose.yml); keep the two in step.

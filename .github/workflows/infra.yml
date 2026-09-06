@@ -21,5 +21,5 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
-      - run: cp .env.example .env
+      - run: install -m 600 .env.example .env # 600 or the exposure guards reject it
       - run: just infra-validate

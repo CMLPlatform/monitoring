@@ -6,6 +6,38 @@
 # Keep the total around a dozen. The per-project rules beside this file are
 # rendered by bootstrap.sh.
 apiVersion: 1
+
+# Anchors only. Grafana reads apiVersion and groups; every rule below repeats
+# these four blocks verbatim apart from `for` and `expr`, so they live here once
+# and are merged in. Nothing here defines a rule.
+_defaults:
+  - &rule_defaults
+    condition: FIRING
+    noDataState: OK
+    execErrState: Error
+    isPaused: false
+  - &query_node
+    refId: QUERY
+    datasourceUid: prometheus
+    relativeTimeRange:
+      from: 3600
+      to: 0
+  - &query_model
+    refId: QUERY
+    instant: true
+    editorMode: code
+  - &firing
+    refId: FIRING
+    datasourceUid: __expr__
+    model:
+      refId: FIRING
+      type: threshold
+      expression: QUERY
+      conditions:
+        - evaluator:
+            type: gt
+            params: [0]
+
 groups:
   - orgId: 1
     name: meta
@@ -16,34 +48,14 @@ groups:
       # heartbeat and the switch alarms.
       - uid: watchdog-heartbeat
         title: Watchdog
-        condition: FIRING
+        !!merge <<: *rule_defaults
         for: 0m
-        noDataState: OK
-        execErrState: Error
-        isPaused: false
         data:
-          - refId: QUERY
-            datasourceUid: prometheus
-            relativeTimeRange:
-              from: 3600
-              to: 0
+          - !!merge <<: *query_node
             model:
-              refId: QUERY
-              instant: true
-              editorMode: code
+              !!merge <<: *query_model
               expr: vector(1)
-          - &firing
-            # Identical on every rule; aliased as `- *firing` below.
-            refId: FIRING
-            datasourceUid: __expr__
-            model:
-              refId: FIRING
-              type: threshold
-              expression: QUERY
-              conditions:
-                - evaluator:
-                    type: gt
-                    params: [0]
+          - *firing
         labels:
           severity: none
         annotations:
@@ -52,21 +64,12 @@ groups:
       # Cannot page when the webhook itself is broken; the heartbeat covers that.
       - uid: alert-delivery-failing
         title: AlertDeliveryFailing
-        condition: FIRING
+        !!merge <<: *rule_defaults
         for: 10m
-        noDataState: OK
-        execErrState: Error
-        isPaused: false
         data:
-          - refId: QUERY
-            datasourceUid: prometheus
-            relativeTimeRange:
-              from: 3600
-              to: 0
+          - !!merge <<: *query_node
             model:
-              refId: QUERY
-              instant: true
-              editorMode: code
+              !!merge <<: *query_model
               expr: rate(grafana_alerting_notifications_failed_total[10m]) > 0
           - *firing
         labels:
@@ -83,21 +86,12 @@ groups:
     rules:
       - uid: target-down
         title: TargetDown
-        condition: FIRING
+        !!merge <<: *rule_defaults
         for: 2m
-        noDataState: OK
-        execErrState: Error
-        isPaused: false
         data:
-          - refId: QUERY
-            datasourceUid: prometheus
-            relativeTimeRange:
-              from: 3600
-              to: 0
+          - !!merge <<: *query_node
             model:
-              refId: QUERY
-              instant: true
-              editorMode: code
+              !!merge <<: *query_model
               expr: up == bool 0
           - *firing
         labels:
@@ -107,21 +101,12 @@ groups:
           description: "Prometheus cannot scrape {{ $labels.instance }} (job {{ $labels.job }}) for 2 minutes."
       - uid: otel-export-failures
         title: OtelExportFailures
-        condition: FIRING
+        !!merge <<: *rule_defaults
         for: 5m
-        noDataState: OK
-        execErrState: Error
-        isPaused: false
         data:
-          - refId: QUERY
-            datasourceUid: prometheus
-            relativeTimeRange:
-              from: 3600
-              to: 0
+          - !!merge <<: *query_node
             model:
-              refId: QUERY
-              instant: true
-              editorMode: code
+              !!merge <<: *query_model
               expr: >
                 sum by (exporter) (rate(otelcol_exporter_send_failed_spans[5m])) > 0
                 or sum by (exporter) (rate(otelcol_exporter_send_failed_metric_points[5m])) > 0
@@ -137,25 +122,19 @@ groups:
   - orgId: 1
     name: capacity
     folder: Stack alerts
-    interval: 1m
+    # Every rule here waits 15m or more before firing, and the disk fit reads 6h
+    # of samples per filesystem; evaluating that once a minute bought no warning
+    # time. 5m is 5x less work for the same alert.
+    interval: 5m
     rules:
       - uid: host-disk-space-low
         title: HostDiskSpaceLow
-        condition: FIRING
+        !!merge <<: *rule_defaults
         for: 15m
-        noDataState: OK
-        execErrState: Error
-        isPaused: false
         data:
-          - refId: QUERY
-            datasourceUid: prometheus
-            relativeTimeRange:
-              from: 3600
-              to: 0
+          - !!merge <<: *query_node
             model:
-              refId: QUERY
-              instant: true
-              editorMode: code
+              !!merge <<: *query_model
               expr: >
                 (node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay"}
                 / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay"}) < bool 0.2
@@ -172,21 +151,12 @@ groups:
       # EFI, snap) are skipped: they cross zero on noise.
       - uid: host-disk-filling
         title: HostDiskFilling
-        condition: FIRING
+        !!merge <<: *rule_defaults
         for: 30m
-        noDataState: OK
-        execErrState: Error
-        isPaused: false
         data:
-          - refId: QUERY
-            datasourceUid: prometheus
-            relativeTimeRange:
-              from: 3600
-              to: 0
+          - !!merge <<: *query_node
             model:
-              refId: QUERY
-              instant: true
-              editorMode: code
+              !!merge <<: *query_model
               expr: >
                 predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay"}[6h], 3 * 86400) < bool 0
                 and node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay"} > 10e9
@@ -201,25 +171,17 @@ groups:
             Extrapolated from the last 6 hours. Find what is growing (a spoke
             shipping more than before, a log loop, a backup that stopped
             rotating) before HostDiskSpaceLow makes it urgent.
-      # ~7x the baseline of ~15k series with one spoke; raise it as spokes are
-      # onboarded.
+      # ~14x the baseline of ~7k series with one spoke (measured after the scrape
+      # trimming in config/prometheus.yaml and the agent config); raise it as spokes
+      # are onboarded.
       - uid: prometheus-cardinality
         title: PrometheusCardinalityHigh
-        condition: FIRING
+        !!merge <<: *rule_defaults
         for: 30m
-        noDataState: OK
-        execErrState: Error
-        isPaused: false
         data:
-          - refId: QUERY
-            datasourceUid: prometheus
-            relativeTimeRange:
-              from: 3600
-              to: 0
+          - !!merge <<: *query_node
             model:
-              refId: QUERY
-              instant: true
-              editorMode: code
+              !!merge <<: *query_model
               expr: prometheus_tsdb_head_series > 100000
           - *firing
         labels:
@@ -239,21 +201,12 @@ groups:
     rules:
       - uid: container-restarting
         title: ContainerRestarting
-        condition: FIRING
+        !!merge <<: *rule_defaults
         for: 10m
-        noDataState: OK
-        execErrState: Error
-        isPaused: false
         data:
-          - refId: QUERY
-            datasourceUid: prometheus
-            relativeTimeRange:
-              from: 3600
-              to: 0
+          - !!merge <<: *query_node
             model:
-              refId: QUERY
-              instant: true
-              editorMode: code
+              !!merge <<: *query_model
               expr: changes(container_start_time_seconds{name!=""}[1h]) > 3
           - *firing
         labels:
@@ -263,21 +216,12 @@ groups:
           description: "{{ $labels.name }} on {{ $labels.host_name }} has restarted more than 3 times in the last hour."
       - uid: container-oom-killed
         title: ContainerOOMKilled
-        condition: FIRING
+        !!merge <<: *rule_defaults
         for: 0m
-        noDataState: OK
-        execErrState: Error
-        isPaused: false
         data:
-          - refId: QUERY
-            datasourceUid: prometheus
-            relativeTimeRange:
-              from: 3600
-              to: 0
+          - !!merge <<: *query_node
             model:
-              refId: QUERY
-              instant: true
-              editorMode: code
+              !!merge <<: *query_model
               expr: increase(container_oom_events_total[5m]) > 0
           - *firing
         labels:
@@ -292,21 +236,12 @@ groups:
     rules:
       - uid: high-error-rate
         title: HighErrorRate
-        condition: FIRING
+        !!merge <<: *rule_defaults
         for: 5m
-        noDataState: OK
-        execErrState: Error
-        isPaused: false
         data:
-          - refId: QUERY
-            datasourceUid: prometheus
-            relativeTimeRange:
-              from: 3600
-              to: 0
+          - !!merge <<: *query_node
             model:
-              refId: QUERY
-              instant: true
-              editorMode: code
+              !!merge <<: *query_model
               # Keyed on (job, project, env): on job alone, a healthy prod
               # service dilutes a broken staging one below the threshold.
               expr: >

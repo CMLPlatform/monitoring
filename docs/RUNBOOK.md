@@ -183,8 +183,10 @@ cd infra && tofu apply
 - **State lives on this host only, and it is a secret.** It stores the
   tunnel secret and every API response in plain text. Copy
   `infra/terraform.tfstate` off-host next to the backups. Losing it orphans
-  the Cloudflare resources. They keep running, but the next apply creates
-  duplicates, and recovery is `tofu import` by hand.
+  the Cloudflare resources: they keep running, but the next apply creates
+  duplicates. Recovery is the same import path as the first apply above,
+  `infra/generate-imports.sh > infra/imports.tf`, which reads the live objects
+  back out of the Cloudflare API and adopts them into a fresh state.
 
 ## Upgrading images
 

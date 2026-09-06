@@ -49,9 +49,8 @@ file.
 
 ## GPU hosts
 
-Include `compose.telemetry.gpu.yml` as well and set `GPU_METRICS=1`. The
-agent config discovers the exporter by its Compose service label, so nothing
-else changes.
+Include `compose.telemetry.gpu.yml` as well. The agent config discovers the
+exporter by its Compose service label, so nothing else changes.
 
 The exporter is `nvidia_gpu_exporter`, not dcgm-exporter. DCGM's profiling
 fields are datacentre-only, so on a consumer card it offers nothing extra and
