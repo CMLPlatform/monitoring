@@ -66,11 +66,11 @@ _guard-if-exposed:
 _expose-guards:
     @[ "${OTLP_AUTH_TOKEN:-}" != "local-dev-token" ] || { echo "error: OTLP_AUTH_TOKEN is still the local default; generate one (openssl rand -hex 32) before exposing ingestion" >&2; exit 1; }
     @[ "${GRAFANA_ADMIN_PASSWORD:-}" != "change-me" ] || { echo "error: GRAFANA_ADMIN_PASSWORD is still the documented default; change it before exposing Grafana" >&2; exit 1; }
-    @[ "${GRAFANA_ROOT_URL:-}" != "http://localhost:3000" ] || { echo "error: GRAFANA_ROOT_URL is still the localhost default; set it to the tunnel hostname or every absolute URL Grafana generates breaks" >&2; exit 1; }
+    @case "${GRAFANA_ROOT_URL:-}" in https://*) ;; *) echo "error: GRAFANA_ROOT_URL must be the https:// tunnel hostname (got '${GRAFANA_ROOT_URL:-}'); every absolute URL Grafana generates comes from it" >&2; exit 1;; esac
     @[ "${GRAFANA_COOKIE_SECURE:-false}" = "true" ] || { echo "error: GRAFANA_COOKIE_SECURE must be true when Grafana is served over HTTPS; set it in .env" >&2; exit 1; }
     @[ "${GRAFANA_JWT_AUTH:-false}" != "true" ] || { [ -n "${CF_ACCESS_TEAM_DOMAIN:-}" ] && [ -n "${CF_ACCESS_AUD:-}" ]; } || { echo "error: GRAFANA_JWT_AUTH=true needs CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD in .env (cd infra && tofu output -raw grafana_access_aud)" >&2; exit 1; }
     @[ -n "${HEARTBEAT_URL:-}" ] || echo "WARNING: HEARTBEAT_URL is empty; the stack goes live without a dead-man's switch" >&2
-    @[ -n "${ALERT_WEBHOOK_URL:-}" ] || { echo "error: ALERT_WEBHOOK_URL is empty; every alert would fire into an empty url_file and be dropped. The heartbeat keeps pinging either way, so this failure looks healthy from the outside — set it, or comment out this guard deliberately" >&2; exit 1; }
+    @[ -n "${ALERT_WEBHOOK_URL:-}" ] || { echo "error: ALERT_WEBHOOK_URL is empty; every alert would fire into an empty webhook URL and be dropped. The heartbeat keeps pinging either way, so this failure looks healthy from the outside — set it, or comment out this guard deliberately" >&2; exit 1; }
 
 down:
     docker compose down --remove-orphans
@@ -125,6 +125,21 @@ check:
     CLOUDFLARE_TUNNEL_TOKEN=dummy docker compose -f compose.yml -f compose.tunnel.yml config -q
     {{compose_demo}} config -q
     {{compose_smoke}} config -q
+    # The tunnel set with JWT auth on, so the JWK URL and claims interpolation
+    # in compose.tunnel.yml is at least schema-checked; nothing else enables it.
+    CLOUDFLARE_TUNNEL_TOKEN=dummy GRAFANA_JWT_AUTH=true CF_ACCESS_TEAM_DOMAIN=dummy CF_ACCESS_AUD=dummy docker compose -f compose.yml -f compose.tunnel.yml config -q
+    # The spoke overlays every project host layers onto its own compose.yml; a
+    # bad interpolation or a network they forget to declare otherwise first
+    # fails on a client machine, after vendoring.
+    ENVIRONMENT=dummy PROJECT=dummy COMPOSE_PROJECT_NAME=dummy OTEL_EXPORTER_OTLP_ENDPOINT=https://dummy OTLP_AUTH_TOKEN=dummy docker compose -f templates/compose.telemetry.yml -f templates/compose.telemetry.gpu.yml config -q
+    # The exposure guards, both ways: a fully set .env must pass, and each
+    # documented default must be refused on its own. Nothing else runs them —
+    # CI never sets COMPOSE_FILE to the tunnel overlay.
+    @good="OTLP_AUTH_TOKEN=t GRAFANA_ADMIN_PASSWORD=p GRAFANA_ROOT_URL=https://g.example GRAFANA_COOKIE_SECURE=true GRAFANA_JWT_AUTH=true CF_ACCESS_TEAM_DOMAIN=d CF_ACCESS_AUD=a HEARTBEAT_URL=https://h ALERT_WEBHOOK_URL=https://w"; \
+      env $good just _expose-guards; \
+      for bad in OTLP_AUTH_TOKEN=local-dev-token GRAFANA_ADMIN_PASSWORD=change-me GRAFANA_ROOT_URL=http://g.example GRAFANA_COOKIE_SECURE=false CF_ACCESS_AUD= ALERT_WEBHOOK_URL=; do \
+        ! env $good $bad just _expose-guards 2>/dev/null || { echo "error: exposure guards accepted $bad" >&2; exit 1; }; \
+      done
     images="$(docker compose config --images)" && \
       docker run --rm --network none -v ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro --entrypoint promtool $(echo "$images" | grep prom/prometheus) check config /etc/prometheus/prometheus.yaml && \
       docker run --rm --network none -e OTLP_AUTH_TOKEN=dummy -e DEPARTMENT=dummy -v ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro $(echo "$images" | grep opentelemetry-collector) validate --config=/etc/otelcol/config.yaml && \
@@ -205,6 +220,20 @@ smoke: (_queue-volume smoke_project)
         [ -z "$missing" ] && [ "$want_rules" = "$got" ] && break; \
         n=$((n+3)); [ $n -ge 60 ] && { echo "error: not provisioned after 60s — dashboards missing:${missing:- none}; alert rules $got/$want_rules (a malformed file provisions none of its group). See just smoke-logs" >&2; exit 1; }; \
         sleep 3; \
+      done
+    # Provisioning proved the rules exist; this proves they can be delivered
+    # and that the data path works. Grafana expands $VAR in the alerting
+    # provisioning files — a Grafana that stopped doing so would store the
+    # literal name and every notification would fail silently (see
+    # contact-points.yaml). Then one OTLP log through the collector's bearer
+    # auth, asserted back out of Loki with the department label the collector
+    # stamps: the label chain the keystone rules key on, end to end.
+    @auth="user = \"admin:${GRAFANA_ADMIN_PASSWORD}\""; \
+      printf '%s\n' "$auth" | curl -sf -K - {{smoke_url}}/api/v1/provisioning/contact-points | docker run --rm -i ghcr.io/jqlang/jq:1.8.1 -e '[.[] | select(.uid | startswith("cp-")) | .settings.url] | all(startswith("$") | not)' >/dev/null || { echo "error: a contact point still carries a literal \$VAR — Grafana did not expand the alerting provisioning file" >&2; exit 1; }; \
+      ts="$(date +%s)000000000"; body='{"resourceLogs":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"smoke"}},{"key":"project","value":{"stringValue":"smoke"}},{"key":"env","value":{"stringValue":"ci"}}]},"scopeLogs":[{"logRecords":[{"timeUnixNano":"'"$ts"'","body":{"stringValue":"smoke"}}]}]}]}'; \
+      docker run --rm --network {{smoke_project}}_default alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b wget -qO- --header="Authorization: Bearer ${OTLP_AUTH_TOKEN}" --header='Content-Type: application/json' --post-data="$body" http://otel-collector:4318/v1/logs >/dev/null || { echo "error: the collector refused an OTLP log with the .env token" >&2; exit 1; }; \
+      n=0; until printf '%s\n' "$auth" | curl -sf -K - -G --data-urlencode "query={project=\"smoke\",env=\"ci\",department=\"${DEPARTMENT:-cml}\"}" '{{smoke_url}}/api/datasources/proxy/uid/loki/loki/api/v1/query_range' | grep -q '"smoke"'; do \
+        n=$((n+3)); [ $n -ge 60 ] && { echo "error: the smoke log never reached Loki with its department label — see just smoke-logs" >&2; exit 1; }; sleep 3; \
       done
     @echo "Stack healthy"
 
