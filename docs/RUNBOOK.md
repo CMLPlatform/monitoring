@@ -203,7 +203,9 @@ Dependabot opens PRs that bump the pinned versions, and CI runs `just
 check` on each one. The validators (promtool, otelcol) read their image
 versions from `compose.yml`, so every bump is checked with the exact
 binaries the stack will run. A new version that changes its config syntax
-fails CI before it reaches the host.
+fails CI before it reaches the host. Patch bumps arrive grouped, one PR for
+the hub images and one for the spoke images; a minor or major comes on its
+own, so a red PR names the one image that broke.
 
 Dependabot also watches the Cloudflare provider in `infra/`. Those PRs need
 one manual step: it bumps the constraint in `main.tf` but not the recorded

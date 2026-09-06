@@ -142,7 +142,9 @@ queries that had been measuring the wrong thing.
   so an ingress edited in the Cloudflare dashboard cannot reach a backend that
   has no authentication of its own.
 - Every hub service carries a `pids_limit`; Dependabot also watches the spoke
-  images pinned in `templates/`.
+  images pinned in `templates/`. Patch bumps are grouped per directory and
+  the demo's dependencies into one monthly PR; minors and majors stay one
+  per PR.
 - GitHub Actions are pinned to commit SHAs, and `just infra-validate` runs
   against a copy of the sources so state and tfvars never enter the container.
 

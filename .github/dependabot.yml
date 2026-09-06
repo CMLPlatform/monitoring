@@ -1,37 +1,46 @@
 version: 2
 updates:
-  # Deliberately ungrouped: a grouped bump that fails `just check` or `just
-  # smoke` gives no clue which of six images broke it, and bisecting a
-  # Dependabot PR by hand is worse than reviewing six small ones.
+  # Hub images: patch bumps ride together, minors and majors come one per PR.
+  # Patches rarely change config syntax, so one CI run covers a batch; a
+  # minor or major that fails `just check` or `just smoke` then names its own
+  # image instead of leaving six to bisect.
   - package-ecosystem: "docker-compose"
     directory: "/"
     schedule:
       interval: "weekly"
-
+    groups:
+      hub-patches:
+        update-types: ["patch"]
   # The spoke images every project host runs (Alloy, socket proxy, GPU
   # exporter). Digest pins keep them reproducible, not patched.
   - package-ecosystem: "docker-compose"
     directory: "/templates"
     schedule:
       interval: "weekly"
-
+    groups:
+      spoke-patches:
+        update-types: ["patch"]
+  # The demo is a toy: one PR per month for all of it.
   - package-ecosystem: "docker"
     directory: "/demo"
     schedule:
       interval: "monthly"
-
+    groups:
+      demo:
+        patterns: ["*"]
   - package-ecosystem: "pip"
     directory: "/demo"
     schedule:
       interval: "monthly"
-
+    groups:
+      demo:
+        patterns: ["*"]
   # Cloudflare provider for infra/. Dependabot bumps the constraint in
   # main.tf but not the hashes in .terraform.lock.hcl — see the runbook.
   - package-ecosystem: "terraform"
     directory: "/infra"
     schedule:
       interval: "monthly"
-
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
