@@ -12,7 +12,9 @@ from fastapi import FastAPI, HTTPException
 
 ERROR_RATE = 0.1  # fixed error rate, enough to light up RED panels
 
-logging.basicConfig(level=logging.INFO)  # root logger defaults to WARNING; we want the INFO lines too
+logging.basicConfig(
+    level=logging.INFO,
+)  # root logger defaults to WARNING; we want the INFO lines too
 log = logging.getLogger("demo-api")
 app = FastAPI()
 
