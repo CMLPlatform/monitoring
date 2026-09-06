@@ -21,9 +21,9 @@ x-logging: &default-logging
 x-security: &default-security
   - no-new-privileges:true
 
-# Every service also drops all capabilities: they all run unprivileged uids,
-# write only to named volumes, and need none. (The client templates already
-# ship this — see templates/compose.telemetry.yml.)
+# Every service also drops all capabilities and carries a pids limit: they all
+# run unprivileged uids, write only to named volumes, and need none. The client
+# templates go further (read-only roots) — see templates/compose.telemetry.yml.
 
 # The mem_limit on each service is sized from observed steady-state usage with
 # generous headroom for bursts. They are ceilings, not reservations: the point
@@ -54,8 +54,10 @@ services:
       DEPARTMENT: ${DEPARTMENT:-cml}
     # Keep in step with memory_limiter in config/otel-collector.yaml.
     mem_limit: 512m
+    pids_limit: 512
     cap_drop: [ALL]
     security_opt: *default-security
+    networks: [default, backend]
     logging: *default-logging
 
   loki:
@@ -68,8 +70,10 @@ services:
     # No healthcheck: the image is distroless, so there is no shell, wget or
     # curl to probe /ready with. Grafana's Stack Health dashboard covers it.
     mem_limit: 2g
+    pids_limit: 1024
     cap_drop: [ALL]
     security_opt: *default-security
+    networks: [backend]
     logging: *default-logging
 
   tempo:
@@ -81,8 +85,10 @@ services:
     command: ["-config.file=/etc/tempo/tempo.yaml"]
     # Distroless too — see the note on loki.
     mem_limit: 2g
+    pids_limit: 1024
     cap_drop: [ALL]
     security_opt: *default-security
+    networks: [backend]
     logging: *default-logging
 
   prometheus:
@@ -107,8 +113,10 @@ services:
       retries: 5
       start_period: 30s
     mem_limit: 2g
+    pids_limit: 1024
     cap_drop: [ALL]
     security_opt: *default-security
+    networks: [backend]
     logging: *default-logging
 
   node-exporter:
@@ -128,6 +136,7 @@ services:
       # No network_mode:host either, so node_network_* describes the container
       # veth, not host NICs — fine while nothing alerts on network metrics.
       - /:/host:ro
+    networks: [backend]
     logging: *default-logging
 
   grafana:
@@ -186,9 +195,20 @@ services:
       retries: 5
       start_period: 30s
     mem_limit: 1g
+    pids_limit: 1024
     cap_drop: [ALL]
     security_opt: *default-security
+    networks: [default, backend]
     logging: *default-logging
+
+# Loki, Prometheus and Tempo have no authentication of their own, so they live
+# on a network with no gateway that only Grafana and the collector can reach.
+# cloudflared (compose.tunnel.yml) stays on `default`: its ingress list is
+# fetched from Cloudflare at runtime, and this is what keeps an edited ingress
+# from publishing a backend the token gate on the collector never sees.
+networks:
+  backend:
+    internal: true
 
 volumes:
   loki_data:

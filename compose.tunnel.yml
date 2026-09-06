@@ -19,6 +19,7 @@ services:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in .env}
     # Ceiling sized from observed usage with headroom; see compose.yml.
     mem_limit: 256m
+    pids_limit: 256
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true

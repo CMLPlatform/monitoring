@@ -8,6 +8,13 @@ updates:
     schedule:
       interval: "weekly"
 
+  # The spoke images every project host runs (Alloy, socket proxy, GPU
+  # exporter). Digest pins keep them reproducible, not patched.
+  - package-ecosystem: "docker-compose"
+    directory: "/templates"
+    schedule:
+      interval: "weekly"
+
   - package-ecosystem: "docker"
     directory: "/demo"
     schedule:
