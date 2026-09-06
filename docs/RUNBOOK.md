@@ -153,6 +153,12 @@ cd infra && tofu apply
 - **Adding a hostname:** add an `ingress` entry pointing at the service's
   container port, plus a matching `cloudflare_dns_record`. The catch-all
   `http_status:404` entry stays last, or it swallows everything after it.
+- **First apply against an edge built by hand** (a tunnel, DNS records, or
+  Access app that already exist in the dashboard): an empty state plans them
+  as "create", and applying that mints a second tunnel and a duplicate Access
+  app. Run `infra/generate-imports.sh > infra/imports.tf` first, check the
+  plan reads 0 to add for the imported resources, apply, then delete
+  `imports.tf`; it is a one-time instruction and gitignored.
 - **State lives on this host only.** `infra/terraform.tfstate` is gitignored
   and `just backup` does not touch it. Copy it off-host next to the backups.
   Losing it orphans the Cloudflare resources: they keep running, but the next
@@ -178,7 +184,10 @@ actionlint, shellcheck, ruff, gitleaks, OpenTofu, jq, the Alloy validator,
 and the alpine that backup, restore, and the queue-volume setup run in. No
 Dependabot ecosystem covers a justfile, so bump those by hand.
 
-After merging, on the host: `git pull && just pull && just up`. Use `just
+After merging, on the host: `git pull && just pull && just up`. Coming from
+a release that still ran Alertmanager, its volume outlives the service:
+`docker volume rm monitoring_alertmanager_data` once the new stack is up, and
+`config/alertmanager.yaml` can go with it. Use `just
 up`, not `docker compose up -d`: the recipe first chowns the collector's
 queue volume to uid 10001. Where that volume is new, a raw compose up leaves
 it root-owned and the collector crash-looping on a queue directory it cannot

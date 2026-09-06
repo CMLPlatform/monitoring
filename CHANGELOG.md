@@ -44,9 +44,6 @@ queries that had been measuring the wrong thing.
   vendor.
 - Dependabot now watches the Cloudflare provider in `infra/`, and the runbook
   covers OpenTofu-managed tunnel and Access changes.
-
-### Added
-
 - **`infra/generate-imports.sh`**: emits OpenTofu `import` blocks for the edge
   built by hand in the Zero Trust dashboard. Without it the first plan against
   an empty state reads "create" for objects already serving traffic, and
@@ -89,12 +86,25 @@ queries that had been measuring the wrong thing.
 
 - **Alertmanager**: alerting is Grafana-managed now (ADR 0002) — rules are
   provisioned from `config/grafana/alerting/`, and delivery still posts to
-  `ALERT_WEBHOOK_URL`.
+  `ALERT_WEBHOOK_URL`. Its `alertmanager_data` volume is left behind on an
+  upgraded host; the runbook says when to remove it.
 - The commented `compose.storage-s3.yml` stub: the S3 escape hatch lives as
   an appendix of ADR 0001 instead.
 
 ### Fixed
 
+- **Spoke overlay declared no `egress` network**: `compose.telemetry.yml`
+  joined it without defining it, so the documented `up -d` failed on any host
+  whose own compose file did not happen to name one. `just check` now renders
+  both spoke overlays.
+- **GPU dashboard host picker keyed on `instance`**, which is the same
+  in-container address on every host; it uses `host_name` like the rest.
+  Dashboard variables refresh on load, not on every 30s tick.
+- **Access app import id**: `generate-imports.sh` emitted it without the
+  `accounts/` scope the 5.x provider requires.
+- **`just smoke` proves delivery and the data path**: contact points must be
+  expanded (no literal `$VAR`), and one OTLP log through the collector's
+  bearer auth must come back out of Loki carrying the `department` label.
 - **Trace links from the latency panel**: the Prometheus datasource pointed
   exemplars at a `trace_id` label, but span-metrics exemplars carry `traceID`,
   so clicking a dot resolved to nothing.
@@ -124,7 +134,15 @@ queries that had been measuring the wrong thing.
 - `no-new-privileges` on every service; the demo image runs as `nobody`.
 - `GRAFANA_COOKIE_SECURE` marks the session cookie Secure (with strict
   SameSite), and `just up` with the tunnel overlay refuses to expose the stack
-  without it, a non-localhost `GRAFANA_ROOT_URL`, and non-default credentials.
+  without it, an `https://` `GRAFANA_ROOT_URL`, and non-default credentials.
+  `just check` runs the guards both ways, so a guard that silently accepts a
+  default fails CI rather than the production start.
+- Loki, Tempo, Prometheus and node-exporter sit on an internal `backend`
+  network only Grafana and the collector join. cloudflared stays on `default`,
+  so an ingress edited in the Cloudflare dashboard cannot reach a backend that
+  has no authentication of its own.
+- Every hub service carries a `pids_limit`; Dependabot also watches the spoke
+  images pinned in `templates/`.
 - GitHub Actions are pinned to commit SHAs, and `just infra-validate` runs
   against a copy of the sources so state and tfvars never enter the container.
 

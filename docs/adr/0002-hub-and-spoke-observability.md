@@ -55,11 +55,11 @@ Contracts that make it scale:
   on a spoke can detect its own absence. Templated and provisioned by
   `bootstrap.sh`, which is also what creates a project's healthchecks and prints
   its `.env` block. Bootstrap is what creates the safety net, not the telemetry.
-- **Onboarding is a copy, not a port:** vendor two template files at a pinned
-  tag, add six `.env` variables, include the overlay, run `bootstrap.sh`. A GPU
-  host is an ordinary host plus one opt-in overlay (`nvidia_gpu_exporter`
-  scraped by Alloy — not dcgm-exporter, whose profiling fields are
-  datacentre-only) and three GPU alert rules.
+- **Onboarding is a copy, not a port:** vendor the template files at a pinned
+  tag (three, plus one for a GPU host), add six `.env` variables, include the
+  overlay, run `bootstrap.sh`. A GPU host is an ordinary host plus one opt-in
+  overlay (`nvidia_gpu_exporter` scraped by Alloy — not dcgm-exporter, whose
+  profiling fields are datacentre-only) and three GPU alert rules.
 
 ## Alternatives considered
 
