@@ -21,7 +21,11 @@ Never expose 4317/4318 directly.
 
 - **`service.name`** is required: one stable name per deployable unit
   (`relab-api`, not `relab-api-prod-2`). Dashboards key on it.
-- **`env`** is `prod`, `staging`, or `dev`, set as a resource attribute.
+- **`project`** and **`env`** are both required resource attributes: `project`
+  is the name `bootstrap.sh` was run with, `env` is `prod`, `staging`, or
+  `dev`. Together they are what every alert and dashboard filters on, and a
+  sender that omits them is counted as `unknown` and alerts as an uncovered
+  project.
 - **Keep labels low-cardinality.** Prometheus turns every distinct label
   value into a series. User IDs, request IDs, and timestamps belong in the
   log line or in span attributes, not in resource attributes or metric labels.
@@ -42,7 +46,7 @@ pip install opentelemetry-distro opentelemetry-exporter-otlp opentelemetry-instr
 
 ```sh
 export OTEL_SERVICE_NAME=my-service
-export OTEL_RESOURCE_ATTRIBUTES=env=prod
+export OTEL_RESOURCE_ATTRIBUTES=project=my-project,env=prod
 export OTEL_EXPORTER_OTLP_ENDPOINT=https://otel.example.org
 export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <token>"
@@ -64,7 +68,7 @@ Every OpenTelemetry SDK reads the same four environment variables:
 OTEL_SERVICE_NAME=my-service
 OTEL_EXPORTER_OTLP_ENDPOINT=https://otel.example.org
 OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <token>"
-OTEL_RESOURCE_ATTRIBUTES=env=prod
+OTEL_RESOURCE_ATTRIBUTES=project=my-project,env=prod
 ```
 
 ## Container logs and host metrics

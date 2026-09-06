@@ -18,7 +18,7 @@ services:
     depends_on: [otel-collector]
     environment:
       OTEL_SERVICE_NAME: demo-api
-      OTEL_RESOURCE_ATTRIBUTES: env=demo
+      OTEL_RESOURCE_ATTRIBUTES: project=demo,env=demo
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
       OTEL_EXPORTER_OTLP_HEADERS: Authorization=Bearer ${OTLP_AUTH_TOKEN:?set OTLP_AUTH_TOKEN in .env}
