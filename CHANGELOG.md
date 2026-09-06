@@ -19,6 +19,9 @@ queries that had been measuring the wrong thing.
   worthless by the time anyone restores.
 - **Full-stack scraping**: Prometheus now scrapes Grafana, Loki, and Tempo as
   well, so `TargetDown` covers every service.
+- **Early storage warnings**: `HostDiskFilling` (a filesystem is full within
+  3 days at the current rate) and `PrometheusCardinalityHigh` (over 100k
+  active series) fire while there is still time, ahead of the 80% backstop.
 - **Per-user Grafana logins**, optional: `GRAFANA_JWT_AUTH` plus
   `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` make Grafana verify the
   Cloudflare Access JWT (pinned to this app's `aud` tag, with both values

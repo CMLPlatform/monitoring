@@ -36,7 +36,11 @@ Retention is only partially size-bounded:
 | Tempo blocks | 7d | none |
 
 Loki and Tempo have no total-size knob, so the disk alert at 80% is the
-backstop. When it fires, check the Filesystem panel on Stack Health. Then
+backstop. Two earlier warnings sit in front of it: `HostDiskFilling` (a 6h
+linear fit says a filesystem is full within 3 days) and
+`PrometheusCardinalityHigh` (active series over 100k, ~7x the baseline;
+series count, not time, is what grows the TSDB). When one fires, check the
+Filesystem panel on Stack Health. Then
 free space, or shorten a retention window and restart the affected service
 (`retention_period` in `config/loki.yaml`, `block_retention` in
 `config/tempo.yaml`, the `--storage.tsdb.retention.*` flags in

@@ -5,7 +5,7 @@
 # returns a series only when the alert should fire, and the threshold node only asks
 # whether anything came back.
 #
-# Keep the total under about ten. These are the generic rules; the per-project keystone
+# Keep the total around a dozen. These are the generic rules; the per-project keystone
 # lives in project-<project>-<env>.yaml beside this file, rendered by bootstrap.sh.
 apiVersion: 1
 groups:
@@ -176,6 +176,72 @@ groups:
           description: >-
             Loki and Tempo have no total-size cap, so this alert is the storage
             backstop. Free space or lower retention (see RUNBOOK).
+      # The 20% floor above is a last line; this one fires while there is still
+      # time to act. Linear fit over 6h, projected 3 days out. Root and data
+      # mounts only: a sub-10G filesystem (boot, EFI, snap) crosses zero on
+      # noise and is not where telemetry lands.
+      - uid: host-disk-filling
+        title: HostDiskFilling
+        condition: FIRING
+        for: 30m
+        noDataState: OK
+        execErrState: Error
+        isPaused: false
+        data:
+          - refId: QUERY
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            model:
+              refId: QUERY
+              instant: true
+              editorMode: code
+              expr: >
+                predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay"}[6h], 3 * 86400) < 0
+                and node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay"} > 10e9
+          - *firing
+        labels:
+          severity: warning
+        annotations:
+          summary: "Filesystem {{ $labels.mountpoint }} on {{ or $labels.host_name $labels.instance }} fills up within 3 days at the current rate"
+          description: >-
+            Extrapolated from the last 6 hours. Find what is growing (a spoke
+            shipping more than before, a log loop, a backup that stopped
+            rotating) before HostDiskSpaceLow makes it urgent.
+      # TSDB growth is series count, not time. A spoke that starts labelling by
+      # request id shows here days before it reaches the 15GB retention cap,
+      # and long before HostDiskSpaceLow. The threshold is ~7x the baseline
+      # of ~15k series with one spoke; raise it as spokes are onboarded.
+      - uid: prometheus-cardinality
+        title: PrometheusCardinalityHigh
+        condition: FIRING
+        for: 30m
+        noDataState: OK
+        execErrState: Error
+        isPaused: false
+        data:
+          - refId: QUERY
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            model:
+              refId: QUERY
+              instant: true
+              editorMode: code
+              expr: prometheus_tsdb_head_series > 100000
+          - *firing
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus holds {{ $values.QUERY }} active series, over the 100k ceiling"
+          description: >-
+            Find the label that exploded with
+            `topk(10, count by (__name__) ({__name__=~".+"}))` and
+            `topk(10, count by (job) ({__name__=~".+"}))`, then drop it at the
+            spoke's Alloy config or the collector. Retention is 15GB; at this
+            rate it fills.
   # A crash loop must get louder, not quieter.
   - orgId: 1
     name: container-lifecycle
