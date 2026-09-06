@@ -75,7 +75,7 @@ done <<<"$pairs"
 # ------------------------------------------------------------ 2. the coverage backstop
 covered="$(echo "$pairs" | sed 's| |/|' | paste -sd',' - | sed 's/,/, /g')"
 covered_expr="$(echo "$pairs" \
-    | sed 's@^\([^ ]*\) \([^ ]*\)$@{__name__=~"telemetry_(datapoints|logs|spans)_total", project="\1",env="\2"}@' \
+    | sed 's@^\([^ ]*\) \([^ ]*\)$@{__name__=~"telemetry_.+_total", project="\1",env="\2"}@' \
     | paste -sd'@' - | sed 's/@/ or /g')"
 sed -e "s@__COVERED__@${covered}@" \
     -e "s@__COVERED_EXPR__@${covered_expr}@" \

@@ -37,7 +37,7 @@ groups:
               # The collector's ingest counters, as in coverage.yaml.tmpl. absent() loads
               # every series its selector matches, once a minute per project, so it is
               # bounded to a few per service rather than everything the project sends.
-              expr: absent({__name__=~"telemetry_(datapoints|logs|spans)_total", project="__PROJECT__",env="__ENV__"})
+              expr: absent({__name__=~"telemetry_.+_total", project="__PROJECT__",env="__ENV__"})
           - refId: FIRING
             datasourceUid: __expr__
             model:

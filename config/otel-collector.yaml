@@ -30,7 +30,9 @@ connectors:
   # Attributes are read from the resource too, which is where project and env live.
   #
   # Every data type is named, including the two that carry no project: a type left
-  # undefined emits the connector's own default metric instead.
+  # undefined emits the connector's own default metric instead. The rules match
+  # telemetry_.+_total and key on the project label, so the two without it never
+  # reach them.
   count:
     datapoints:
       telemetry.datapoints: &by_project
@@ -47,10 +49,13 @@ connectors:
       telemetry.logs: *by_project
     spans:
       telemetry.spans: *by_project
+    # Neither of these is read by a rule. A metric stream has no attributes of its
+    # own (its datapoints carry them), and span events are only ever counted
+    # alongside their spans, so one series each is enough.
     spanevents:
-      telemetry.spanevents: *by_project
+      telemetry.spanevents:
+        description: Span events received.
     metrics:
-      # A metric stream has no attributes of its own; its datapoints carry them.
       telemetry.metrics:
         description: Metric streams received.
 

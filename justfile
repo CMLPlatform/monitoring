@@ -165,15 +165,12 @@ lint:
 _image file service:
     @docker compose -f {{file}} config --format json | docker run --rm -i {{jq}} -er '.services["{{service}}"].image // error("no service {{service}} in {{file}}")'
 
-# One compose render feeds all four; each config goes through the binary that
-# will load it.
+# Each config goes through the binary that will load it.
 validate:
-    @set -e; cfg=$(docker compose -f compose.yml config --format json); \
-      img() { printf '%s' "$cfg" | docker run --rm -i {{jq}} -er ".services[\"$1\"].image"; }; \
-      docker run --rm --network none -v ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro --entrypoint promtool $(img prometheus) check config /etc/prometheus/prometheus.yaml; \
-      docker run --rm --network none -e OTLP_AUTH_TOKEN=dummy -v ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro $(img otel-collector) validate --config=/etc/otelcol/config.yaml; \
-      docker run --rm --network none -v ./config/loki.yaml:/etc/loki/loki.yaml:ro $(img loki) -config.file=/etc/loki/loki.yaml -verify-config; \
-      docker run --rm --network none -v ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro $(img tempo) -config.file=/etc/tempo/tempo.yaml -config.verify=true
+    docker run --rm --network none -v ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro --entrypoint promtool $(just _image compose.yml prometheus) check config /etc/prometheus/prometheus.yaml
+    docker run --rm --network none -e OTLP_AUTH_TOKEN=dummy -v ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro $(just _image compose.yml otel-collector) validate --config=/etc/otelcol/config.yaml
+    docker run --rm --network none -v ./config/loki.yaml:/etc/loki/loki.yaml:ro $(just _image compose.yml loki) -config.file=/etc/loki/loki.yaml -verify-config
+    docker run --rm --network none -v ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro $(just _image compose.yml tempo) -config.file=/etc/tempo/tempo.yaml -config.verify=true
 
 # Runs against a copy of the sources: state and tfvars never enter the
 # container, which has network access to fetch the provider.
