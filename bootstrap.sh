@@ -95,15 +95,29 @@ if docker compose ps --status running --services 2>/dev/null | grep -qx grafana;
     if [[ -z "${GRAFANA_ADMIN_PASSWORD:-}" && -f .env ]]; then
         GRAFANA_ADMIN_PASSWORD="$(sed -n 's/^GRAFANA_ADMIN_PASSWORD=//p' .env | tail -1)"
     fi
+    [[ -n "${GRAFANA_ADMIN_PASSWORD:-}" ]] \
+        || { echo "error: GRAFANA_ADMIN_PASSWORD is not set and not readable from .env; cannot verify the rule" >&2; exit 1; }
+    # curl's config parser unescapes \ and " inside a quoted value, so escape both.
+    gpw="${GRAFANA_ADMIN_PASSWORD//\\/\\\\}"
+    gpw="${gpw//\"/\\\"}"
     uid="proj-silent-${project}-${env_name}"
     for _ in $(seq 30); do
         sleep 2
-        if printf 'user = "admin:%s"\n' "$GRAFANA_ADMIN_PASSWORD" \
-            | curl -sf -K - "http://localhost:3000/api/v1/provisioning/alert-rules/${uid}" >/dev/null; then
-            echo "verified  rule ${uid} is provisioned"
-            uid=""
-            break
-        fi
+        # Password on stdin, never argv. A wrong password would otherwise poll
+        # for a minute and then report the rule as missing.
+        code="$(printf 'user = "admin:%s"\n' "$gpw" \
+            | curl -s -o /dev/null -w '%{http_code}' -K - "http://localhost:3000/api/v1/provisioning/alert-rules/${uid}")" || continue
+        case "$code" in
+            200)
+                echo "verified  rule ${uid} is provisioned"
+                uid=""
+                break
+                ;;
+            401 | 403)
+                echo "error: grafana rejected the admin credentials (HTTP ${code}); check GRAFANA_ADMIN_PASSWORD" >&2
+                exit 1
+                ;;
+        esac
     done
     [[ -z "$uid" ]] || { echo "error: grafana restarted but rule ${uid} is not provisioned; check 'just logs grafana' for the rejected file" >&2; exit 1; }
 else
