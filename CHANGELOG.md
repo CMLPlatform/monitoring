@@ -43,9 +43,10 @@ the config syntax. 1.0 waits for a second consumer to confirm the contract.
   and `PrometheusCardinalityHigh` (over 100k active series) warn ahead of the
   80% disk backstop.
 - **Per-project ingest counters**: the gateway counts what arrives and emits
-  `telemetry_{datapoints,logs,spans,metrics}_total` by project and
-  environment. `ProjectTelemetrySilent` and `ProjectsUncovered` key on those
-  instead of scanning every project-labelled series, so their cost is flat in
+  `telemetry_{datapoints,logs,spans}_total` by project and environment
+  (`metrics` and `spanevents` are counted once, without labels). The rules
+  match `telemetry_.+_total`; `ProjectTelemetrySilent` and `ProjectsUncovered`
+  key on those instead of scanning every project-labelled series, so their cost is flat in
   fleet size, and a project that sends only logs or only traces is covered at
   last: it reached no Prometheus series before. Stack Health gains an Ingest
   by Project panel.
