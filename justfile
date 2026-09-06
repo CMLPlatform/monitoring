@@ -191,7 +191,7 @@ backup: (_backup core_project "backups")
 _backup project dir:
     mkdir -p {{dir}}
     @-docker compose -p {{project}} unpause {{stateful}} >/dev/null 2>&1
-    @rc=0; m=$(for s in {{stateful}}; do printf -- '-v {{project}}_%s_data:/data/%s ' $s $s; done); docker compose -p {{project}} pause {{stateful}} && docker run --rm --network none $m -v {{absolute_path(dir)}}:/backups {{alpine}} sh -c 'umask 077 && tar cf - -C /data . | gzip -1 > /backups/monitoring-$(date +%Y%m%d-%H%M%S).tar.gz' || rc=$?; docker compose -p {{project}} unpause {{stateful}} || { echo "error: unpause failed; the stack is still paused" >&2; rc=1; }; exit $rc
+    @rc=0; m=$(for s in {{stateful}}; do printf -- '-v {{project}}_%s_data:/data/%s ' $s $s; done); docker compose -p {{project}} pause {{stateful}} && docker run --rm --network none $m -v {{absolute_path(dir)}}:/backups {{alpine}} sh -c 'set -o pipefail; umask 077 && tar cf - -C /data . | gzip -1 > /backups/monitoring-$(date +%Y%m%d-%H%M%S).tar.gz' || rc=$?; docker compose -p {{project}} unpause {{stateful}} || { echo "error: unpause failed; the stack is still paused" >&2; rc=1; }; exit $rc
     @ls -lh {{dir}}/ | tail -1
 
 # Restore a backup tarball into the volumes (stops the stack; wipes current state).
@@ -209,9 +209,10 @@ _restore project file dir:
     m=$(for s in {{stateful}}; do printf -- '-v {{project}}_%s_data:/data/%s ' $s $s; done); docker run --rm --network none $m -v {{absolute_path(file)}}:/backup.tar.gz:ro {{alpine}} sh -c 'for d in /data/*; do find "$d" -mindepth 1 -delete; done && tar xzf /backup.tar.gz -C /data'
 
 # Needs a booted smoke stack (`just smoke`). Run it after touching _backup/_restore.
+# COMPOSE_FILE is pinned so the host's overlay list stays out, as for `smoke`.
 # Round-trip backup and restore on the smoke stack.
 restore-check:
-    @d=$(mktemp -d) && just _backup {{smoke_project}} "$d" && f=$(ls "$d"/monitoring-*.tar.gz) && just _restore {{smoke_project}} "$f" "$d" && docker run --rm --network none -v {{smoke_project}}_grafana_data:/g:ro {{alpine}} test -s /g/grafana.db && echo "Backup round-trip ok"; rc=$?; rm -rf "$d"; exit $rc
+    @export COMPOSE_FILE=compose.yml:compose.sandbox.yml; d=$(mktemp -d) && just _backup {{smoke_project}} "$d" && f=$(ls "$d"/monitoring-*.tar.gz) && just _restore {{smoke_project}} "$f" "$d" && docker run --rm --network none -v {{smoke_project}}_grafana_data:/g:ro {{alpine}} test -s /g/grafana.db && echo "Backup round-trip ok"; rc=$?; rm -rf "$d"; exit $rc
 
 # `--wait` blocks on the healthchecks and fails if any container exits, so a
 # crash-looping service is caught (after the full timeout). scripts/smoke.sh
