@@ -9,6 +9,7 @@
 #   tofu plan                            # expect "0 to add"; see the script's header
 #   tofu apply && rm imports.tf
 #   tofu output -raw tunnel_token     # → CLOUDFLARE_TUNNEL_TOKEN in ../.env
+#   tofu output -raw grafana_access_aud grafana_access_team_domain  # → the CF_ACCESS_* pair
 #
 # State is local (infra/terraform.tfstate, gitignored) and holds the tunnel secret.
 
@@ -128,6 +129,18 @@ resource "cloudflare_zero_trust_access_policy" "grafana_emails" {
 data "cloudflare_zero_trust_tunnel_cloudflared_token" "monitoring" {
   account_id = var.account_id
   tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.monitoring.id
+}
+
+# The Zero Trust team name is account-wide and predates this config, so it is read,
+# not managed. Grafana builds its JWK set URL from it, and an unset name would fetch
+# signing keys from a subdomain anyone could claim, hence the exposure guards.
+data "cloudflare_zero_trust_organization" "team" {
+  account_id = var.account_id
+}
+
+output "grafana_access_team_domain" {
+  description = "Set as CF_ACCESS_TEAM_DOMAIN in ../.env. Grafana appends .cloudflareaccess.com."
+  value       = trimsuffix(data.cloudflare_zero_trust_organization.team.auth_domain, ".cloudflareaccess.com")
 }
 
 output "grafana_access_aud" {
