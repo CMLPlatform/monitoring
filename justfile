@@ -61,7 +61,8 @@ up: (_queue-volume core_project) _guard-if-exposed
 _guard-if-exposed:
     @case "${COMPOSE_FILE:-}" in *compose.tunnel.yml*) just _expose-guards;; esac
 
-# Refuses to expose the stack with the documented default credentials.
+# Refuses to expose the stack with the documented default credentials or with
+# secret files other local users can read.
 _expose-guards:
     @[ "${OTLP_AUTH_TOKEN:-}" != "local-dev-token" ] || { echo "error: OTLP_AUTH_TOKEN is still the local default; generate one (openssl rand -hex 32) before exposing ingestion" >&2; exit 1; }
     @[ "${GRAFANA_ADMIN_PASSWORD:-}" != "change-me" ] || { echo "error: GRAFANA_ADMIN_PASSWORD is still the documented default; change it before exposing Grafana" >&2; exit 1; }
@@ -69,6 +70,7 @@ _expose-guards:
     @[ "${GRAFANA_COOKIE_SECURE:-false}" = "true" ] || { echo "error: GRAFANA_COOKIE_SECURE must be true when Grafana is served over HTTPS; set it in .env" >&2; exit 1; }
     @[ "${GRAFANA_JWT_AUTH:-false}" != "true" ] || { [ -n "${CF_ACCESS_TEAM_DOMAIN:-}" ] && [ -n "${CF_ACCESS_AUD:-}" ]; } || { echo "error: GRAFANA_JWT_AUTH=true needs CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD in .env (cd infra && tofu output -raw grafana_access_aud)" >&2; exit 1; }
     @[ -n "${HEARTBEAT_URL:-}" ] || echo "WARNING: HEARTBEAT_URL is empty; the stack goes live without a dead-man's switch" >&2
+    @for f in .env infra/terraform.tfvars infra/terraform.tfstate infra/terraform.tfstate.backup; do [ ! -e "$f" ] || case "$(stat -c %a "$f")" in *00) ;; *) echo "error: $f is readable by other users (mode $(stat -c %a "$f")); it holds live secrets, run: chmod 600 $f" >&2; exit 1;; esac; done
     @[ -n "${ALERT_WEBHOOK_URL:-}" ] || { echo "error: ALERT_WEBHOOK_URL is empty; every alert would fire into an empty webhook URL and be dropped. The heartbeat keeps pinging either way, so this failure looks healthy from the outside. Set it, or comment out this guard" >&2; exit 1; }
 
 # Stop the stack; volumes stay.

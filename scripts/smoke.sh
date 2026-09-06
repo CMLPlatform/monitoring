@@ -65,14 +65,15 @@ poll all_up || die "not all $n_jobs scrape targets are up: $(promq up | jq -r '.
 # ------------------------------------------------------------- data paths
 # One metric and one log through the collector's bearer auth, read back with
 # the identity labels the alert rules key on. Posted from inside the stack's
-# network with Grafana's wget: the sandbox overlay publishes no ingestion ports.
+# network with Grafana's curl: the sandbox overlay publishes no ingestion ports.
 ts="$(date +%s)000000000"
 res='{"attributes":[{"key":"service.name","value":{"stringValue":"smoke"}},{"key":"project","value":{"stringValue":"smoke"}},{"key":"env","value":{"stringValue":"ci"}}]}'
-# Token on stdin: argv is world-readable in ps.
+# Token through curl's stdin config: argv is world-readable in ps, on the host
+# and inside the container alike.
 otlp() {
     docker compose -p "$project" exec -T grafana sh -c \
-        'read -r t; wget -qO- --header="Authorization: Bearer $t" --header="Content-Type: application/json" --post-data="$1" "http://otel-collector:4318/v1/$2"' \
-        _ "$2" "$1" <<<"$OTLP_AUTH_TOKEN" >/dev/null
+        'curl -sf -K - -o /dev/null -H "Content-Type: application/json" --data-binary "$1" "http://otel-collector:4318/v1/$2"' \
+        _ "$2" "$1" <<<"header = \"Authorization: Bearer $OTLP_AUTH_TOKEN\""
 }
 otlp metrics '{"resourceMetrics":[{"resource":'"$res"',"scopeMetrics":[{"metrics":[{"name":"smoke_up","gauge":{"dataPoints":[{"asInt":"1","timeUnixNano":"'"$ts"'"}]}}]}]}]}' \
     || die "the collector refused an OTLP metric with the .env token"

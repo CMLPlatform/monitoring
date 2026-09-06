@@ -9,7 +9,7 @@ repos:
       - id: gitleaks
         name: gitleaks (staged)
         entry: >-
-          docker run --rm --network none -v .:/repo
+          docker run --rm --network none -v .:/repo:ro
           zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
           git --pre-commit --staged --redact --no-banner /repo
         language: system
@@ -21,8 +21,8 @@ repos:
         entry: >-
           sh -c 'head -n1 "$1"
           | grep -Eq "^((build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9._/-]+\))?!?:
-          [a-z].{0,70}|(Merge|Revert|fixup!|squash!) .*)$"
-          || { echo "commit message must be type(scope): lower-case summary, at most 72 chars" >&2; exit 1; }' --
+          [a-z].{0,81}|(Merge|Revert|fixup!|squash!) .*)$"
+          || { echo "commit message must be type(scope): lower-case summary, at most 82 chars" >&2; exit 1; }' --
         language: system
         stages: [commit-msg]
       - id: check
