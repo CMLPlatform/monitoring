@@ -17,9 +17,5 @@
   target-version = "py313"
 
   [tool.ruff.lint]
-    ignore = [
-      "D203", # line too long
-      "E203", # whitespace before ':'
-      "W503", # line break before binary operator
-    ]
-    select = ["ALL"]
+    pydocstyle.convention = "google"
+    select                = ["ALL"]
