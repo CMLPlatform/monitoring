@@ -56,9 +56,11 @@ connectors:
 
 processors:
   # Stamped here with upsert, so a sender cannot claim another department.
-  # Literal rather than an env knob: one value has ever been correct, and as an
-  # indexed Loki stream label a second one would be an index dimension, not a
-  # filter. Make it a variable again when a second department federates.
+  # Literal rather than an env knob: one value has ever been correct, and a knob here
+  # is a silent-failure surface. A hub brought up with the wrong value mislabels every
+  # signal and mints a parallel set of Loki streams, with nothing to catch it. Make it
+  # a variable when a second department runs its own hub; if one ever federates into
+  # this one, the upsert itself is what has to go.
   resource/department:
     attributes:
       - key: department
