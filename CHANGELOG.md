@@ -43,7 +43,8 @@ queries that had been measuring the wrong thing.
   `just infra-validate`; `lint` also enforces yamlfmt and ruff formatting.
   `check` splits into `lint` (static) and `validate` (the stack's own images);
   CI runs the two on separate jobs so a lint failure never waits on the stack
-  images. `just hooks` installs git hooks via prek: gitleaks on the staged
+  images, on pull requests only (`main` requires one), skipping prose-only
+  changes; `infra/` validates on its own workflow when `infra/` changes. `just hooks` installs git hooks via prek: gitleaks on the staged
   diff and `lint` at commit, a Conventional Commits check on the message,
   `validate` at push, `infra-validate` at push when `infra/` changed.
 - **`just smoke` boots the production shape and asserts the data paths**: JWT

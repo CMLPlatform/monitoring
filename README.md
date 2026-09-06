@@ -134,7 +134,8 @@ Loki with the promoted project/env/department labels. The assertions live in
 its own port, so it cannot disturb a stack already running on the host:
 `just smoke` is safe on the production box, `just restore-check` rehearses
 backup and restore on its volumes, and `just smoke-down` cleans up. CI runs
-`lint` on one job and `validate` plus `smoke` on another, on every push and pull request.
+`lint` on one job and `validate` plus `smoke` on another, on every pull
+request; `main` only moves through pull requests, so nothing runs twice.
 
 ## Sending telemetry from a project
 
