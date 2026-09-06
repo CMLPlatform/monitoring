@@ -19,8 +19,9 @@ discovery.docker "containers" {
 	host = "tcp://docker-socket-proxy:2375"
 
 	// The default 1m lets a short-lived one-shot (a backup) start and exit inside one
-	// poll window, never discovered.
-	refresh_interval = "5s"
+	// poll window, never discovered. 15s catches those without polling the socket
+	// proxy 12x more often than the default forever.
+	refresh_interval = "15s"
 }
 
 discovery.relabel "containers" {
@@ -160,6 +161,16 @@ prometheus.relabel "cadvisor_scope" {
 		regex         = sys.env("COMPOSE_PROJECT_NAME")
 		action        = "keep"
 	}
+
+	// cAdvisor emits ~59 metric families per container (per-cpu, per-disk, per-NIC,
+	// TCP state); the stack reads four. The rest is the fastest-growing block in the
+	// series budget, since it scales per container per host. Add a name here when a
+	// dashboard or rule starts using one.
+	rule {
+		source_labels = ["__name__"]
+		regex         = "container_(start_time_seconds|oom_events_total|cpu_usage_seconds_total|memory_working_set_bytes)"
+		action        = "keep"
+	}
 }
 
 prometheus.scrape "host" {
@@ -200,9 +211,21 @@ prometheus.exporter.self "alloy" { }
 
 prometheus.scrape "alloy" {
 	targets         = prometheus.exporter.self.alloy.targets
-	forward_to      = [prometheus.relabel.host.receiver]
+	forward_to      = [prometheus.relabel.alloy_self.receiver]
 	scrape_interval = "30s"
 	job_name        = "alloy"
+}
+
+// Alloy is the only exporter in this file with histograms, and nothing central
+// reads them: 345 of this job's 760 series. The _sum and _count series survive.
+prometheus.relabel "alloy_self" {
+	forward_to = [prometheus.relabel.host.receiver]
+
+	rule {
+		source_labels = ["__name__"]
+		regex         = ".*_bucket"
+		action        = "drop"
+	}
 }
 
 // ---------------------------------------------------------------------------
