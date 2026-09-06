@@ -19,7 +19,7 @@ datasources:
     access: proxy
     url: http://loki:3100
     jsonData:
-      # Click a trace_id in a log line → jump to the trace in Tempo.
+      # trace_id in a log line links to the trace in Tempo.
       derivedFields:
         - name: trace_id
           matcherRegex: "[tT]race[_-]?[iI][dD][\"=:\\s]+([A-Fa-f0-9]+)"
@@ -38,10 +38,8 @@ datasources:
     access: proxy
     url: http://tempo:3200
     jsonData:
-      # No tracesToMetrics/serviceMap/nodeGraph: all three need span-metrics series
-      # this stack does not generate (RED comes from the apps' own OTLP metrics,
-      # ADR 0002). Configured anyway, they render a permanently empty service graph
-      # that reads as "no traffic".
+      # No tracesToMetrics/serviceMap/nodeGraph: they need span-metrics this
+      # stack does not generate, and would render an empty service graph.
       tracesToLogsV2:
         datasourceUid: loki
         filterByTraceID: true

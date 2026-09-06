@@ -6,26 +6,25 @@ Notable changes to this stack. Format follows
 
 ## [0.3.0] - 2026-09-06
 
-The hub runs the department's telemetry in production now, with a spoke
-contract (hostname, labels, templates pinned by tag) that one project uses.
-This release hardens the stack around that contract and makes the checks
-prove the data paths, not just the config syntax. 1.0 waits until a second
-consumer has confirmed the contract.
+The hub runs the department's telemetry in production, with one spoke on the
+contract (hostname, labels, templates pinned by tag). This release hardens the
+stack around that contract and makes the checks prove the data paths, not just
+the config syntax. 1.0 waits for a second consumer to confirm the contract.
 
 ### Upgrade
 
 - Point every spoke's `OTEL_EXPORTER_OTLP_ENDPOINT` at `otel.<domain>`. The
-  old `otlp.<domain>` name is gone, and so is any edge rule that matched it.
+  old `otlp.<domain>` name is gone.
 - Set `DEPARTMENT` in the hub's `.env`. The collector stamps it on every
-  signal; the alert rules and dashboards key on it.
+  signal.
 - Set `COMPOSE_FILE` in `.env` to name the overlays this host runs
   (`compose.yml:compose.tunnel.yml` in production). `just up-tunnel` is gone;
   `just up` runs the exposure guards whenever the tunnel overlay is active.
 - Remove the orphaned `alertmanager_data` volume when convenient. Alerting is
-  Grafana-managed (ADR 0002); delivery still posts to `ALERT_WEBHOOK_URL`.
+  Grafana-managed (ADR 0002).
 - Re-vendor the templates on each spoke at `v0.3.0` (`bootstrap.sh` prints
-  the commands): the Alloy agent gains an in-pipeline memory limiter, and the
-  overlay declares the `egress` network it joins.
+  the commands): the Alloy agent gains a memory limiter, and the overlay
+  declares the `egress` network it joins.
 - Loki streams keep their old label set until they age out (30 days).
 
 ### Added
@@ -37,12 +36,12 @@ consumer has confirmed the contract.
   `otel_queue` volume, so telemetry buffered during an outage survives a
   collector restart.
 - **Self-monitoring covers every service**: Prometheus scrapes Grafana, Loki
-  and Tempo too, so `TargetDown` sees them. `HostDiskFilling` (full within 3
-  days at the current rate) and `PrometheusCardinalityHigh` (over 100k active
-  series) warn ahead of the 80% disk backstop.
+  and Tempo too. `HostDiskFilling` (full within 3 days at the current rate)
+  and `PrometheusCardinalityHigh` (over 100k active series) warn ahead of the
+  80% disk backstop.
 - **`infra/generate-imports.sh`** emits OpenTofu `import` blocks for the
   tunnel, DNS records and Access app built by hand, so the first plan does
-  not create duplicates of objects already serving traffic.
+  not create duplicates.
 - **`just smoke` proves the stack works, not that it boots**: every dashboard
   and alert rule provisioned, uid for uid, none paused; contact points carry
   the exact URLs given; Grafana honours the JWT settings and refuses a forged
@@ -51,31 +50,27 @@ consumer has confirmed the contract.
   `department` labels. `just restore-check` rehearses backup and restore on
   the smoke volumes.
 - **`just check` is `lint` plus `validate`**. `lint` covers compose files,
-  the rendered alert templates, YAML and its formatting, workflows, shell
-  scripts, the demo's Python, OpenTofu formatting, dashboard JSON and the
-  datasource uids it names, and git history for secrets. `validate` runs each
-  stack config through the exact image the stack uses. `just hooks` installs
-  git hooks via prek: gitleaks at commit, a Conventional Commits check on the
+  the rendered alert templates, YAML formatting, workflows, shell scripts,
+  the demo's Python, OpenTofu formatting, dashboard JSON and the datasource
+  uids it names, and git history for secrets. `validate` runs each stack
+  config through the exact image the stack uses. `just hooks` installs git
+  hooks via prek: gitleaks at commit, a Conventional Commits check on the
   message, `check` at push.
 - Dependabot watches the spoke images in `templates/` and the Cloudflare
-  provider in `infra/`; patch bumps arrive grouped, the demo's advisories in
-  one PR.
+  provider in `infra/`. Patch bumps arrive grouped.
 
 ### Changed
 
 - **Loki indexes only the identity labels** (`service.name`, `department`,
-  `project`, `env`, `host.name`; the list lives in `config/loki.yaml`).
-  Everything else is structured metadata, so a sender restart no longer
-  mints a new stream.
+  `project`, `env`, `host.name`). Everything else is structured metadata, so
+  a sender restart no longer mints a new stream.
 - **Dashboards are provisioned, not editable**: `dashboards/*.json` is the
   source of truth; UI saves are off.
 - **Tempo stores traces and nothing else**: its metrics generator is gone.
   RED comes from the applications' own OTLP metrics (ADR 0002).
-- CI runs on pull requests only (`main` requires one), skips prose-only
-  changes, and validates `infra/` on its own workflow. `lint` and
-  `validate` + `smoke` run on separate jobs, so a lint failure never waits
-  on the stack images. `just demo-build` is gone; the demo is a local
-  fixture.
+- CI runs on pull requests only, skips prose-only changes, and validates
+  `infra/` on its own workflow. `lint` and `validate` + `smoke` run on
+  separate jobs. `just demo-build` is gone.
 - `just smoke` and `just demo` each run under their own compose project and
   Grafana port (`compose.sandbox.yml`), so neither can touch a running stack.
 - Image bumps: Grafana 13.1.4, Loki 3.7.6, Tempo 3.0.3, Prometheus 3.13.2,
@@ -86,9 +81,9 @@ consumer has confirmed the contract.
 ### Fixed
 
 - **`HighErrorRate` measured the wrong thing twice**: it counted all spans,
-  so child spans diluted the ratio; and it aggregated by job alone, so a
-  healthy prod service masked a broken staging one. It reads the HTTP server
-  metrics now, keyed on job, project and env.
+  so child spans diluted the ratio, and it aggregated by job alone, so a
+  healthy prod service masked a broken staging one. It now reads the HTTP
+  server metrics, keyed on job, project and env.
 - Trace links from the latency panel resolved to nothing: exemplars carry
   `traceID`, the datasource looked for `trace_id`.
 - The Infrastructure Logs dashboard queried labels this stack never set. The
@@ -105,9 +100,9 @@ consumer has confirmed the contract.
   still paused when the unpause failed; `bootstrap.sh` printed the hash of
   empty input for a template missing from the tag; `generate-imports.sh`
   reported a failed DNS API call as "no record". `bootstrap.sh` now reads
-  its rule back from Grafana after the restart instead of trusting it.
+  its rule back from Grafana after the restart.
 - Grafana and the collector wait for Prometheus to report ready instead of
-  racing it on a cold start. The demo load generator's error rate matched
+  racing it on a cold start. The demo load generator's error rate matches
   its advertised one in ten.
 
 ### Security
@@ -121,7 +116,7 @@ consumer has confirmed the contract.
   with no authentication of its own.
 - `GRAFANA_COOKIE_SECURE` marks the session cookie Secure with strict
   SameSite. With the tunnel overlay, `just up` refuses to start without it,
-  an `https://` root URL, non-default credentials, and a webhook URL;
+  an `https://` root URL, non-default credentials, and a webhook URL.
   `just lint` runs those guards both ways.
 - Hub images are digest-pinned, GitHub Actions are pinned to commit SHAs, the
   tunnel token reaches cloudflared via environment rather than argv, and

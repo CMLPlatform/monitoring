@@ -1,11 +1,7 @@
 #!/usr/bin/env bash
-# Assertions `just smoke` runs against the stack it just booted. A script rather
-# than justfile one-liners so it can have functions and go through shellcheck.
-# Host jq, not the container: it is part of the declared toolchain here and
-# preinstalled on the CI runner, and a container start per poll adds up.
-#
-# Everything asserted here lands asynchronously after Grafana's /api/health
-# answers, so each assertion polls (`poll`, one second, up to a minute).
+# Assertions `just smoke` runs against the stack it just booted. Everything
+# here lands asynchronously after Grafana's /api/health answers, so each
+# assertion polls (one second, up to a minute).
 set -euo pipefail
 
 url="${SMOKE_URL:?}"
@@ -21,9 +17,7 @@ poll() { local n=0; until "$@"; do n=$((n + 1)); [[ $n -lt 60 ]] || return 1; sl
 
 # ------------------------------------------------------------------ provisioning
 # Grafana skips a broken dashboard or a malformed alert group silently, so the
-# provisioned sets must equal what the repo holds, uid for uid. Both sides come
-# from the repo, so adding a dashboard or a rule never breaks this. A missing
-# dashboards/ glob fails the jq call, which is the right answer.
+# provisioned sets must equal what the repo holds, uid for uid.
 want_dash="$(jq -r .uid dashboards/*.json | sort)"
 rule_files=()
 for f in config/grafana/alerting/*.yaml; do
@@ -46,43 +40,35 @@ jq -e 'all(.isPaused | not)' <<<"$rules" >/dev/null \
     || die "paused alert rules never fire: $(jq -r '.[] | select(.isPaused) | .uid' <<<"$rules" | tr '\n' ' ')"
 
 # --------------------------------------------------------------- contact points
-# Grafana expands $VAR in the alerting provisioning files. The exact URLs the
-# stack was given must come back, not merely "something that is not literally
-# $ALERT_WEBHOOK_URL": an empty value passes that test and drops every alert.
+# The exact URLs the stack was given must come back: an empty value would
+# pass a "not literally $ALERT_WEBHOOK_URL" test and drop every alert.
 gf "$url/api/v1/provisioning/contact-points" \
     | jq -e --arg a "$ALERT_WEBHOOK_URL" --arg h "$HEARTBEAT_URL" \
         '[.[] | select(.uid | startswith("cp-")) | .settings.url] | sort == ([$a, $h] | sort)' >/dev/null \
     || die "contact points do not carry ALERT_WEBHOOK_URL and HEARTBEAT_URL; Grafana did not expand the provisioning file, or a receiver is missing"
 
 # ------------------------------------------------------------------- JWT auth
-# The stack booted with GRAFANA_JWT_AUTH=true. Grafana ignores an env key it
-# no longer knows, so read the parsed setting back, and check that a forged
-# Access header is refused rather than auto-signed-up.
+# Grafana ignores an env key it no longer knows, so read the parsed setting
+# back, and check that a forged Access header is refused.
 gf "$url/api/admin/settings" | jq -e '.["auth.jwt"].enabled == "true"' >/dev/null \
     || die "Grafana did not enable JWT auth from GF_AUTH_JWT_*; the Cloudflare Access path is broken"
 code="$(curl -s -o /dev/null -w '%{http_code}' -H 'Cf-Access-Jwt-Assertion: not-a-jwt' "$url/api/dashboards/home")"
 [[ "$code" == 401 ]] || die "a forged Access token got HTTP $code from Grafana, expected 401"
 
 # ------------------------------------------------------------- scrape targets
-# promtool only checks syntax; a renamed service leaves its scrape job silently
-# empty, and TargetDown (up == 0) then matches nothing. Every job in
-# prometheus.yaml must have scraped its target successfully.
+# A renamed service leaves its scrape job silently empty, and TargetDown then
+# matches nothing. Every job in prometheus.yaml must have scraped its target.
 n_jobs="$(grep -c '^ *- job_name:' config/prometheus.yaml)"
 all_up() { [[ "$(promq 'count(up == 1)' | jq -r '.data.result[0].value[1] // 0')" == "$n_jobs" ]]; }
 poll all_up || die "not all $n_jobs scrape targets are up: $(promq up | jq -r '.data.result[] | "\(.metric.job)=\(.value[1])"' | tr '\n' ' ')"
 
 # ------------------------------------------------------------- data paths
-# One metric and one log through the collector's bearer auth, read back out of
-# Prometheus and Loki with the identity labels the alert rules key on: project
-# and env promoted from the resource, department stamped by the collector. A
-# collector pipeline or prometheus.yaml's promote_resource_attributes can break
-# with both configs still valid; this is the only place that shows. Posted from
-# inside the stack's network (the sandbox overlay publishes no ingestion ports)
-# with Grafana's wget: it is on the same network and needs no extra image.
+# One metric and one log through the collector's bearer auth, read back with
+# the identity labels the alert rules key on. Posted from inside the stack's
+# network with Grafana's wget: the sandbox overlay publishes no ingestion ports.
 ts="$(date +%s)000000000"
 res='{"attributes":[{"key":"service.name","value":{"stringValue":"smoke"}},{"key":"project","value":{"stringValue":"smoke"}},{"key":"env","value":{"stringValue":"ci"}}]}'
-# The token goes in on stdin: on the production host this is the real
-# OTLP_AUTH_TOKEN (dotenv), and argv is world-readable in ps.
+# Token on stdin: argv is world-readable in ps.
 otlp() {
     docker compose -p "$project" exec -T grafana sh -c \
         'read -r t; wget -qO- --header="Authorization: Bearer $t" --header="Content-Type: application/json" --post-data="$1" "http://otel-collector:4318/v1/$2"' \

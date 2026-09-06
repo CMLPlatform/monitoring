@@ -3,14 +3,12 @@ name: monitoring
 # Central observability stack.
 #   OTel Collector  →  ingestion gateway (OTLP gRPC 4317 / HTTP 4318)
 #   Loki            →  logs
-#   Tempo           →  traces  (OTLP-native; Grafana has first-class support)
-#   Prometheus      →  metrics (native OTLP remote-write-receiver)
+#   Tempo           →  traces
+#   Prometheus      →  metrics
 #   Grafana         →  UI
 #
-# Projects ship telemetry to this host via OTLP. Do NOT publish :4317/:4318
-# directly to the public internet. Expose them via Cloudflare Tunnel, Tailscale,
-# WireGuard, or similar. The ports below bind to 127.0.0.1, so only the host and
-# the tunnel sidecar reach them.
+# Do NOT publish :4317/:4318 to the public internet. The ports below bind to
+# 127.0.0.1; expose them via Cloudflare Tunnel, Tailscale, WireGuard, or similar.
 
 x-logging: &default-logging
   driver: json-file
@@ -21,13 +19,9 @@ x-logging: &default-logging
 x-security: &default-security
   - no-new-privileges:true
 
-# Every service also drops all capabilities and carries a pids limit: they all
-# run unprivileged uids, write only to named volumes, and need none. The client
-# templates go further, with read-only roots (templates/compose.telemetry.yml).
-
-# Each mem_limit is sized from observed steady-state usage with headroom for
-# bursts. They are ceilings, not reservations: they stop one runaway component
-# from OOMing a host that also runs production.
+# Every service drops all capabilities and carries a pids limit. Each mem_limit
+# is a ceiling sized from observed usage, so one runaway component cannot OOM a
+# host that also runs production.
 
 services:
   otel-collector:
@@ -45,9 +39,7 @@ services:
       - "127.0.0.1:4318:4318" # OTLP HTTP
     volumes:
       - ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro
-      # File-backed exporter queue: telemetry buffered during a backend outage
-      # survives a collector restart. The volume must be owned by uid 10001;
-      # `just up` chowns it.
+      # File-backed exporter queue. Must be owned by uid 10001; `just up` chowns it.
       - otel_queue:/var/lib/otelcol/queue
     command: ["--config=/etc/otelcol/config.yaml"]
     environment:
@@ -68,8 +60,7 @@ services:
       - ./config/loki.yaml:/etc/loki/loki.yaml:ro
       - loki_data:/loki
     command: ["-config.file=/etc/loki/loki.yaml"]
-    # No healthcheck: the image is distroless, so there is no shell, wget or
-    # curl to probe /ready with. Grafana's Stack Health dashboard covers it.
+    # No healthcheck: the image is distroless, with no shell or wget to probe with.
     mem_limit: 2g
     pids_limit: 1024
     cap_drop: [ALL]
@@ -84,7 +75,7 @@ services:
       - ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro
       - tempo_data:/var/tempo
     command: ["-config.file=/etc/tempo/tempo.yaml"]
-    # Distroless too, so no healthcheck (see loki).
+    # Distroless too, so no healthcheck.
     mem_limit: 2g
     pids_limit: 1024
     cap_drop: [ALL]
@@ -105,7 +96,7 @@ services:
       # Prometheus 3.x: OTLP ingestion is its own flag, not an --enable-feature entry.
       - --web.enable-otlp-receiver
       - --enable-feature=native-histograms,exemplar-storage
-      # Whichever hits first wins; the disk-space alert is the backstop.
+      # Whichever limit hits first wins; the disk-space alert is the backstop.
       - --storage.tsdb.retention.size=15GB
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/ready"]
@@ -113,8 +104,7 @@ services:
       timeout: 3s
       retries: 5
       start_period: 30s
-      # Probe often while starting: `--wait` (just up/smoke) returns on the
-      # first pass, and both are ready well inside one 15s interval.
+      # Probe often while starting so `up --wait` returns on the first pass.
       start_interval: 2s
     mem_limit: 2g
     pids_limit: 1024
@@ -129,16 +119,14 @@ services:
     command: ["--path.rootfs=/host"]
     pid: host
     mem_limit: 128m
-    # Holds pid:host plus the whole host filesystem, so a compromise here sees
-    # more than in any other service: hence the tightest limits of the set.
+    # Holds pid:host plus the whole host filesystem, hence the tightest limits.
     cap_drop: [ALL]
     read_only: true
     pids_limit: 64
     security_opt: *default-security
     volumes:
-      # No rslave: unsupported on Docker Desktop; only affects mounts added after start.
-      # No network_mode:host either, so node_network_* describes the container
-      # veth, not host NICs. Fine while nothing alerts on network metrics.
+      # No rslave (unsupported on Docker Desktop) and no network_mode:host, so
+      # node_network_* describes the container veth, not host NICs.
       - /:/host:ro
     networks: [backend]
     logging: *default-logging
@@ -168,22 +156,16 @@ services:
       HEARTBEAT_URL: ${HEARTBEAT_URL:-}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
-      # Land on Stack Health instead of the empty welcome page.
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/stack-health.json
-      # Opt-in: secure cookies would break plain-http localhost logins. With
-      # the tunnel overlay active, `just up` refuses to expose Grafana without
-      # it.
+      # Secure cookies break plain-http localhost logins, so opt-in. With the
+      # tunnel overlay active, `just up` refuses to start without it.
       GF_SECURITY_COOKIE_SECURE: ${GRAFANA_COOKIE_SECURE:-false}
       GF_SECURITY_COOKIE_SAMESITE: strict
-      # Opt-in per-user identity from Cloudflare Access, replacing the shared
-      # admin login. Off until GRAFANA_JWT_AUTH=true plus CF_ACCESS_TEAM_DOMAIN
-      # and CF_ACCESS_AUD are set in .env (the exposure guards enforce the
-      # pair). New users land on the org's default role (Viewer).
-      # No fallback domain: an unset team name must fail closed, not fetch
-      # signing keys from a claimable cloudflareaccess.com subdomain.
-      # The aud pin matters because the JWK set is team-wide. Without it, a
-      # token minted for any other Access app in the team is accepted here
-      # too.
+      # Per-user identity from Cloudflare Access. Off until GRAFANA_JWT_AUTH=true
+      # plus CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD are set (the exposure guards
+      # enforce the pair). No fallback team domain: an unset name must fail
+      # closed, not fetch signing keys from a claimable cloudflareaccess.com
+      # subdomain. The aud pin is required because the JWK set is team-wide.
       GF_AUTH_JWT_ENABLED: ${GRAFANA_JWT_AUTH:-false}
       GF_AUTH_JWT_HEADER_NAME: Cf-Access-Jwt-Assertion
       GF_AUTH_JWT_JWK_SET_URL: https://${CF_ACCESS_TEAM_DOMAIN:-}.cloudflareaccess.com/cdn-cgi/access/certs
@@ -197,8 +179,6 @@ services:
       timeout: 3s
       retries: 5
       start_period: 30s
-      # Probe often while starting: `--wait` (just up/smoke) returns on the
-      # first pass, and both are ready well inside one 15s interval.
       start_interval: 2s
     mem_limit: 1g
     pids_limit: 1024
@@ -207,11 +187,10 @@ services:
     networks: [default, backend]
     logging: *default-logging
 
-# Loki, Prometheus and Tempo have no authentication of their own, so they live
-# on a network with no gateway that only Grafana and the collector can reach.
-# cloudflared (compose.tunnel.yml) stays on `default`: its ingress list is
-# fetched from Cloudflare at runtime, so an edited ingress cannot publish a
-# backend that skips the collector's token gate.
+# Loki, Prometheus and Tempo have no authentication of their own, so only
+# Grafana and the collector can reach them. cloudflared stays on `default`: its
+# ingress list comes from Cloudflare at runtime, so an edited ingress cannot
+# publish a backend that skips the collector's token gate.
 networks:
   backend:
     internal: true
@@ -221,6 +200,5 @@ volumes:
   tempo_data:
   prometheus_data:
   grafana_data:
-  # Not in `just backup`: queue contents are seconds of in-flight telemetry,
-  # worthless by restore time.
+  # Not in `just backup`: seconds of in-flight telemetry, worthless by restore time.
   otel_queue:

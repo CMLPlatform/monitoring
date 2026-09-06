@@ -1,14 +1,10 @@
-# Rendered by bootstrap.sh into config/grafana/alerting/, flat: Grafana's alerting
-# provisioner does not recurse. Do not edit the rendered files by hand. Re-run
-# bootstrap.sh, or edit this template so every project gets the fix.
+# Rendered by bootstrap.sh into config/grafana/alerting/. Do not edit the rendered
+# files by hand; edit this template so every project gets the fix.
 #
-# This is the keystone: nothing on a project host can detect its own absence. A project
-# that ships telemetry but never had bootstrap.sh run is silently uncovered, which is
-# what the ProjectsUncovered rule in coverage.yaml catches one level up.
+# Nothing on a project host can detect its own absence, so this rule lives here.
 #
-# bootstrap.sh reads the marker below back to regenerate that coverage rule. It carries
-# the pair, not the filename, because both halves may contain a dash: `project-a-b-c`
-# cannot be split back into the project and env that produced it.
+# bootstrap.sh reads the marker below to regenerate coverage.yaml. It carries the pair,
+# not the filename, because both halves may contain a dash.
 # COVERS: __PROJECT__ __ENV__
 
 apiVersion: 1
@@ -19,10 +15,8 @@ groups:
     folder: Stack alerts
     interval: 1m
     rules:
-      # A label-only selector, not target_info: agents attach the identity labels to
-      # the series themselves, so target_info carries none of them. absent()
-      # yields nothing while telemetry flows, so NoData is the HEALTHY state and must
-      # map to OK or the rule reads inverted.
+      # absent() yields nothing while telemetry flows, so NoData is the HEALTHY state
+      # and must map to OK.
       - uid: __UID__
         title: ProjectTelemetrySilent
         condition: FIRING

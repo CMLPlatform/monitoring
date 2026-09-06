@@ -6,15 +6,14 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 Central monitoring for CML's research software. One host runs Grafana, Loki,
-Tempo, Prometheus, and an OpenTelemetry Collector, wired so logs, traces, and
-metrics cross-reference each other. Projects send telemetry here over OTLP
-(the OpenTelemetry protocol) and it lands in one place, queryable side by
-side.
+Tempo, Prometheus, and an OpenTelemetry Collector. Projects send logs, traces,
+and metrics here over OTLP (the OpenTelemetry protocol), and Grafana shows
+them side by side.
 
 ## Try it in one command
 
 You need Docker with the [Compose plugin](https://docs.docker.com/compose/install/)
-and [`just`](https://github.com/casey/just#installation); everything else runs
+and [`just`](https://github.com/casey/just#installation). Everything else runs
 in containers.
 
 ```sh
@@ -22,38 +21,34 @@ cp .env.example .env
 just demo
 ```
 
-This starts the full stack plus a small FastAPI service under constant
-artificial load (`compose.demo.yml`). The service uses OpenTelemetry
-auto-instrumentation and fails about one request in ten, which gives the error
-panels and the error-rate alert something to show. Give it a minute, then open
-Grafana at <http://localhost:3002> (admin / change-me):
+This starts the stack plus a small FastAPI service under constant load
+(`compose.demo.yml`). The service is auto-instrumented and fails one request
+in ten, so the error panels and the error-rate alert have something to show.
+Give it a minute, then open Grafana at <http://localhost:3002>
+(admin / change-me):
 
 - **Dashboards → Service Health (RED)**: request rate, error rate, and
-  latency. The dots on the latency panel are exemplars: click one and Grafana
-  opens the exact trace behind that measurement.
+  latency. The dots on the latency panel are exemplars. Click one to open the
+  trace behind that measurement.
 - **Dashboards → Logs**: log volume by service and level, an error feed, and
-  a live tail of everything arriving over OTLP.
-- **Alerting → Alert rules**: the stack-health and error-rate rules Grafana
-  is evaluating. `HighErrorRate` trips on the demo service after five minutes:
-  one request in ten failing is twice the 5% threshold.
+  a live tail.
+- **Alerting → Alert rules**: the rules Grafana evaluates. `HighErrorRate`
+  trips on the demo service after five minutes.
 
 ![Service Health (RED) dashboard](docs/img/service-health.png)
 
-`just demo-down` removes the demo services again; the rest of the demo stack
-keeps running, and `just demo-destroy` takes the whole thing down.
+`just demo-down` removes the demo services. `just demo-destroy` removes the
+whole demo stack.
 
-The demo runs under its own compose project on its own port, so it never joins
-or disturbs a stack already running on the host. It is safe to run on the
-production box. Same for `just smoke`, on :3001. Override with `DEMO_PORT` /
-`SMOKE_PORT`.
+The demo runs under its own compose project on its own port, so it never
+touches a stack already running on the host. The same holds for `just smoke`
+on :3001. Override the ports with `DEMO_PORT` and `SMOKE_PORT`.
 
 ## How it works
 
 Everything enters through one gateway, the OpenTelemetry Collector. A project
 configures a single endpoint, and a storage backend can be swapped later
-without touching any application. The Service Health dashboard
-and the error-rate alert read the standard HTTP metrics that OpenTelemetry
-auto-instrumentation emits; traces add per-request drill-down on top.
+without touching any application.
 
 ```mermaid
 flowchart LR
@@ -71,114 +66,100 @@ flowchart LR
     end
 ```
 
-Solid arrows show telemetry being written; dotted arrows show Grafana reading
-at query time. Locally there is no tunnel: everything talks over the compose
-network, and Grafana is at `localhost:3000` for `just up`, `localhost:3002` for
-the isolated `just demo` stack.
+Solid arrows write telemetry. Dotted arrows are Grafana reading at query
+time. Locally there is no tunnel, and Grafana is at `localhost:3000` for
+`just up` or `localhost:3002` for `just demo`.
 
-The stack runs on a single host. At CML's telemetry volume, distributed
-ingestion would add operational weight for no gain
-([ADR 0001](docs/adr/0001-observability-stack.md) records the alternatives).
-The hub-and-spoke design for serving multiple CML projects is
-[ADR 0002](docs/adr/0002-hub-and-spoke-observability.md); onboarding a project
-onto it is [templates/README.md](templates/README.md).
+The stack runs on a single host. [ADR 0001](docs/adr/0001-observability-stack.md)
+records why, and the alternatives. [ADR 0002](docs/adr/0002-hub-and-spoke-observability.md)
+describes the hub-and-spoke design that serves multiple projects.
 
 ## Run it for real
 
 ```sh
 cp .env.example .env    # set GRAFANA_ADMIN_PASSWORD
-just up                 # the stack; overlays come from COMPOSE_FILE in .env
+just up
 just check              # validate every config in the repo
 ```
 
-Grafana: <http://localhost:3000> (admin / whatever you set).
+Grafana: <http://localhost:3000>.
 
-`COMPOSE_FILE` in `.env` names the overlays a host runs. Set
-`COMPOSE_FILE=compose.yml:compose.tunnel.yml` in the production `.env`, and
-every recipe (`up`, `logs`, `ps`, `backup`) acts on that same set.
+`COMPOSE_FILE` in `.env` names the overlays a host runs. In production, set
+`COMPOSE_FILE=compose.yml:compose.tunnel.yml`. Every recipe (`up`, `logs`,
+`ps`, `backup`) then acts on that set.
 
-With the tunnel overlay active, `just up` refuses to run until four settings are
-real: a generated `OTLP_AUTH_TOKEN`, a changed `GRAFANA_ADMIN_PASSWORD`,
+With the tunnel overlay active, `just up` refuses to start until four settings
+are real: a generated `OTLP_AUTH_TOKEN`, a changed `GRAFANA_ADMIN_PASSWORD`,
 `GRAFANA_ROOT_URL` pointing at the tunnel hostname, and
-`GRAFANA_COOKIE_SECURE=true`. These are the settings that matter once the stack
-is reachable. An empty `HEARTBEAT_URL` only warns.
+`GRAFANA_COOKIE_SECURE=true`. An empty `HEARTBEAT_URL` only warns.
 
-In production the stack sits behind a Cloudflare Tunnel, and that edge is code
-too. The tunnel, its hostnames, DNS, and the Cloudflare Access rule that puts
-an email one-time-PIN in front of Grafana live in `infra/` as a small OpenTofu
-configuration. Applying it produces the `CLOUDFLARE_TUNNEL_TOKEN` the tunnel
-overlay needs; bootstrap steps are at the top of
-[infra/main.tf](infra/main.tf).
+The Cloudflare edge is code too. The tunnel, its hostnames, DNS, and the
+Access rule that puts an email one-time PIN in front of Grafana live in
+`infra/` as an OpenTofu configuration. Applying it produces the
+`CLOUDFLARE_TUNNEL_TOKEN` the overlay needs. The bootstrap steps are at the
+top of [infra/main.tf](infra/main.tf).
 
-`just check` is two halves. `just lint` is the static half: compose files,
-the rendered alert templates, YAML, workflows, shell scripts, the demo app's
-Python, OpenTofu formatting, dashboard JSON and the datasources it names, and
-git history for leaked secrets. `just validate` runs the Prometheus, collector,
-Loki, Tempo and Alloy configs through the exact images the stack runs. Every
-validator runs in a pinned container, so nothing is installed on the host;
-`just fmt` (yamlfmt) is containerized the same way, and `lint` enforces it.
-`just hooks` installs the git hooks via [prek](https://github.com/j178/prek):
-gitleaks on the staged diff and `just lint` at commit, a Conventional Commits
-check on the message, `just validate` at push, and `just infra-validate` at
-push when `infra/` changed.
+### Checks
 
-Grafana's alerting provisioning has no offline validator. `just smoke` covers
-it and everything else that only shows once the stack runs: it boots the stack
-in production shape (JWT auth on) and asserts, uid for uid, that every
-dashboard and alert rule provisioned; that the contact points carry the URLs
-from the environment; that Grafana honours the JWT settings and refuses a
-forged token; that every scrape target is up; and that one metric and one log
-posted through the collector's bearer auth come back out of Prometheus and
-Loki with the promoted project/env/department labels. The assertions live in
-[scripts/smoke.sh](scripts/smoke.sh). It runs under its own compose project on
-its own port, so it cannot disturb a stack already running on the host:
-`just smoke` is safe on the production box, `just restore-check` rehearses
-backup and restore on its volumes, and `just smoke-down` cleans up. CI runs
-`lint` on one job and `validate` plus `smoke` on another, on every pull
-request; `main` only moves through pull requests, so nothing runs twice.
+| Recipe | What it does |
+| --- | --- |
+| `just lint` | Static checks: compose files, rendered alert templates, YAML, workflows, shell, Python, OpenTofu formatting, dashboard JSON, git history for secrets |
+| `just validate` | Runs each stack config through the exact image the stack uses |
+| `just check` | `lint` plus `validate` |
+| `just smoke` | Boots an isolated copy of the stack and asserts it works end to end |
+| `just restore-check` | Rehearses backup and restore on the smoke stack |
+| `just hooks` | Installs the git hooks: gitleaks at commit, a Conventional Commits check on the message, `check` at push |
+
+Every check runs in a pinned container. Nothing is installed on the host.
+
+`just smoke` covers what has no offline validator. It boots the stack in
+production shape with JWT auth on, then asserts that every dashboard and
+alert rule provisioned, that the contact points carry the URLs from the
+environment, that Grafana refuses a forged token, that every scrape target is
+up, and that a metric and a log posted through the collector come back out of
+Prometheus and Loki with their labels. The assertions are in
+[scripts/smoke.sh](scripts/smoke.sh).
+
+CI runs `lint` on one job and `validate` plus `smoke` on another, on every
+pull request.
 
 ## Sending telemetry from a project
 
-You need the OTLP endpoint, the bearer token (`OTLP_AUTH_TOKEN`), and a few
-naming conventions. **[docs/ONBOARDING.md](docs/ONBOARDING.md)** holds
-copy-paste templates for the two application routes: zero-code Python/FastAPI,
-and plain OTLP environment variables. Everything an application cannot
-report about itself comes from the vendored agent in
-**[templates/README.md](templates/README.md)**.
+You need the OTLP endpoint, the bearer token, and a few naming conventions.
+[docs/ONBOARDING.md](docs/ONBOARDING.md) has copy-paste templates for
+applications. [templates/README.md](templates/README.md) covers the host
+agent that ships container logs and host metrics.
 
 > [!WARNING]
 > Never publish ports 4317/4318 to the internet. The compose file binds them to
-> `127.0.0.1`; the tunnel is the way in.
+> `127.0.0.1`. The tunnel is the way in.
 
 ## Alerting
 
-Grafana both evaluates and delivers, from `config/grafana/alerting/`: telemetry
-silent per project, container crash-looping, container OOM-killed, scrape target
-down, OTel export failures, alert delivery failing, error rate above 5%, disk
-above 80%. Notifications go to whatever webhook you set in `ALERT_WEBHOOK_URL`
-(ntfy, Slack, and so on). There is no Alertmanager: Grafana rules can query Loki
-as well as Prometheus, and one engine owning both means one answer to "who gets
-told".
+Grafana evaluates and delivers the rules in `config/grafana/alerting/`:
+telemetry silent per project, container crash-looping or OOM-killed, scrape
+target down, OTel export failures, alert delivery failing, error rate above
+5%, disk above 80%. There is no Alertmanager. Grafana rules can query Loki as
+well as Prometheus, and one engine means one answer to "who gets told".
 
-One rule, `Watchdog`, fires permanently and posts to `HEARTBEAT_URL` every
-five minutes. Point that at a dead man's switch such as healthchecks.io, a
-service that alerts when the pings *stop*. That covers the one failure the host
-cannot report itself: its own death.
+Notifications go to the webhook in `ALERT_WEBHOOK_URL` (ntfy, Slack, and so
+on). One rule, `Watchdog`, fires permanently and posts to `HEARTBEAT_URL`
+every five minutes. Point that at a dead man's switch such as healthchecks.io,
+which alerts when the pings stop. That is the only way to notice the host
+itself dying.
 
 Set both variables. An unset `ALERT_WEBHOOK_URL` drops every alert while the
-heartbeat keeps reporting healthy, so `just up` with the tunnel overlay refuses
+heartbeat keeps reporting healthy. With the tunnel overlay, `just up` refuses
 to start without it.
 
 ## Storage
 
-Everything persists to local Docker volumes (`loki_data`, `tempo_data`,
-`prometheus_data`, `grafana_data`), all captured by `just backup`. Backups skip
-a fifth volume, `otel_queue`. It holds the collector's on-disk export queue:
-seconds of in-flight telemetry, worthless by the time anyone restores.
+Everything persists to local Docker volumes, captured by `just backup`. The
+one exception is `otel_queue`, the collector's on-disk export queue. It holds
+seconds of in-flight telemetry and is not worth restoring.
 
 When local disk stops fitting, Loki and Tempo can move to any S3-compatible
-object store (Backblaze B2, Cloudflare R2, Hetzner, MinIO). The appendix of
-ADR 0001 documents that change.
+object store. The appendix of ADR 0001 documents that change.
 
 ## Layout
 
@@ -195,25 +176,25 @@ config/
   tempo.yaml            # traces
   prometheus.yaml       # metrics
   grafana/              # provisioned datasources, dashboards, and alerting
-                        #   alerting/ = rules, contact points, routing tree
-dashboards/             # drop JSON dashboards here; Grafana auto-loads them
-docs/                   # runbook, onboarding templates, ADRs, screenshots
+dashboards/             # JSON dashboards; Grafana loads them from here
+docs/                   # runbook, onboarding, ADRs, screenshots
 infra/                  # OpenTofu: Cloudflare tunnel, ingress routes, DNS
+templates/              # files a project host vendors: agent config, overlays
 ```
 
-`dashboards/*.json` is the source of truth for what Grafana shows: the
-directory is mounted read-only and UI saves are disabled, so a change made in
-the browser lasts until the page reloads. Edit the JSON and provisioning picks
-it up within about 30 seconds. To keep something built interactively, export
-the dashboard as JSON (or copy one panel's JSON from *Inspect → Panel JSON*)
-and paste it back into the file.
+`dashboards/*.json` is the source of truth. The directory is mounted read-only
+and UI saves are disabled, so a change made in the browser lasts until the
+page reloads. Edit the JSON and provisioning picks it up within 30 seconds. To
+keep something built interactively, export it as JSON and paste it into the
+file.
 
 ## Documentation
 
 | Document | What it covers |
 | --- | --- |
-| [docs/ONBOARDING.md](docs/ONBOARDING.md) | Connecting a project: endpoint, token, copy-paste templates |
-| [docs/RUNBOOK.md](docs/RUNBOOK.md) | Day-to-day ops: rotating tokens, disk pressure, backup and restore |
+| [docs/ONBOARDING.md](docs/ONBOARDING.md) | Connecting an application: endpoint, token, copy-paste templates |
+| [templates/README.md](templates/README.md) | Onboarding a project host: the agent, GPU hosts, removing a project |
+| [docs/RUNBOOK.md](docs/RUNBOOK.md) | Operations: rotating secrets, disk pressure, backup and restore |
 | [docs/adr/](docs/adr/) | Why the stack looks like this |
 | [CHANGELOG.md](CHANGELOG.md) | Release history |
 

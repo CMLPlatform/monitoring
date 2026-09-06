@@ -1,22 +1,17 @@
 #!/usr/bin/env bash
 # Emit OpenTofu `import` blocks for the Cloudflare resources that already exist.
 #
-# This root was added after the edge already existed, so its first plan against an
-# empty state says "create" for objects that are already serving traffic. Applying
-# that plan mints a SECOND tunnel beside `cml-monitoring`, and DNS records that fight
-# the live ones. Import blocks make the adoption reviewable: read the generated file,
-# then the plan, and only then apply.
+# A first plan against an empty state says "create" for objects already serving
+# traffic, and applying it mints a second tunnel and duplicate DNS records. Import
+# blocks make the adoption reviewable: read the generated file, then the plan, then
+# apply.
 #
 # The ingestion record was renamed from `otlp.<domain>` to `otel.<domain>` (2026-09).
-# On a state that predates the rename, the block below imports the live record as
-# `cloudflare_dns_record.otel`, so the apply RENAMES it in place instead of creating a
-# second one. That is also why main.tf has no `moved` block: nothing was ever in state
-# under the old resource name. A current state already holds `otel.`.
+# On a state that predates the rename, the live record is imported as
+# `cloudflare_dns_record.otel`, so the apply renames it in place.
 #
-# The generated imports.tf is a throwaway, NOT something to commit: it names one
-# account's resource ids and is meaningless after the apply that consumes it. Delete it
-# once the apply has succeeded. Import blocks are a one-time instruction, and leaving
-# them in place re-runs them on every plan.
+# The generated imports.tf is a throwaway: delete it after the apply, or every plan
+# re-runs the imports.
 #
 # Usage (run in this directory, with terraform.tfvars already filled in):
 #   export CLOUDFLARE_API_TOKEN=...        # Tunnel:Read, DNS:Read, Access: Apps and Policies:Read
@@ -33,8 +28,7 @@ die() {
 }
 
 api() {
-    # The token rides a curl config read from stdin, not argv: /proc/<pid>/cmdline is
-    # readable by every local user for the life of each call.
+    # Token via curl config on stdin, not argv: /proc/<pid>/cmdline is world-readable.
     curl -fsS --config - "https://api.cloudflare.com/client/v4/$1" \
         <<<"header = \"Authorization: Bearer ${CLOUDFLARE_API_TOKEN}\""
 }
@@ -42,9 +36,7 @@ api() {
 command -v jq >/dev/null || die "jq is required"
 : "${CLOUDFLARE_API_TOKEN:?is not set}"
 
-# Read the ids from terraform.tfvars, which already holds them. A second source of the
-# same value is a second chance to get it wrong. An exported environment variable still
-# wins.
+# Read the ids from terraform.tfvars; an exported TF_VAR_* still wins.
 [[ -f terraform.tfvars ]] || die "no terraform.tfvars here; copy terraform.tfvars.example and fill it in"
 tfvar() {
     sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*\"\([^\"]*\)\".*/\1/p" terraform.tfvars | tail -1
@@ -53,8 +45,7 @@ account="${TF_VAR_account_id:-$(tfvar account_id)}"
 zone="${TF_VAR_zone_id:-$(tfvar zone_id)}"
 domain="${TF_VAR_domain:-$(tfvar domain)}"
 
-# The example file's placeholders are valid-looking strings, so a plan run against them
-# looks plausible. Catch them here, where the message can name the line to edit.
+# The example file's placeholders are valid-looking strings; catch them here.
 for pair in "account_id:$account" "zone_id:$zone" "domain:$domain"; do
     value="${pair#*:}"
     [[ -n "$value" ]] || die "${pair%%:*} is empty in terraform.tfvars"
@@ -63,16 +54,14 @@ for pair in "account_id:$account" "zone_id:$zone" "domain:$domain"; do
     esac
 done
 
-# One lookup per resource kind. Each fails loudly when the resource is absent: a silently
-# skipped import comes back as a "create" in the plan.
+# A silently skipped import comes back as a "create" in the plan, so each lookup
+# fails loudly when the resource is absent.
 lookup_dns_record() {
     local hostname="$1" id
-    # Type-filtered: this root manages CNAMEs, and a name can also carry TXT records.
-    # An unfiltered .result[0] could bind one of those, and the apply would rewrite it
-    # into a proxied CNAME, destroying the TXT record and leaving the CNAME unmanaged.
-    # Two statements, not one pipeline: this function only runs inside `if`/`||`, where
-    # errexit is off, so a failed API call would otherwise fall through and be reported
-    # as "no record", the one answer that sends the operator off to create a duplicate.
+    # Type-filtered: an unfiltered .result[0] could bind a TXT record on the same
+    # name, and the apply would rewrite it into a CNAME. Two statements, not one
+    # pipeline: this runs inside `if`/`||`, where errexit is off, and a failed API
+    # call must not be reported as "no record".
     local body
     body="$(api "zones/$zone/dns_records?name=$hostname&type=CNAME")" || die "DNS lookup for $hostname failed (token lacks DNS:Read?)"
     id="$(jq -r '.result[0].id // empty' <<<"$body")"
@@ -84,8 +73,7 @@ tunnel_name="${MONITORING_TUNNEL_NAME:-cml-monitoring}"
 tunnels="$(api "accounts/$account/cfd_tunnel?is_deleted=false")"
 tunnel_id="$(jq -r --arg name "$tunnel_name" '.result[] | select(.name == $name) | .id' <<<"$tunnels" | head -1)"
 if [[ -z "$tunnel_id" ]]; then
-    # List what IS there. The tunnel is rarely absent; it is usually called something
-    # else, and then the fix is one flag.
+    # The tunnel is usually present under another name; list what is there.
     echo "error: no tunnel named $tunnel_name in account $account" >&2
     echo "tunnels that do exist in this account:" >&2
     jq -r '.result[]? | "  \(.name)\t\(.id)\tconnections=\(.connections | length)"' <<<"$tunnels" >&2
@@ -95,8 +83,7 @@ fi
 
 grafana_record="$(lookup_dns_record "grafana.$domain")" || die "no CNAME found for grafana.$domain"
 
-# Still otlp. before the rename, otel. after it (or on a re-run). Try the new name first,
-# so a second run is a no-op instead of resurrecting the old record.
+# otel. after the rename, otlp. before it. New name first, so a re-run is a no-op.
 for host in "otel.$domain" "otlp.$domain"; do
     if otel_record="$(lookup_dns_record "$host")"; then
         ingestion_host="$host"
@@ -105,13 +92,9 @@ for host in "otel.$domain" "otlp.$domain"; do
 done
 [[ -n "${ingestion_host:-}" ]] || die "no CNAME found for otel.$domain or otlp.$domain"
 
-# Unlike the tunnel and the DNS records, the Access app may legitimately not exist, and
-# then the apply SHOULD create it: an unprotected Grafana hostname is what this root
-# exists to close. So warn, omit the import, and let the plan create it.
-#
-# Checked at both scopes. Apps predating account-scoped Access live under the zone, and
-# one found there cannot be adopted by this resource as written (it is configured with
-# account_id), so that case gets its own message instead of a silent create.
+# The Access app may legitimately not exist; then the apply should create it. A
+# zone-scoped app (predating account-scoped Access) cannot be adopted by the
+# account-scoped resource, so that case gets its own message.
 access_apps="$(api "accounts/$account/access/apps?per_page=100")"
 access_app_id="$(jq -r --arg d "grafana.$domain" '.result[] | select(.domain == $d) | .id' <<<"$access_apps" | head -1)"
 if [[ -z "$access_app_id" ]]; then
@@ -128,9 +111,8 @@ if [[ -z "$access_app_id" ]]; then
     jq -r '.result[]? | "  \(.name)\t\(.domain)"' <<<"$access_apps" >&2
 fi
 
-# The policy may also be absent: an app built in the dashboard usually carries an INLINE
-# policy, which has no id to import. The apply then creates the reusable policy this root
-# declares and reattaches the app to it.
+# An app built in the dashboard usually carries an inline policy with no id to
+# import; the apply then creates the reusable one and reattaches the app.
 access_policies="$(api "accounts/$account/access/policies")"
 access_policy_id="$(jq -r '.result[] | select(.name == "monitoring: allowed emails") | .id' <<<"$access_policies" | head -1)"
 

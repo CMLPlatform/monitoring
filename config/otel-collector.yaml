@@ -1,15 +1,11 @@
-# Ingestion gateway. Receives OTLP from all projects and fans out to the
-# appropriate backend. Keep this config dumb. Shaping and enrichment belong at
-# the app edge (per-project collector), which has the context for them.
+# Ingestion gateway: receives OTLP from all projects and fans out to the
+# backends. Keep it dumb; shaping and enrichment belong at the app edge.
 
-# All senders must present "Authorization: Bearer <OTLP_AUTH_TOKEN>". The
-# OTLP hostnames are public behind the tunnel, so ingestion needs auth.
 extensions:
   bearertokenauth:
     token: ${env:OTLP_AUTH_TOKEN}
-  # Backs the exporter queues below so buffered telemetry survives collector
-  # restarts (every image bump is one). The volume must be writable by the
-  # image's uid 10001; `just up` chowns it (see _queue-volume in the justfile).
+  # Backs the exporter queues so buffered telemetry survives a collector
+  # restart. The directory must be writable by uid 10001; `just up` chowns it.
   file_storage:
     directory: /var/lib/otelcol/queue
     create_directory: true
@@ -27,20 +23,14 @@ receivers:
           authenticator: bearertokenauth
 
 processors:
-  # The department every signal belongs to. Stamped here rather than at the app
-  # edge: it is the same value for everything this gateway accepts, and upsert
-  # means a sender cannot claim someone else's department. project, env and
-  # service.name still come from the sender, which is the only thing that knows
-  # them.
+  # Stamped here with upsert, so a sender cannot claim another department.
   resource/department:
     attributes:
       - key: department
         value: ${env:DEPARTMENT}
         action: upsert
 
-  # Absolute, not percentage: percentages are read against the cgroup, and an
-  # unbounded container makes that the whole host. Sized to the container's
-  # mem_limit (512m in compose.yml); keep the two in step.
+  # Sized to the container's mem_limit (512m in compose.yml); keep the two in step.
   memory_limiter:
     check_interval: 2s
     limit_mib: 400
@@ -49,12 +39,9 @@ processors:
     timeout: 5s
     send_batch_size: 1024
 
-# The queue and retry settings are pinned: the RUNBOOK's "buffers about five
-# minutes" promise is exactly these numbers. Defined once on the loki exporter
-# and aliased onto the other two. The queue is file-backed, so it rides out both
-# a backend outage and a collector restart.
+# The RUNBOOK's "buffers about five minutes" promise is max_elapsed_time below.
+# Defined once on the loki exporter and aliased onto the other two.
 exporters:
-  # Loki 3.x accepts OTLP natively, so no Promtail or loki exporter is needed.
   otlp_http/loki:
     endpoint: http://loki:3100/otlp
     sending_queue: &queue
@@ -70,8 +57,7 @@ exporters:
     sending_queue: *queue
     retry_on_failure: *retry
 
-  # Prometheus native OTLP receiver (needs --web.enable-otlp-receiver, set in
-  # compose.yml; it is a real flag, not an --enable-feature entry).
+  # Needs --web.enable-otlp-receiver in compose.yml.
   otlp_http/prometheus:
     endpoint: http://prometheus:9090/api/v1/otlp
     sending_queue: *queue

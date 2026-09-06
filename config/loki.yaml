@@ -1,5 +1,4 @@
-# Single-binary Loki with filesystem storage. Swap `common.storage.filesystem`
-# for `s3:` (B2 / R2 / Hetzner / MinIO) when you outgrow local disk.
+# Single-binary Loki with filesystem storage.
 
 auth_enabled: false
 
@@ -34,23 +33,16 @@ limits_config:
   retention_period: 30d
   allow_structured_metadata: true
   volume_enabled: true
-  # Most log lines under ~100KB. Bump if you log large payloads.
   max_line_size: 256kb
-  # Keep ingestion generous for a single-tenant homelab.
   ingestion_rate_mb: 16
   ingestion_burst_size_mb: 32
-  # Index only the identity labels listed below. That list is the authoritative
-  # set, and the docs point here. Loki's default OTLP mapping also indexes
-  # service.instance.id, which mints a fresh stream on every sender restart;
-  # it is now structured metadata, so query it with `| service_instance_id=...`.
+  # Index only the identity labels below; everything else is structured
+  # metadata. Loki's default mapping also indexes service.instance.id, which
+  # mints a fresh stream on every sender restart. These five must be real
+  # stream labels: dashboard template variables use label_values(), which
+  # cannot see structured metadata.
   otlp_config:
     resource_attributes:
-      # ignore_defaults keeps Loki from indexing every resource attribute it is
-      # handed. These five are the identity labels ADR 0002 requires on every
-      # signal, and they have to be real stream LABELS, not structured metadata:
-      # a `project` template variable is a stream selector, and label_values()
-      # cannot see structured metadata. All five are bounded (one value per
-      # department, project, environment and host), so indexing them is cheap.
       ignore_defaults: true
       attributes_config:
         - action: index_label

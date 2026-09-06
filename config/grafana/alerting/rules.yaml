@@ -1,22 +1,18 @@
-# Grafana-managed alert rules (ADR 0002): one engine owns evaluation and notification,
-# and Grafana rules can query Loki as well as Prometheus.
+# Grafana-managed alert rules (ADR 0002). Every rule has the same shape: the
+# PromQL carries its own comparison and returns a series only when the alert
+# should fire; the threshold node only asks whether anything came back.
 #
-# Shape note, true for every rule here: the PromQL carries its own comparison, so it
-# returns a series only when the alert should fire, and the threshold node only asks
-# whether anything came back.
-#
-# Keep the total around a dozen. These are the generic rules; the per-project keystone
-# lives in project-<project>-<env>.yaml beside this file, rendered by bootstrap.sh.
+# Keep the total around a dozen. The per-project rules beside this file are
+# rendered by bootstrap.sh.
 apiVersion: 1
 groups:
-  # The alerting pipeline's own proof of life, and the detector for it failing.
   - orgId: 1
     name: meta
     folder: Stack alerts
     interval: 1m
     rules:
-      # Always firing; its arrival is the proof. execErrState is Error so that a
-      # broken query stops the heartbeat and the switch alarms.
+      # Always firing. execErrState is Error so a broken query stops the
+      # heartbeat and the switch alarms.
       - uid: watchdog-heartbeat
         title: Watchdog
         condition: FIRING
@@ -36,8 +32,7 @@ groups:
               editorMode: code
               expr: vector(1)
           - &firing
-            # Identical on every rule (see the shape note up top): defined once
-            # here, aliased as `- *firing` below.
+            # Identical on every rule; aliased as `- *firing` below.
             refId: FIRING
             datasourceUid: __expr__
             model:
@@ -53,8 +48,7 @@ groups:
         annotations:
           summary: "Alerting-pipeline heartbeat (always firing)"
           description: "Routed to a dead man's switch. Investigate if the pings stop."
-      # Cannot page when the path it reports on is the broken one; the heartbeat
-      # covers that case. It makes the state visible instead of silent.
+      # Cannot page when the webhook itself is broken; the heartbeat covers that.
       - uid: alert-delivery-failing
         title: AlertDeliveryFailing
         condition: FIRING
@@ -81,7 +75,6 @@ groups:
           description: >-
             Alerts are firing and going nowhere. Most likely an unset ALERT_WEBHOOK_URL,
             otherwise the receiver is rejecting. Check `just logs grafana`.
-  # The central stack watching itself.
   - orgId: 1
     name: stack-health
     folder: Stack alerts
@@ -140,7 +133,6 @@ groups:
           description: >-
             The collector has been failing to deliver telemetry to a backend for
             5 minutes. Check `just logs otel-collector`.
-  # Storage backstop: Loki and Tempo have no total-size cap.
   - orgId: 1
     name: capacity
     folder: Stack alerts
@@ -170,16 +162,13 @@ groups:
         labels:
           severity: warning
         annotations:
-          # host_name comes on spoke series shipped via Alloy; the central
-          # node-exporter has only instance. `or` picks whichever exists.
+          # Spoke series carry host_name; the central node-exporter only instance.
           summary: "Filesystem {{ $labels.mountpoint }} on {{ or $labels.host_name $labels.instance }} is over 80% full"
           description: >-
             Loki and Tempo have no total-size cap, so this alert is the storage
             backstop. Free space or lower retention (see RUNBOOK).
-      # The 20% floor above is a last line; this one fires while there is still
-      # time to act. Linear fit over 6h, projected 3 days out. Root and data
-      # mounts only: a sub-10G filesystem (boot, EFI, snap) crosses zero on
-      # noise and is not where telemetry lands.
+      # Linear fit over 6h, projected 3 days out. Filesystems under 10G (boot,
+      # EFI, snap) are skipped: they cross zero on noise.
       - uid: host-disk-filling
         title: HostDiskFilling
         condition: FIRING
@@ -211,10 +200,8 @@ groups:
             Extrapolated from the last 6 hours. Find what is growing (a spoke
             shipping more than before, a log loop, a backup that stopped
             rotating) before HostDiskSpaceLow makes it urgent.
-      # TSDB growth is series count, not time. A spoke that starts labelling by
-      # request id shows here days before it reaches the 15GB retention cap,
-      # and long before HostDiskSpaceLow. The threshold is ~7x the baseline
-      # of ~15k series with one spoke; raise it as spokes are onboarded.
+      # ~7x the baseline of ~15k series with one spoke; raise it as spokes are
+      # onboarded.
       - uid: prometheus-cardinality
         title: PrometheusCardinalityHigh
         condition: FIRING
@@ -244,7 +231,6 @@ groups:
             `topk(10, count by (job) ({__name__=~".+"}))`, then drop it at the
             spoke's Alloy config or the collector. Retention is 15GB; at this
             rate it fills.
-  # A crash loop must get louder, not quieter.
   - orgId: 1
     name: container-lifecycle
     folder: Stack alerts
@@ -298,7 +284,6 @@ groups:
         annotations:
           summary: "Container {{ $labels.name }} was OOM-killed"
           description: "{{ $labels.name }} on {{ $labels.host_name }} hit an OOM kill in the last 5 minutes."
-  # RED from the applications' own OTLP metrics, not Tempo's span-metrics.
   - orgId: 1
     name: service-red
     folder: Stack alerts
@@ -321,9 +306,8 @@ groups:
               refId: QUERY
               instant: true
               editorMode: code
-              # Keyed on (job, project, env) like every other multi-tenant rule
-              # here: aggregating on job alone lets a healthy prod service dilute
-              # a broken staging one sharing the job name below the threshold.
+              # Keyed on (job, project, env): on job alone, a healthy prod
+              # service dilutes a broken staging one below the threshold.
               expr: >
                 sum by (job, project, env)
                 (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m]))

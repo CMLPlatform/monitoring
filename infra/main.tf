@@ -1,6 +1,5 @@
-# Cloudflare edge for the monitoring stack: the tunnel, its ingress rules,
-# and DNS. This is the only part of the stack that otherwise lives as
-# click-ops in the Zero Trust dashboard.
+# Cloudflare edge for the monitoring stack: the tunnel, its ingress rules, DNS,
+# and the Access policy in front of Grafana.
 #
 # Bootstrap (owner-run, once):
 #   cp terraform.tfvars.example terraform.tfvars   # then fill it in
@@ -11,8 +10,7 @@
 #   tofu apply && rm imports.tf
 #   tofu output -raw tunnel_token     # → CLOUDFLARE_TUNNEL_TOKEN in ../.env
 #
-# State is local (infra/terraform.tfstate, gitignored): one host, one operator.
-# Move it to R2 the day a second operator exists.
+# State is local (infra/terraform.tfstate, gitignored) and holds the tunnel secret.
 
 terraform {
   required_version = ">= 1.8"
@@ -54,8 +52,7 @@ variable "grafana_allowed_emails" {
 
 resource "cloudflare_zero_trust_tunnel_cloudflared" "monitoring" {
   account_id = var.account_id
-  # Must match the live tunnel's name: this root adopts it rather than creating it
-  # (see generate-imports.sh), and a different name here renames it on apply.
+  # Must match the live tunnel's name; a different name here renames it on apply.
   name       = "cml-monitoring"
   config_src = "cloudflare"
 }
@@ -92,9 +89,8 @@ resource "cloudflare_dns_record" "grafana" {
   ttl     = 1
 }
 
-# Renamed from `otlp` (2026-09). There is no `moved` block because nothing was ever
-# in state under the old name: the live record is adopted straight into this address
-# by ./generate-imports.sh, and the apply then renames it in place.
+# Renamed from `otlp` (2026-09). No `moved` block: nothing was ever in state under
+# the old name, and generate-imports.sh adopts the live record straight into this one.
 resource "cloudflare_dns_record" "otel" {
   zone_id = var.zone_id
   name    = "otel.${var.domain}"
@@ -104,10 +100,8 @@ resource "cloudflare_dns_record" "otel" {
   ttl     = 1
 }
 
-# Cloudflare Access in front of Grafana: email one-time-PIN at the edge, so
-# the public hostname never reaches Grafana's login page unauthenticated.
-# The ingestion hostname is NOT behind Access; machines authenticate with the
-# bearer token instead.
+# Email one-time PIN in front of Grafana. The ingestion hostname is not behind
+# Access; machines authenticate with the bearer token.
 resource "cloudflare_zero_trust_access_application" "grafana" {
   account_id       = var.account_id
   name             = "Grafana (monitoring)"

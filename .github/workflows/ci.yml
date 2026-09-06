@@ -1,13 +1,9 @@
-# Thin wrapper around the `just` contract: everything CI runs, you can run
-# locally with the same command. `just check` locally is `lint` + `validate`;
-# here they split so a lint failure reports in seconds without pulling the
-# stack images, which the smoke job pulls anyway.
+# Everything CI runs, you can run locally with the same `just` command. `lint`
+# has its own job so a lint failure reports without pulling the stack images.
 name: CI
 
-# Pull requests only: main moves through PRs (the protect-main ruleset
-# requires one), so a push run would repeat the check that passed on the PR
-# head. Prose changes skip the whole workflow: nothing here reads Markdown.
-# infra/ has its own workflow (infra.yml) that only runs when infra/ changes.
+# Pull requests only: main moves through PRs, so a push run would repeat the
+# check. Prose changes skip the workflow. infra/ has its own (infra.yml).
 on:
   pull_request:
     paths-ignore: ["**.md", "docs/**", "LICENSE", "infra/**"]
@@ -16,8 +12,7 @@ on:
 permissions:
   contents: read
 
-# A push to an open PR supersedes the run already in flight; the smoke job
-# boots a full stack, so leaving them stacked wastes a runner per push.
+# A push to an open PR supersedes the run in flight.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -28,8 +23,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        # `just lint` scans git history for secrets; the default shallow clone
-        # would give it one commit and pass vacuously.
+        # gitleaks scans git history; a shallow clone would pass vacuously.
         with:
           fetch-depth: 0
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
@@ -45,8 +39,7 @@ jobs:
       - run: cp .env.example .env
       - run: just validate
       - run: just smoke
-      # Every smoke failure message points at the logs, which are only useful if
-      # they outlive the job.
+      # The smoke failure messages point at these logs.
       - if: failure()
         run: just smoke-logs
       - if: always()

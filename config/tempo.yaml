@@ -1,6 +1,4 @@
-# Tempo 3.x single-binary. Traces arrive only from the collector
-# (collector → tempo:4317) so external apps never talk to Tempo directly.
-# Block retention lives under overrides.
+# Tempo single-binary. Traces arrive only from the collector.
 
 server:
   http_listen_port: 3200
@@ -9,7 +7,6 @@ distributor:
   receivers:
     otlp:
       protocols:
-        # gRPC only: the collector is the sole sender (otlp_grpc/tempo).
         grpc:
           endpoint: 0.0.0.0:4317
 
@@ -21,15 +18,12 @@ storage:
     local:
       path: /var/tempo/blocks
 
-# No metrics_generator: RED comes from the applications' own OTLP metrics (ADR
-# 0002). Deriving it from traces too would give two producers for one number.
-# Tempo stores traces and nothing else.
+# No metrics_generator: RED comes from the applications' own OTLP metrics (ADR 0002).
 
 overrides:
   defaults:
     compaction:
-      # 7 days. Traces are bulky; tune this to the disk budget.
-      block_retention: 168h
+      block_retention: 168h # 7 days
 
 usage_report:
   reporting_enabled: false

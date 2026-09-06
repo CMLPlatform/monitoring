@@ -6,21 +6,17 @@ global:
 
 storage:
   tsdb:
-    # Required for OTLP ingestion: without it, late batches are silently
-    # dropped.
+    # Required for OTLP ingestion: without it, late batches are silently dropped.
     out_of_order_time_window: 30m
 
 otlp:
-  # Prometheus otherwise keeps these resource attributes on target_info only,
-  # so alerts and dashboards see no project/env/host. Promoting them puts the
-  # identity labels ADR 0002 requires on every series. service.name and
-  # service.instance.id already become job/instance without being listed.
+  # Otherwise these stay on target_info only and no alert or dashboard sees
+  # them. service.name and service.instance.id become job/instance regardless.
   promote_resource_attributes: [department, project, env, host.name]
 
-# No rule_files and no alerting block: Grafana owns both evaluation and
-# notification (ADR 0002). Prometheus is a store and a query engine here.
+# No rule_files and no alerting block: Grafana owns both (ADR 0002).
 
-# Apps push metrics via OTLP (through the collector). Scrape only infra we host.
+# Apps push metrics via OTLP. Scrape only what this stack hosts.
 scrape_configs:
   - job_name: prometheus
     static_configs:
@@ -34,7 +30,6 @@ scrape_configs:
     static_configs:
       - targets: ["node-exporter:9100"]
 
-  # Self-metrics of the remaining stack services, so TargetDown covers them too.
   - job_name: grafana
     static_configs:
       - targets: ["grafana:3000"]

@@ -1,10 +1,7 @@
-# Installed by `just hooks` (prek). Stages sized to their cost:
-#   pre-commit  gitleaks on the staged diff, ~0.5s: a secret is cheapest to
-#               catch before it is in history. Nothing slower runs per commit.
-#   commit-msg  Conventional Commits shape on the first line.
-#   pre-push    `just check` (lint + validate; ~10s warm on a host that runs
-#               the stack) and `just infra-validate`, only when infra/ is in
-#               the push: it downloads the provider every time.
+# Installed by `just hooks` (prek).
+#   pre-commit  gitleaks on the staged diff
+#   commit-msg  Conventional Commits shape on the first line
+#   pre-push    `just check`, plus `just infra-validate` when infra/ changed
 # `prek run` runs the pre-commit stage on demand; `--hook-stage pre-push` the rest.
 repos:
   - repo: local

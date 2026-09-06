@@ -1,12 +1,8 @@
-# Notification targets. Grafana expands $VAR in provisioning files, so the URLs come
-# straight from the environment and no secret is written to disk.
+# Notification targets. Grafana expands $VAR from the environment.
 #
-# An unset variable leaves the URL empty and every notification fails, silently from
-# the outside. Nothing here catches that: AlertDeliveryFailing routes to this same
-# webhook, so it fails the same way it is detecting, and the heartbeat rides its own
-# contact point and stays green throughout. The exposure guard in `just up` is the only
-# control. AlertDeliveryFailing covers the other case: a URL that is set but whose
-# receiver rejects or flaps, where a later retry does get through.
+# An unset variable leaves the URL empty and every notification fails silently:
+# AlertDeliveryFailing routes to this same webhook, and the heartbeat stays
+# green. The exposure guard in `just up` is the only control.
 
 apiVersion: 1
 
@@ -26,6 +22,5 @@ contactPoints:
         type: webhook
         settings:
           url: $HEARTBEAT_URL
-        # A resolved-notification would ping the dead man's switch too, which
-        # would mask the very outage the switch exists to report.
+        # A resolved-notification would ping the switch and mask an outage.
         disableResolveMessage: true
