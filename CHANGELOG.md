@@ -49,6 +49,10 @@ the config syntax. 1.0 waits for a second consumer to confirm the contract.
   fleet size, and a project that sends only logs or only traces is covered at
   last: it reached no Prometheus series before. Stack Health gains an Ingest
   by Project panel.
+- **`grafana_access_team_domain`** joins the OpenTofu outputs, so neither
+  Access value is copied out of the dashboard by hand. Grafana builds its JWK
+  set URL from the team name, and an unset one fetches signing keys from a
+  claimable subdomain.
 - **`infra/generate-imports.sh`** emits OpenTofu `import` blocks for the
   tunnel, DNS records and Access app built by hand, so the first plan does
   not create duplicates.
