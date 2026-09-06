@@ -5,7 +5,10 @@
 # Bootstrap (owner-run, once):
 #   cp terraform.tfvars.example terraform.tfvars   # then fill it in
 #   export CLOUDFLARE_API_TOKEN=...   # needs Tunnel:Edit, DNS:Edit, Access:Edit
-#   cd infra && tofu init && tofu apply
+#   cd infra && tofu init
+#   ./generate-imports.sh > imports.tf   # the edge already exists: adopt it first
+#   tofu plan                            # expect "0 to add" — see the script's header
+#   tofu apply && rm imports.tf
 #   tofu output -raw tunnel_token     # → CLOUDFLARE_TUNNEL_TOKEN in ../.env
 #
 # State is local (infra/terraform.tfstate, gitignored) — one host, one
@@ -51,7 +54,9 @@ variable "grafana_allowed_emails" {
 
 resource "cloudflare_zero_trust_tunnel_cloudflared" "monitoring" {
   account_id = var.account_id
-  name       = "monitoring"
+  # Must match the live tunnel's name: this root adopts it rather than creating it
+  # (see generate-imports.sh), and a different name here renames it on apply.
+  name       = "cml-monitoring"
   config_src = "cloudflare"
 }
 
@@ -87,13 +92,9 @@ resource "cloudflare_dns_record" "grafana" {
   ttl     = 1
 }
 
-# Renamed from `otlp` (2026-09): `moved` keeps the existing record and renames it
-# in place, instead of destroying and recreating it with a gap in between.
-moved {
-  from = cloudflare_dns_record.otlp
-  to   = cloudflare_dns_record.otel
-}
-
+# Renamed from `otlp` (2026-09). There is no `moved` block because nothing was ever
+# in state under the old name: the live record is adopted straight into this address
+# by ./generate-imports.sh, and the apply then renames it in place.
 resource "cloudflare_dns_record" "otel" {
   zone_id = var.zone_id
   name    = "otel.${var.domain}"

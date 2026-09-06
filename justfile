@@ -136,7 +136,7 @@ check:
     # grow with every onboarded project.
     docker run --rm --network none -v .:/code:ro pipelinecomponents/yamllint:0.35.13 yamllint -d '{extends: relaxed, rules: {line-length: {max: 120, allow-non-breakable-inline-mappings: true}}, ignore: [.git/, backups/, infra/.terraform/, config/grafana/alerting/project-*.yaml, config/grafana/alerting/coverage.yaml]}' .
     docker run --rm --network none -v .:/repo:ro -w /repo rhysd/actionlint:1.7.12 -color
-    docker run --rm --network none -v .:/mnt:ro koalaman/shellcheck:v0.11.0 bootstrap.sh templates/run_scheduled.sh
+    docker run --rm --network none -v .:/mnt:ro koalaman/shellcheck:v0.11.0 bootstrap.sh templates/run_scheduled.sh infra/generate-imports.sh
     docker run --rm --network none -v ./demo:/demo:ro ghcr.io/astral-sh/ruff:0.14.2 check --no-cache /demo
     docker run --rm --network none -v ./infra:/infra:ro -w /infra ghcr.io/opentofu/opentofu:1.12.3 fmt -check
     docker run --rm --network none -v ./dashboards:/dashboards:ro ghcr.io/jqlang/jq:1.8.1 empty {{dash_paths}}

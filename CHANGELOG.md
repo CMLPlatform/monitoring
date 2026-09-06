@@ -45,13 +45,19 @@ queries that had been measuring the wrong thing.
 - Dependabot now watches the Cloudflare provider in `infra/`, and the runbook
   covers OpenTofu-managed tunnel and Access changes.
 
+### Added
+
+- **`infra/generate-imports.sh`**: emits OpenTofu `import` blocks for the edge
+  built by hand in the Zero Trust dashboard. Without it the first plan against
+  an empty state reads "create" for objects already serving traffic, and
+  applying it mints a second tunnel and a duplicate Access app.
+
 ### Changed
 
 - **Ingestion hostname is `otel.<domain>`**, not `otlp.<domain>` — one
   department-wide name for machine telemetry alongside `grafana.<domain>` for
-  humans. The tunnel ingress and the DNS record move together (a `moved` block
-  renames the record in place); every spoke's `OTEL_EXPORTER_OTLP_ENDPOINT` and
-  any edge rule matching the old host have to follow.
+  humans. Every spoke's `OTEL_EXPORTER_OTLP_ENDPOINT` and any edge rule matching
+  the old host have to follow.
 - **`department` on every signal**: the gateway collector stamps it from
   `DEPARTMENT` in `.env` and Prometheus and Loki carry it as an identity label.
   It is set at the hub rather than by the sender, so a spoke cannot ship
