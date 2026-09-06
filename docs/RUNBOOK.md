@@ -97,6 +97,37 @@ host is the intended setup.
   `CLOUDFLARE_TUNNEL_TOKEN` in `.env`, then `just up`.
 - **Grafana admin password:** change `GRAFANA_ADMIN_PASSWORD` in `.env`,
   then `docker compose up -d grafana`.
+- **Alert webhook and heartbeat URLs:** both are capability URLs, so the URL
+  is the credential. Mint a new topic or check at the provider, put it in
+  `ALERT_WEBHOOK_URL` / `HEARTBEAT_URL`, then `docker compose up -d grafana`;
+  Grafana reads the contact points only at startup.
+- **healthchecks.io API key:** regenerate it in the project's settings, set
+  `HEALTHCHECKS_API_KEY` in `.env`. Only `bootstrap.sh` reads it, so nothing
+  needs a restart.
+- **Cloudflare API token:** it is never stored here; create a new one with the
+  same three permissions, revoke the old one, export the new value before the
+  next `tofu` run.
+
+### Where every secret lives
+
+Three files hold everything, all gitignored, none backed up by `just backup`.
+Copy `.env` and `infra/terraform.tfstate` off-host together with the backups
+and treat the copies the way you treat the originals.
+
+| Secret | Lives in | Comes from |
+| --- | --- | --- |
+| `OTLP_AUTH_TOKEN` | `.env` | `openssl rand -hex 32` |
+| `GRAFANA_ADMIN_PASSWORD` | `.env` | you |
+| `ALERT_WEBHOOK_URL`, `HEARTBEAT_URL` | `.env` | the notification provider |
+| `HEALTHCHECKS_API_KEY` | `.env` | healthchecks.io project settings |
+| `CLOUDFLARE_TUNNEL_TOKEN` | `.env` | `tofu output -raw tunnel_token` |
+| `CF_ACCESS_AUD` | `.env` (not secret, but paired) | `tofu output -raw grafana_access_aud` |
+| Tunnel secret, API responses | `infra/terraform.tfstate` | written by every `tofu apply` |
+| `CLOUDFLARE_API_TOKEN` | your shell, per session | Cloudflare dashboard |
+
+`infra/terraform.tfvars` holds identifiers only (account, zone, domain, the
+Access email list) and is gitignored for privacy, not because it holds a
+credential.
 
 ## Alert delivery
 
@@ -159,9 +190,11 @@ cd infra && tofu apply
   app. Run `infra/generate-imports.sh > infra/imports.tf` first, check the
   plan reads 0 to add for the imported resources, apply, then delete
   `imports.tf`; it is a one-time instruction and gitignored.
-- **State lives on this host only.** `infra/terraform.tfstate` is gitignored
-  and `just backup` does not touch it. Copy it off-host next to the backups.
-  Losing it orphans the Cloudflare resources: they keep running, but the next
+- **State lives on this host only, and it is a secret.** `infra/terraform.tfstate`
+  is gitignored and `just backup` does not touch it. Copy it off-host next to
+  the backups, with the same care as `.env`: state stores the tunnel secret
+  and every API response in plain text, so whoever can read it can run the
+  tunnel. Losing it orphans the Cloudflare resources: they keep running, but the next
   apply creates duplicates, and recovery is `tofu import` by hand.
 
 ## Upgrading images
