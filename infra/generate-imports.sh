@@ -70,7 +70,12 @@ lookup_dns_record() {
     # Type-filtered: this root manages CNAMEs, and a name can also carry TXT records.
     # An unfiltered .result[0] could bind one of those, and the apply would rewrite it
     # into a proxied CNAME, destroying the TXT record and leaving the CNAME unmanaged.
-    id="$(api "zones/$zone/dns_records?name=$hostname&type=CNAME" | jq -r '.result[0].id // empty')"
+    # Two statements, not one pipeline: this function only runs inside `if`/`||`, where
+    # errexit is off, so a failed API call would otherwise fall through and be reported
+    # as "no record", the one answer that sends the operator off to create a duplicate.
+    local body
+    body="$(api "zones/$zone/dns_records?name=$hostname&type=CNAME")" || die "DNS lookup for $hostname failed (token lacks DNS:Read?)"
+    id="$(jq -r '.result[0].id // empty' <<<"$body")"
     [[ -n "$id" ]] || return 1
     printf '%s' "$id"
 }
