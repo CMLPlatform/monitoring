@@ -47,15 +47,16 @@ the config syntax. 1.0 waits for a second consumer to confirm the contract.
   the exact URLs given; Grafana honours the JWT settings and refuses a forged
   token; every scrape target is up; a metric and a log round-trip through
   the collector into Prometheus and Loki with the `project`, `env` and
-  `department` labels. `just restore-check` rehearses backup and restore on
-  the smoke volumes.
+  `department` labels. With `SMOKE_ALERTS=1` (on in CI) it also stops a
+  scrape target and waits for `TargetDown` to fire. `just restore-check`
+  rehearses backup and restore on the smoke volumes.
 - **`just check` is `lint` plus `validate`**. `lint` covers compose files,
   the rendered alert templates, YAML formatting, workflows, shell scripts,
   the demo's Python, OpenTofu formatting, dashboard JSON and the datasource
   uids it names, and git history for secrets. `validate` runs each stack
   config through the exact image the stack uses. `just hooks` installs git
   hooks via prek: gitleaks at commit, a Conventional Commits check on the
-  message, `check` at push.
+  message, `check` at push, `infra-validate` at push when `infra/` changed.
 - Dependabot watches the spoke images in `templates/` and the Cloudflare
   provider in `infra/`. Patch bumps arrive grouped.
 
@@ -68,9 +69,9 @@ the config syntax. 1.0 waits for a second consumer to confirm the contract.
   source of truth; UI saves are off.
 - **Tempo stores traces and nothing else**: its metrics generator is gone.
   RED comes from the applications' own OTLP metrics (ADR 0002).
-- CI runs on pull requests only, skips prose-only changes, and validates
-  `infra/` on its own workflow. `lint` and `validate` + `smoke` run on
-  separate jobs. `just demo-build` is gone.
+- CI runs on pull requests only and validates `infra/` on its own workflow.
+  `lint` and `validate` + `smoke` run on separate jobs. `just demo-build` is
+  gone, and nothing in CI builds the demo image; `just demo` is the check.
 - `just smoke` and `just demo` each run under their own compose project and
   Grafana port (`compose.sandbox.yml`), so neither can touch a running stack.
 - Image bumps: Grafana 13.1.4, Loki 3.7.6, Tempo 3.0.3, Prometheus 3.13.2,
@@ -100,7 +101,18 @@ the config syntax. 1.0 waits for a second consumer to confirm the contract.
   still paused when the unpause failed; `bootstrap.sh` printed the hash of
   empty input for a template missing from the tag; `generate-imports.sh`
   reported a failed DNS API call as "no record". `bootstrap.sh` now reads
-  its rule back from Grafana after the restart.
+  its rule back from Grafana after the restart, and says so when the admin
+  password is missing or rejected instead of blaming the rule.
+- `TargetDown` and `HostDiskSpaceLow` could never fire on the state they
+  watch: `up == 0` and a 0% free ratio both evaluate to 0, and the threshold
+  node fires on value > 0. `HostDiskFilling` had the same defect from a
+  negative projection. All three carry `bool` now, and the smoke alert
+  round trip guards the contract.
+- `just backup` lost tar's exit status behind the gzip pipe; a partial
+  archive reported success. `just restore-check` no longer inherits the
+  host's `COMPOSE_FILE`.
+- The stack-health dashboard's host panels averaged spoke node metrics into
+  the hub's CPU, memory and disk. They are scoped to the hub's `node` job.
 - Grafana and the collector wait for Prometheus to report ready instead of
   racing it on a cold start. The demo load generator's error rate matches
   its advertised one in ten.
@@ -116,10 +128,12 @@ the config syntax. 1.0 waits for a second consumer to confirm the contract.
   with no authentication of its own.
 - `GRAFANA_COOKIE_SECURE` marks the session cookie Secure with strict
   SameSite. With the tunnel overlay, `just up` refuses to start without it,
-  an `https://` root URL, non-default credentials, and a webhook URL.
+  an `https://` root URL, non-default credentials, a webhook URL, and with
+  `.env` or the OpenTofu state readable by other local users.
   `just lint` runs those guards both ways.
 - Hub images are digest-pinned, GitHub Actions are pinned to commit SHAs, the
-  tunnel token reaches cloudflared via environment rather than argv, and
+  tunnel token reaches cloudflared via environment rather than argv, the
+  smoke test's ingest token reaches curl through its stdin config, and
   `bootstrap.sh` prints `sha256sum -c` lines for the files a spoke vendors.
 
 ## [0.2.0] - 2026-07-05

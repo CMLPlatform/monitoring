@@ -88,10 +88,10 @@ Grafana: <http://localhost:3000>.
 `COMPOSE_FILE=compose.yml:compose.tunnel.yml`. Every recipe (`up`, `logs`,
 `ps`, `backup`) then acts on that set.
 
-With the tunnel overlay active, `just up` refuses to start until four settings
+With the tunnel overlay active, `just up` refuses to start until five settings
 are real: a generated `OTLP_AUTH_TOKEN`, a changed `GRAFANA_ADMIN_PASSWORD`,
-`GRAFANA_ROOT_URL` pointing at the tunnel hostname, and
-`GRAFANA_COOKIE_SECURE=true`. An empty `HEARTBEAT_URL` only warns.
+`GRAFANA_ROOT_URL` pointing at the tunnel hostname, `GRAFANA_COOKIE_SECURE=true`,
+and a non-empty `ALERT_WEBHOOK_URL`. An empty `HEARTBEAT_URL` only warns.
 
 The Cloudflare edge is code too. The tunnel, its hostnames, DNS, and the
 Access rule that puts an email one-time PIN in front of Grafana live in
@@ -117,11 +117,12 @@ production shape with JWT auth on, then asserts that every dashboard and
 alert rule provisioned, that the contact points carry the URLs from the
 environment, that Grafana refuses a forged token, that every scrape target is
 up, and that a metric and a log posted through the collector come back out of
-Prometheus and Loki with their labels. The assertions are in
-[scripts/smoke.sh](scripts/smoke.sh).
+Prometheus and Loki with their labels. `SMOKE_ALERTS=1 just smoke` also stops
+a scrape target and waits for `TargetDown` to fire, about three minutes more.
+The assertions are in [scripts/smoke.sh](scripts/smoke.sh).
 
-CI runs `lint` on one job and `validate` plus `smoke` on another, on every
-pull request.
+CI runs `lint` on one job and `validate` plus `smoke` (with the alert round
+trip) on another, on every pull request.
 
 ## Sending telemetry from a project
 
@@ -139,7 +140,8 @@ agent that ships container logs and host metrics.
 Grafana evaluates and delivers the rules in `config/grafana/alerting/`:
 telemetry silent per project, container crash-looping or OOM-killed, scrape
 target down, OTel export failures, alert delivery failing, error rate above
-5%, disk above 80%. There is no Alertmanager. Grafana rules can query Loki as
+5%, disk above 80%, disk projected full within 3 days, and Prometheus head
+series above 100k. There is no Alertmanager. Grafana rules can query Loki as
 well as Prometheus, and one engine means one answer to "who gets told".
 
 Notifications go to the webhook in `ALERT_WEBHOOK_URL` (ntfy, Slack, and so
