@@ -7,11 +7,11 @@
 # the live ones. Import blocks make the adoption reviewable: read the generated file,
 # then the plan, and only then apply.
 #
-# The ingestion record is the one asymmetry. Live, it is still `otlp.<domain>`; this
-# root now calls it `otel.<domain>`. The block below imports that record as
-# `cloudflare_dns_record.otel`, so the apply RENAMES the record in place instead of
-# creating a second one. That is also why main.tf has no `moved` block: nothing was ever
-# in state under the old resource name.
+# The ingestion record was renamed from `otlp.<domain>` to `otel.<domain>` (2026-09).
+# On a state that predates the rename, the block below imports the live record as
+# `cloudflare_dns_record.otel`, so the apply RENAMES it in place instead of creating a
+# second one. That is also why main.tf has no `moved` block: nothing was ever in state
+# under the old resource name. A current state already holds `otel.`.
 #
 # The generated imports.tf is a throwaway, NOT something to commit: it names one
 # account's resource ids and is meaningless after the apply that consumes it. Delete it
