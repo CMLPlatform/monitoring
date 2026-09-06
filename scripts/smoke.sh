@@ -86,6 +86,11 @@ smoke_log() {
 }
 poll smoke_metric || die "the smoke metric never reached Prometheus with its project/env/department labels; see just smoke-logs"
 poll smoke_log || die "the smoke log never reached Loki with its department label; see just smoke-logs"
+# The keystone alert (ProjectTelemetrySilent) and the coverage backstop key on the
+# gateway's ingest counters, so a renamed metric or a dropped attribute would
+# silence both without any other assertion noticing.
+counted() { promq "count by (project, env) ({__name__=~\"telemetry_(datapoints|logs|spans)_total\", project=\"smoke\", env=\"ci\"})" | jq -e '.data.result | length > 0' >/dev/null; }
+poll counted || die "the count connector never produced telemetry_*_total{project=smoke,env=ci}; the alert rules that key on it would never fire"
 
 # ------------------------------------------------------------- alert pipeline
 # Opt-in (SMOKE_ALERTS=1): stop one scrape target and wait for TargetDown to

@@ -50,7 +50,11 @@ Contracts that make it scale:
   log exporters stay off); native app metrics own RED; cAdvisor owns container
   lifecycle; healthchecks.io owns "did the job run"; a host-local drift script
   owns "is the deployed code the code we think"; nothing derives metrics from
-  logs or from traces.
+  logs or from traces. The one exception is accounting, not signal: the
+  gateway's count connector emits `telemetry_{datapoints,logs,spans}_total` per
+  project and environment, so the keystone alert below can see a project that
+  sends only logs or only traces, and can ask whether telemetry is arriving
+  without reading every series a project has ever produced.
 - **`ProjectTelemetrySilent` per project/env is the keystone alert**: nothing
   on a spoke can detect its own absence. Templated and provisioned by
   `bootstrap.sh`, which is also what creates a project's healthchecks and prints

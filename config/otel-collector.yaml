@@ -22,6 +22,38 @@ receivers:
         auth:
           authenticator: bearertokenauth
 
+connectors:
+  # A per-(project, env) ingest counter for every signal. The coverage and silence
+  # rules ask "is this project sending anything?" against a handful of series per
+  # project instead of scanning every project-labelled series in the TSDB, and they
+  # see a logs-only or traces-only project, which reaches no other Prometheus series.
+  # Attributes are read from the resource too, which is where project and env live.
+  #
+  # Every data type is named, including the two that carry no project: a type left
+  # undefined emits the connector's own default metric instead.
+  count:
+    datapoints:
+      telemetry.datapoints: &by_project
+        description: Telemetry received, by project and environment.
+        # default_value, or a sender that never set project is counted nowhere and
+        # stays invisible: no series, so nothing for the coverage rule to fire on.
+        # Counted as "unknown" it shows up as an uncovered project instead.
+        attributes:
+          - key: project
+            default_value: unknown
+          - key: env
+            default_value: unknown
+    logs:
+      telemetry.logs: *by_project
+    spans:
+      telemetry.spans: *by_project
+    spanevents:
+      telemetry.spanevents: *by_project
+    metrics:
+      # A metric stream has no attributes of its own; its datapoints carry them.
+      telemetry.metrics:
+        description: Metric streams received.
+
 processors:
   # Stamped here with upsert, so a sender cannot claim another department.
   # Literal rather than an env knob: one value has ever been correct, and as an
@@ -32,6 +64,12 @@ processors:
       - key: department
         value: cml
         action: upsert
+
+  # The count connector emits delta sums and the Prometheus OTLP receiver refuses
+  # them ("invalid temporality and type combination"). Converting here keeps the
+  # conversion state to the handful of counter streams, rather than turning on
+  # Prometheus's experimental global delta handling.
+  deltatocumulative: {}
 
   # Sized to the container's mem_limit (512m in compose.yml); keep the two in step.
   memory_limiter:
@@ -72,14 +110,19 @@ service:
     logs:
       receivers: [otlp]
       processors: [memory_limiter, resource/department, batch]
-      exporters: [otlp_http/loki]
+      exporters: [otlp_http/loki, count]
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resource/department, batch]
-      exporters: [otlp_grpc/tempo]
+      exporters: [otlp_grpc/tempo, count]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, resource/department, batch]
+      exporters: [otlp_http/prometheus, count]
+    # The counters themselves. Same limiter and batcher as every other pipeline.
+    metrics/count:
+      receivers: [count]
+      processors: [memory_limiter, deltatocumulative, batch]
       exporters: [otlp_http/prometheus]
   telemetry:
     metrics:

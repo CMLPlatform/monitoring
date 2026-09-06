@@ -17,7 +17,7 @@ groups:
     rules:
       # absent() yields nothing while telemetry flows, so NoData is the HEALTHY state
       # and must map to OK.
-      - uid: __UID__
+      - uid: proj-silent-__PROJECT__-__ENV__
         title: ProjectTelemetrySilent
         condition: FIRING
         for: 15m
@@ -34,7 +34,10 @@ groups:
               refId: QUERY
               instant: true
               editorMode: code
-              expr: absent({project="__PROJECT__",env="__ENV__"})
+              # The collector's ingest counters, as in coverage.yaml.tmpl. absent() loads
+              # every series its selector matches, once a minute per project, so it is
+              # bounded to a few per service rather than everything the project sends.
+              expr: absent({__name__=~"telemetry_(datapoints|logs|spans)_total", project="__PROJECT__",env="__ENV__"})
           - refId: FIRING
             datasourceUid: __expr__
             model:

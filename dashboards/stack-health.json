@@ -211,6 +211,49 @@
       }
     },
     {
+      "type": "timeseries",
+      "title": "Ingest by Project",
+      "description": "Telemetry accepted per project and environment, from the gateway's count connector. A project missing here is sending nothing, whichever signal it uses.",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "id": 7,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (project, env) (rate(telemetry_datapoints_total[$__rate_interval]))",
+          "legendFormat": "{{project}}/{{env}} metric points/s",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (project, env) (rate(telemetry_logs_total[$__rate_interval]))",
+          "legendFormat": "{{project}}/{{env}} log records/s",
+          "refId": "B"
+        },
+        {
+          "expr": "sum by (project, env) (rate(telemetry_spans_total[$__rate_interval]))",
+          "legendFormat": "{{project}}/{{env}} spans/s",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
       "type": "alertlist",
       "title": "Active Alerts",
       "id": 6,
@@ -219,7 +262,7 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 16
+        "y": 24
       },
       "options": {
         "viewMode": "list",

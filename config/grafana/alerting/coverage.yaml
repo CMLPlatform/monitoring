@@ -31,7 +31,11 @@ groups:
               refId: QUERY
               instant: true
               editorMode: code
-              expr: count by (project, env) ({project!="", env!=""} unless on (project, env) ({project="relab",env="staging"}))
+              # The collector's count connector (config/otel-collector.yaml) mints these
+              # counters for every sender, whatever signal it sends. A bare
+              # {project!=""} would scan every project-labelled series in the TSDB on
+              # each evaluation, and would still miss a logs-only or traces-only project.
+              expr: count by (project, env) ({__name__=~"telemetry_(datapoints|logs|spans)_total", project!="", env!=""} unless on (project, env) ({__name__=~"telemetry_(datapoints|logs|spans)_total", project="relab",env="staging"}))
           - refId: FIRING
             datasourceUid: __expr__
             model:

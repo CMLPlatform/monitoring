@@ -68,7 +68,6 @@ while read -r p e; do
     rendered="${out_dir}/project-${p}-${e}.yaml"
     sed -e "s/__PROJECT__/${p}/g" \
         -e "s/__ENV__/${e}/g" \
-        -e "s/__UID__/proj-silent-${p}-${e}/g" \
         templates/alerting/project.yaml.tmpl > "$rendered"
     echo "rendered  $rendered"
 done <<<"$pairs"
@@ -76,8 +75,8 @@ done <<<"$pairs"
 # ------------------------------------------------------------ 2. the coverage backstop
 covered="$(echo "$pairs" | sed 's| |/|' | paste -sd',' - | sed 's/,/, /g')"
 covered_expr="$(echo "$pairs" \
-    | sed 's|^\([^ ]*\) \([^ ]*\)$|{project="\1",env="\2"}|' \
-    | paste -sd'|' - | sed 's/|/ or /g')"
+    | sed 's@^\([^ ]*\) \([^ ]*\)$@{__name__=~"telemetry_(datapoints|logs|spans)_total", project="\1",env="\2"}@' \
+    | paste -sd'@' - | sed 's/@/ or /g')"
 sed -e "s@__COVERED__@${covered}@" \
     -e "s@__COVERED_EXPR__@${covered_expr}@" \
     templates/alerting/coverage.yaml.tmpl > "${out_dir}/coverage.yaml"
