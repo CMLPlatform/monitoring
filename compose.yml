@@ -111,7 +111,21 @@ services:
   node-exporter:
     image: prom/node-exporter:v1.12.1@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0
     restart: unless-stopped
-    command: ["--path.rootfs=/host"]
+    # Same collector allowlist as the spokes' Alloy (templates/alloy/config.alloy).
+    # The defaults add ~1000 series on this host (cpufreq, thermal, cooling,
+    # per-collector scrape stats) that no dashboard, alert or runbook reads.
+    command:
+      - --path.rootfs=/host
+      - --collector.disable-defaults
+      - --collector.cpu
+      - --collector.diskstats
+      - --collector.filesystem
+      - --collector.hwmon
+      - --collector.loadavg
+      - --collector.meminfo
+      - --collector.netdev
+      - --collector.stat
+      - --collector.uname
     pid: host
     mem_limit: 128m
     !!merge <<: *hardened

@@ -30,14 +30,23 @@ scrape_configs:
     static_configs:
       - targets: ["node-exporter:9100"]
 
+  # Only `up` and grafana_alerting_notifications_failed_total are read from these
+  # three; their histogram buckets were 5.2k of 14.1k head series. The _sum and
+  # _count series stay, so latency is still visible in Explore.
   - job_name: grafana
     static_configs:
       - targets: ["grafana:3000"]
+    metric_relabel_configs: &drop_buckets
+      - source_labels: [__name__]
+        regex: .*_bucket
+        action: drop
 
   - job_name: loki
     static_configs:
       - targets: ["loki:3100"]
+    metric_relabel_configs: *drop_buckets
 
   - job_name: tempo
     static_configs:
       - targets: ["tempo:3200"]
+    metric_relabel_configs: *drop_buckets
