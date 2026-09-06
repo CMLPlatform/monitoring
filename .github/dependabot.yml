@@ -38,6 +38,12 @@ updates:
     groups:
       demo:
         patterns: ["*"]
+      # `groups` only cover version updates; without this, every advisory
+      # opens its own PR and CI run. Only pip: Docker, compose, Actions and
+      # Terraform get no Dependabot security advisories.
+      demo-security:
+        applies-to: security-updates
+        patterns: ["*"]
 
   # Cloudflare provider for infra/. Dependabot bumps the constraint in
   # main.tf but not the hashes in .terraform.lock.hcl; see the runbook.

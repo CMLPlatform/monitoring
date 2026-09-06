@@ -1,10 +1,10 @@
 # Installed by `just hooks` (prek). Stages sized to their cost:
-#   pre-commit  gitleaks on the staged diff (~0.5s; a secret is cheapest to
-#               catch before it is in history), then `just lint` (~6s warm).
+#   pre-commit  gitleaks on the staged diff, ~0.5s: a secret is cheapest to
+#               catch before it is in history. Nothing slower runs per commit.
 #   commit-msg  Conventional Commits shape on the first line.
-#   pre-push    `just validate` (the stack's images; seconds on a host that
-#               runs the stack) and `just infra-validate`, only when infra/
-#               is in the push: it downloads the provider every time.
+#   pre-push    `just check` (lint + validate; ~10s warm on a host that runs
+#               the stack) and `just infra-validate`, only when infra/ is in
+#               the push: it downloads the provider every time.
 # `prek run` runs the pre-commit stage on demand; `--hook-stage pre-push` the rest.
 repos:
   - repo: local
@@ -19,13 +19,6 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-commit]
-      - id: lint
-        name: just lint
-        entry: just lint
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-commit]
       - id: commit-msg
         name: conventional commit message
         entry: >-
@@ -35,9 +28,9 @@ repos:
           || { echo "commit message must be type(scope): lower-case summary, at most 72 chars" >&2; exit 1; }' --
         language: system
         stages: [commit-msg]
-      - id: validate
-        name: just validate
-        entry: just validate
+      - id: check
+        name: just check
+        entry: just check
         language: system
         pass_filenames: false
         always_run: true

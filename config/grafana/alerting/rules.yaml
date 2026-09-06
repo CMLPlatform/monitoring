@@ -204,7 +204,9 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Filesystem {{ $labels.mountpoint }} on {{ or $labels.host_name $labels.instance }} fills up within 3 days at the current rate"
+          summary: >-
+            Filesystem {{ $labels.mountpoint }} on {{ or $labels.host_name $labels.instance }}
+            fills up within 3 days at the current rate
           description: >-
             Extrapolated from the last 6 hours. Find what is growing (a spoke
             shipping more than before, a log loop, a backup that stopped

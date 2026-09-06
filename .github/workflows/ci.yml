@@ -4,10 +4,15 @@
 # stack images, which the smoke job pulls anyway.
 name: CI
 
+# Prose changes skip the whole workflow: nothing here reads Markdown. infra/
+# has its own workflow (infra.yml) that only runs when infra/ changes.
 on:
   push:
     branches: [main]
+    paths-ignore: &docs ["**.md", "docs/**", "LICENSE", "infra/**"]
   pull_request:
+    paths-ignore: *docs
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -31,7 +36,6 @@ jobs:
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
       - run: cp .env.example .env
       - run: just lint
-      - run: just infra-validate
 
   smoke:
     runs-on: ubuntu-latest

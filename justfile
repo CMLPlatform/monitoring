@@ -15,7 +15,8 @@ shellcheck := "koalaman/shellcheck:v0.11.0"
 ruff := "ghcr.io/astral-sh/ruff:0.14.2"
 tofu := "ghcr.io/opentofu/opentofu:1.12.3"
 gitleaks := "zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"
-lint_images := jq + " " + yamllint + " " + yamlfmt + " " + actionlint + " " + shellcheck + " " + ruff + " " + tofu + " " + gitleaks
+alloy := "grafana/alloy:v1.18.1@sha256:0f4434c92b3e6cdac38bb129b344e1790c246f7b6e2eaffcc16a5fa363240e33"
+lint_images := jq + " " + yamllint + " " + yamlfmt + " " + actionlint + " " + shellcheck + " " + ruff + " " + tofu + " " + gitleaks + " " + alloy
 
 # `demo` and `smoke` each bring up a throwaway copy of the core stack, so both
 # run under their own compose project and their own Grafana port (see
@@ -133,7 +134,7 @@ tail service:
 # Validate every config in the repo.
 check: lint validate
 
-# Static checks in small tool images (~130 MB cold, seconds warm).
+# Static checks in tool images (~280 MB cold, seconds warm).
 lint:
     @printf '%s\n' {{lint_images}} | xargs -P 8 -n 1 docker pull -q >/dev/null
     # `-f compose.yml` on the first line, not the host's COMPOSE_FILE: on a
@@ -184,6 +185,11 @@ lint:
     # working-tree scan flags .env's real tokens and fails on every dev machine.
     # Needs full history: a shallow CI clone has one commit and passes vacuously.
     docker run --rm --network none -v .:/repo:ro {{gitleaks}} git --redact --no-banner /repo
+    # The one config vendored verbatim onto every project host; a syntax error
+    # here otherwise first surfaces as a crash-looping agent on a client machine.
+    # Image ref matches templates/compose.telemetry.yml; keep them in step. In
+    # `lint`, not `validate`: the smoke job pulls nothing else this size.
+    docker run --rm --network none -v ./templates/alloy/config.alloy:/etc/alloy/config.alloy:ro -e COMPOSE_PROJECT_NAME=dummy -e ENVIRONMENT=dummy -e PROJECT=dummy -e OTEL_EXPORTER_OTLP_ENDPOINT=https://dummy -e OTLP_AUTH_TOKEN=dummy -e TELEMETRY_EDGE_KEY= {{alloy}} validate /etc/alloy/config.alloy
 
 # Image ref of one compose.yml service, so the validators below can't drift
 # from the versions the stack runs. (`config --images <svc>` also lists the
@@ -191,17 +197,14 @@ lint:
 _image service:
     @docker compose -f compose.yml config --format json | docker run --rm -i {{jq}} -er '.services["{{service}}"].image // error("no service {{service}} in compose.yml")'
 
-# The validators run in the images the stack itself runs. ~300 MB cold.
+# The validators run in the images the stack itself runs. ~290 MB cold, but
+# the smoke job has them anyway.
 # Run each config through the binary that will load it.
 validate:
     docker run --rm --network none -v ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro --entrypoint promtool $(just _image prometheus) check config /etc/prometheus/prometheus.yaml
     docker run --rm --network none -e OTLP_AUTH_TOKEN=dummy -e DEPARTMENT=dummy -v ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro $(just _image otel-collector) validate --config=/etc/otelcol/config.yaml
     docker run --rm --network none -v ./config/loki.yaml:/etc/loki/loki.yaml:ro $(just _image loki) -config.file=/etc/loki/loki.yaml -verify-config
     docker run --rm --network none -v ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro $(just _image tempo) -config.file=/etc/tempo/tempo.yaml -config.verify=true
-    # The one config vendored verbatim onto every project host; a syntax error
-    # here otherwise first surfaces as a crash-looping agent on a client machine.
-    # Image ref matches templates/compose.telemetry.yml; keep them in step.
-    docker run --rm --network none -v ./templates/alloy/config.alloy:/etc/alloy/config.alloy:ro -e COMPOSE_PROJECT_NAME=dummy -e ENVIRONMENT=dummy -e PROJECT=dummy -e OTEL_EXPORTER_OTLP_ENDPOINT=https://dummy -e OTLP_AUTH_TOKEN=dummy -e TELEMETRY_EDGE_KEY= grafana/alloy:v1.18.1@sha256:0f4434c92b3e6cdac38bb129b344e1790c246f7b6e2eaffcc16a5fa363240e33 validate /etc/alloy/config.alloy
 
 # Runs against a copy of the sources only: state and tfvars never enter the
 # container, which needs network access to fetch the provider.
@@ -214,7 +217,7 @@ infra-validate:
 fmt:
     docker run --rm --network none --user "$(id -u):$(id -g)" -v .:/code -w /code {{yamlfmt}} .
 
-# Install the git hooks: gitleaks + lint on commit, validate on push (see .pre-commit-config.yaml).
+# Install the git hooks: gitleaks on commit, `just check` on push (see .pre-commit-config.yaml).
 hooks:
     prek install --hook-type pre-commit --hook-type commit-msg --hook-type pre-push
 
