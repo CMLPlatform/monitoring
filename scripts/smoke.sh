@@ -13,7 +13,7 @@ die() { echo "error: $*" >&2; exit 1; }
 # Admin basic auth through curl's stdin config: argv is world-readable in ps.
 gf() { printf 'user = "admin:%s"\n' "$GRAFANA_ADMIN_PASSWORD" | curl -sf -K - "$@"; }
 promq() { gf -G --data-urlencode "query=$1" "$url/api/datasources/proxy/uid/prometheus/api/v1/query"; }
-poll() { local n=0; until "$@"; do n=$((n + 1)); [[ $n -lt 60 ]] || return 1; sleep 1; done; }
+poll() { local n=0; until "$@"; do n=$((n + 1)); [[ $n -lt ${POLL_MAX:-60} ]] || return 1; sleep 1; done; }
 
 # ------------------------------------------------------------------ provisioning
 # Grafana skips a broken dashboard or a malformed alert group silently, so the
@@ -87,5 +87,21 @@ smoke_log() {
 }
 poll smoke_metric || die "the smoke metric never reached Prometheus with its project/env/department labels; see just smoke-logs"
 poll smoke_log || die "the smoke log never reached Loki with its department label; see just smoke-logs"
+
+# ------------------------------------------------------------- alert pipeline
+# Opt-in (SMOKE_ALERTS=1): stop one scrape target and wait for TargetDown to
+# reach firing. Costs the rule's `for` (2m) plus an evaluation, so it is off
+# for the local loop and on in CI. Guards the threshold-node contract in
+# rules.yaml: a query whose matching value is 0 never fires without `bool`.
+if [[ "${SMOKE_ALERTS:-}" == 1 ]]; then
+    docker compose -p "$project" stop -t 1 node-exporter >/dev/null
+    target_down_firing() {
+        gf "$url/api/prometheus/grafana/api/v1/rules" \
+            | jq -e '.data.groups[].rules[] | select(.name == "TargetDown") | .state == "firing"' >/dev/null
+    }
+    POLL_MAX=300 poll target_down_firing || die "TargetDown did not fire within 5 minutes of stopping node-exporter"
+    docker compose -p "$project" start node-exporter >/dev/null
+    echo "TargetDown fired for the stopped node-exporter"
+fi
 
 echo "Stack healthy"

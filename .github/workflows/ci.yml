@@ -3,10 +3,10 @@
 name: CI
 
 # Pull requests only: main moves through PRs, so a push run would repeat the
-# check. Prose changes skip the workflow. infra/ has its own (infra.yml).
+# check. No path filter: gitleaks must see every PR, and a skipped workflow
+# never reports the checks a PR needs. infra/ also has its own (infra.yml).
 on:
   pull_request:
-    paths-ignore: ["**.md", "docs/**", "LICENSE", "infra/**"]
   workflow_dispatch:
 
 permissions:
@@ -38,7 +38,10 @@ jobs:
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
       - run: cp .env.example .env
       - run: just validate
+      # SMOKE_ALERTS adds the TargetDown round trip (about 3 minutes).
       - run: just smoke
+        env:
+          SMOKE_ALERTS: "1"
       # The smoke failure messages point at these logs.
       - if: failure()
         run: just smoke-logs
