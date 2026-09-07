@@ -66,6 +66,8 @@ loss, which every component handles through its write-ahead log.
 
 - The tarball is mode 0600 and contains secrets, including the Grafana
   database. Copy it off-host over a private channel.
+- `just restore` refuses to run if the stack's volumes do not exist yet. On a
+  fresh host, run `just up` once to create them, then restore.
 - It covers the docker volumes only. The OpenTofu state for the Cloudflare
   edge is not in it. See "Where every secret lives" below.
 - During the pause the collector buffers incoming telemetry for five minutes
@@ -205,7 +207,8 @@ resources.
 
 Nothing watches the tool images pinned in the `justfile` (yamllint,
 actionlint, shellcheck, ruff, gitleaks, OpenTofu, jq, Alloy, alpine). Bump
-those by hand.
+those by hand. The alpine pin appears twice: in the `justfile` and on
+`otel-queue-init` in `compose.yml`. Bump both together.
 
 After merging, on the host:
 
@@ -213,10 +216,6 @@ After merging, on the host:
 git pull && just pull && just up
 ```
 
-Use `just up`, not `docker compose up -d`. The recipe first chowns the
-collector's queue volume to uid 10001. A raw compose up leaves a new volume
-root-owned and the collector crash-looping.
-
-Coming from a release that still ran Alertmanager, its volume outlives the
-service: run `docker volume rm monitoring_alertmanager_data` once the new
-stack is up.
+`just up` adds the exposure guards, but a plain `docker compose up -d` is now
+safe too: the `otel-queue-init` service chowns the collector's queue volume to
+uid 10001 before the collector starts.

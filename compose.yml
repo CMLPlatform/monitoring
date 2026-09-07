@@ -36,10 +36,33 @@ x-healthcheck: &healthcheck
   start_interval: 2s
 
 services:
+  # A fresh named volume is root-owned and the collector image is distroless, so
+  # it cannot chown its own queue directory at startup. This one-shot service
+  # does it first. It lives here rather than in the justfile so that a plain
+  # `docker compose up` works, and so the volume stays Compose-managed: a
+  # `docker volume create` from outside leaves it unlabelled, and then
+  # `down --volumes` never removes it.
+  otel-queue-init:
+    image: alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+    command: ["chown", "10001:10001", "/q"]
+    restart: "no"
+    network_mode: none
+    volumes:
+      - otel_queue:/q
+    cap_drop: [ALL]
+    cap_add: [CHOWN]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 16
+    mem_limit: 32m
+    logging: *default-logging
+
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.156.0@sha256:125bdbeb7590cc1952c5b3430ecf14063568980c2c93d5b38676cc0446ed8108
     restart: unless-stopped
     depends_on:
+      otel-queue-init:
+        condition: service_completed_successfully
       loki:
         condition: service_started
       tempo:
@@ -51,7 +74,8 @@ services:
       - "127.0.0.1:4318:4318" # OTLP HTTP
     volumes:
       - ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro
-      # File-backed exporter queue. Must be owned by uid 10001; `just up` chowns it.
+      # File-backed exporter queue. Must be owned by uid 10001; otel-queue-init
+      # chowns it before this service starts.
       - otel_queue:/var/lib/otelcol/queue
     command: ["--config=/etc/otelcol/config.yaml"]
     environment:

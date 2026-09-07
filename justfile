@@ -48,16 +48,10 @@ dash_paths := `ls dashboards/*.json 2>/dev/null | sed 's|^dashboards|/dashboards
 default:
     @just --list
 
-# A fresh named volume is root-owned and the collector image is distroless, so
-# chown its queue volume to uid 10001 here. Idempotent; every up-path runs it.
-_queue-volume project:
-    @docker volume create {{project}}_otel_queue > /dev/null
-    @docker run --rm --network none -v {{project}}_otel_queue:/q {{alpine}} chown 10001:10001 /q
-
 # COMPOSE_FILE in .env names the overlays. With the tunnel overlay active, this
 # refuses to start until the exposure guards pass.
 # Start the stack (Grafana at http://localhost:3000).
-up: (_queue-volume core_project) _guard-if-exposed
+up: _guard-if-exposed
     docker compose up -d
 
 # The exposure guards, only when the tunnel overlay is in play.
@@ -81,7 +75,7 @@ down:
     docker compose down --remove-orphans
 
 # Core stack plus a demo telemetry source, isolated from any running stack (:3002).
-demo: (_queue-volume demo_project)
+demo:
     {{compose_demo}} up -d --build
 
 # Stop the demo telemetry source; the demo project's core stack keeps running.
@@ -213,6 +207,7 @@ restore file: (_restore core_project file "backups")
 # extract dies halfway, that is the only way back.
 _restore project file dir:
     @[ -f "{{file}}" ] || { echo "error: {{file}} not found" >&2; exit 1; }
+    @for s in {{stateful}}; do docker volume inspect {{project}}_${s}_data > /dev/null 2>&1 || { echo "error: volume {{project}}_${s}_data does not exist. 'docker run -v' would create it empty, so the pre-restore snapshot below would be a tarball of nothing. On a fresh host run 'just up' once first; otherwise check COMPOSE_PROJECT_NAME." >&2; exit 1; }; done
     docker run --rm --network none -v {{absolute_path(file)}}:/backup.tar.gz:ro {{alpine}} tar tzf /backup.tar.gz > /dev/null
     docker compose -p {{project}} down --remove-orphans
     mkdir -p {{dir}}
@@ -229,7 +224,7 @@ restore-check:
 # crash-looping service is caught (after the full timeout). scripts/smoke.sh
 # asserts what lands after that: provisioning, scrapes, the data paths.
 # Boot an isolated copy of the core stack and assert it works end to end.
-smoke: (_queue-volume smoke_project)
+smoke:
     {{compose_smoke}} up -d --wait --wait-timeout 120
     {{smoke_env}} SMOKE_URL=http://localhost:{{smoke_port}} SMOKE_PROJECT={{smoke_project}} scripts/smoke.sh
 
