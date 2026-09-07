@@ -196,6 +196,27 @@ cd infra && tofu apply
   `infra/generate-imports.sh > infra/imports.tf`, which reads the live objects
   back out of the Cloudflare API and adopts them into a fresh state.
 
+## Cutting a release
+
+A tag is the deployable unit: `bootstrap.sh` pins every spoke's vendored
+templates to the latest tag, and refuses to run without one.
+
+1. Add a `## [x.y.z] - date` section to `CHANGELOG.md` and merge it. Put
+   anything a spoke must do (re-vendor templates, change a variable) under
+   an `Upgrade` heading.
+2. Tag and push:
+
+   ```sh
+   git tag vx.y.z && git push origin vx.y.z
+   ```
+
+   The release workflow runs `just check` and publishes the GitHub release
+   with that changelog section as its body. No section, no release: the tag
+   stays, so fix the changelog on `main` and re-tag.
+3. Deploy the hub (below), then run `./bootstrap.sh <project> <env>` for each
+   spoke and follow what it prints. The checksums it emits are for the new
+   tag.
+
 ## Upgrading images
 
 Dependabot opens PRs that bump the pinned versions, and CI runs `just validate`

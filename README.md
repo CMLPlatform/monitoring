@@ -108,7 +108,7 @@ top of [infra/main.tf](infra/main.tf).
 | `just check` | `lint` plus `validate` |
 | `just smoke` | Boots an isolated copy of the stack and asserts it works end to end |
 | `just restore-check` | Rehearses backup and restore on the smoke stack |
-| `just hooks` | Installs the git hooks: gitleaks at commit, a Conventional Commits check on the message, `check` at push |
+| `just hooks` | Installs the git hooks: gitleaks at commit, a Conventional Commits check on the message, `check` at push, `infra-validate` at push when `infra/` changed |
 
 Every check runs in a pinned container. Nothing is installed on the host.
 
@@ -138,11 +138,13 @@ agent that ships container logs and host metrics.
 ## Alerting
 
 Grafana evaluates and delivers the rules in `config/grafana/alerting/`:
-telemetry silent per project, container crash-looping or OOM-killed, scrape
-target down, OTel export failures, alert delivery failing, error rate above
-5%, disk above 80%, disk projected full within 3 days, and Prometheus head
-series above 100k. There is no Alertmanager. Grafana rules can query Loki as
-well as Prometheus, and one engine means one answer to "who gets told".
+telemetry silent per project, a project sending telemetry with no rule file,
+container crash-looping or OOM-killed, scrape target down, OTel export
+failures, alert delivery failing, error rate above 5%, disk above 80%, disk
+projected full within 3 days, Prometheus active series above 30k, and 5,000
+new series in 30 minutes. There is no Alertmanager. Grafana rules can query
+Loki as well as Prometheus, and one engine means one answer to "who gets
+told".
 
 Notifications go to the webhook in `ALERT_WEBHOOK_URL` (ntfy, Slack, and so
 on). One rule, `Watchdog`, fires permanently and posts to `HEARTBEAT_URL`
