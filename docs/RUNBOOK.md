@@ -36,8 +36,11 @@ Retention is only partially size-bounded:
 Loki and Tempo cannot cap their total size, so the disk alert at 80% is the
 backstop. Two warnings fire earlier. `HostDiskFilling` means a 6-hour linear
 fit says a filesystem is full within 3 days. `PrometheusCardinalityHigh`
-means active series passed 100k, about 14x the baseline of ~7k with one
-spoke. Series count, not time, is what grows the TSDB.
+means active series passed 30k, about 4x the baseline of ~7k with one spoke,
+which is roughly 18 spokes of room at ~1,400 series each.
+`PrometheusCardinalitySpike` means 5,000 series appeared in 30 minutes, far
+faster than onboarding explains, so a label has most likely exploded. Series
+count, not time, is what grows the TSDB.
 
 When one fires:
 
@@ -87,6 +90,9 @@ on the host.
   The token is shared, and the collector does not check `project` or `env`
   against the sender. Every project host can therefore spoof another
   project's labels.
+
+  Bearer is the only scheme the collector accepts. A sender that cannot set a
+  raw `Authorization` header ships through the host's Alloy agent instead.
 - **Tunnel token:** rotate the tunnel secret in Cloudflare Zero Trust, then
   run `cd infra && tofu apply` to refresh the token data source, then read
   the new value with `tofu output -raw tunnel_token`. To rotate from code

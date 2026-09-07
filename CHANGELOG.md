@@ -4,6 +4,34 @@ Notable changes to this stack. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [SemVer](https://semver.org/).
 
+## [0.3.1] - 2026-09-07
+
+### Fixed
+
+- **Prometheus rejected the ingest counters every few minutes**, so five of
+  eight `telemetry_logs_total` senders never reached it. Both coverage alerts
+  read that counter. Three faults: `batch` reordered timestamps after
+  `deltatocumulative`; the count connector emitted one sample per incoming
+  batch, which Prometheus rejects as duplicates; and the counters carried the
+  source telemetry's timestamp, so a log backlog fell outside
+  `out_of_order_time_window`. The pipeline now drops `batch`, collapses each
+  stream to one sample per 30s, and stamps samples on receipt.
+- The ingest counters get their own `otlp_http/prometheus_count` exporter, so
+  their send failures are counted apart from a spoke's application metrics.
+- `deltatocumulative` streams are capped at 5000. A service that mints a new
+  `service.instance.id` per restart added one each time.
+- `ProjectsUncovered` no longer fires for `demo/demo`, the pair `just demo`
+  sets. A real project named `demo` is still caught.
+
+### Changed
+
+- **`PrometheusCardinalityHigh` fires at 30k active series, not 100k.** 100k
+  would have put Prometheus near its 2g `mem_limit` before the warning
+  arrived; 30k is ~18 spokes of room.
+- **New `PrometheusCardinalitySpike`**, on 5,000 new series in 30 minutes: a
+  label that explodes, which a ceiling cannot catch. One spoke onboarding adds
+  ~1,400.
+
 ## [0.3.0] - 2026-09-06
 
 The hub runs the department's telemetry in production, with one spoke on the

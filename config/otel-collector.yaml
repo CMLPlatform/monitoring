@@ -74,9 +74,33 @@ processors:
 
   # The count connector emits delta sums and the Prometheus OTLP receiver refuses
   # them ("invalid temporality and type combination"). Converting here keeps the
-  # conversion state to the handful of counter streams, rather than turning on
-  # Prometheus's experimental global delta handling.
-  deltatocumulative: {}
+  # conversion state to the counter streams, rather than turning on Prometheus's
+  # experimental global delta handling.
+  #
+  # Streams are per sender resource, and a service that mints a new
+  # service.instance.id on each restart adds one every time. The default is
+  # unbounded. This cap is a runaway guard, not a budget: 28 streams cost ~51 MiB
+  # heap against the 400 MiB limiter (measured before `interval` was added).
+  deltatocumulative:
+    max_streams: 5000
+
+  # The count connector emits one datapoint per incoming batch, so 50 log batches
+  # become 50 samples of one series microseconds apart, and Prometheus rejects
+  # the whole write as duplicates. Keep the latest value per scrape interval;
+  # 30s matches scrape_interval in config/prometheus.yaml.
+  interval:
+    interval: 30s
+
+  # Stamp the counters at receipt. Left alone they carry the source telemetry's
+  # timestamp, so a backlog of logs mints samples hours old and Prometheus
+  # rejects anything past out_of_order_time_window (30m in config/prometheus.yaml).
+  # Must run after `interval`: restamping several datapoints of one stream would
+  # make them duplicates again.
+  transform/count_ingest_time:
+    metric_statements:
+      - context: datapoint
+        statements:
+          - set(time, Now())
 
   # Sized to the container's mem_limit (512m in compose.yml); keep the two in step.
   memory_limiter:
@@ -111,6 +135,16 @@ exporters:
     sending_queue: *queue
     retry_on_failure: *retry
 
+  # Same endpoint, separate exporter, so otelcol_exporter_send_failed_metric_points
+  # tells rejected counters apart from a spoke's rejected application metrics.
+  # No file_storage: the counters resume after a restart, so in-flight samples
+  # are not worth a queue on disk.
+  otlp_http/prometheus_count:
+    endpoint: http://prometheus:9090/api/v1/otlp
+    sending_queue:
+      queue_size: 1000
+    retry_on_failure: *retry
+
 service:
   extensions: [bearertokenauth, file_storage]
   pipelines:
@@ -126,11 +160,12 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, resource/department, batch]
       exporters: [otlp_http/prometheus, count]
-    # The counters themselves. Same limiter and batcher as every other pipeline.
+    # The counters themselves. No batcher: it reordered timestamps ~1/min, which
+    # deltatocumulative refused as out of order. `interval` does the collapsing.
     metrics/count:
       receivers: [count]
-      processors: [memory_limiter, deltatocumulative, batch]
-      exporters: [otlp_http/prometheus]
+      processors: [memory_limiter, deltatocumulative, interval, transform/count_ingest_time]
+      exporters: [otlp_http/prometheus_count]
   telemetry:
     metrics:
       level: basic

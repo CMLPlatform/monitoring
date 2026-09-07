@@ -1,14 +1,15 @@
 version: 2
 updates:
-  # Hub images: patch bumps ride together; a minor or major comes on its own,
-  # so a red PR names the one image that broke.
+  # Hub images: patch and minor bumps ride together, a major comes on its own
+  # so a red PR names the one image that broke. `just check` runs on the group
+  # PR; bisect it by dropping images from the branch if it goes red.
   - package-ecosystem: "docker-compose"
     directory: "/"
     schedule:
       interval: "weekly"
     groups:
-      hub-patches:
-        update-types: ["patch"]
+      hub:
+        update-types: ["minor", "patch"]
 
   # The spoke images every project host runs.
   - package-ecosystem: "docker-compose"
@@ -16,8 +17,8 @@ updates:
     schedule:
       interval: "weekly"
     groups:
-      spoke-patches:
-        update-types: ["patch"]
+      spoke:
+        update-types: ["minor", "patch"]
 
   # The demo: one PR per month for all of it.
   - package-ecosystem: "docker"
@@ -52,3 +53,6 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      actions:
+        patterns: ["*"]

@@ -20,7 +20,8 @@ if [[ -z "$project" || -z "$env_name" ]]; then
 fi
 # These become label values, a rule uid, and a filename; a quote or brace in a
 # label value produces a rule that silently never matches.
-if [[ ! "$project" =~ ^[a-z0-9][a-z0-9-]*$ || ! "$env_name" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+valid_pair() { [[ "$1" =~ ^[a-z0-9][a-z0-9-]*$ && "$2" =~ ^[a-z0-9][a-z0-9-]*$ ]]; }
+if ! valid_pair "$project" "$env_name"; then
     echo "error: project and env must match [a-z0-9][a-z0-9-]* (lowercase, no spaces)" >&2
     exit 2
 fi
@@ -62,6 +63,13 @@ fi
 # rendered file, plus the pair being bootstrapped now.
 pairs="$({ sed -n 's/^# COVERS: //p' "$out_dir"/project-*.yaml 2>/dev/null || true
            echo "$project $env_name"; } | sort -u)"
+# The markers come off disk and land in a sed replacement and a PromQL label
+# value. Refuse the run rather than render a rule that silently never matches;
+# the fix is to delete the edited file.
+while read -r p e; do
+    valid_pair "$p" "$e" \
+        || { echo "error: bad '# COVERS:' marker in $out_dir: '$p $e'" >&2; exit 2; }
+done <<<"$pairs"
 
 # All pairs are re-rendered, so a template fix reaches every project.
 while read -r p e; do
