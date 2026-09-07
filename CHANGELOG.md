@@ -4,6 +4,14 @@ Notable changes to this stack. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Pushing a `v*` tag now cuts the GitHub release. The workflow takes the
+  tag's section of this file as the body and refuses a tag without one, or
+  one that fails `just check`.
+
 ## [0.3.1] - 2026-09-07
 
 ### Fixed
