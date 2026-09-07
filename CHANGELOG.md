@@ -37,7 +37,9 @@ the config syntax. 1.0 waits for a second consumer to confirm the contract.
   enforce the pair, and the smoke test boots with it on.
 - **Durable export queue**: the collector's send queues live on a file-backed
   `otel_queue` volume, so telemetry buffered during an outage survives a
-  collector restart.
+  collector restart. A one-shot `otel-queue-init` service owns the volume for
+  the collector, so a plain `docker compose up` works and `down --volumes`
+  reclaims it.
 - **Self-monitoring covers every service**: Prometheus scrapes Grafana, Loki
   and Tempo too. `HostDiskFilling` (full within 3 days at the current rate)
   and `PrometheusCardinalityHigh` (over 100k active series) warn ahead of the
