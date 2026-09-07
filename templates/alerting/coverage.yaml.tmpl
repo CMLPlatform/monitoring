@@ -4,7 +4,7 @@
 # Fires on any series whose project/env pair has no rendered rule file: a project that
 # ships telemetry but was never bootstrapped has no ProjectTelemetrySilent rule.
 #
-# Covered right now: __COVERED__
+# Covered right now: __COVERED__ (plus demo/demo, exempt: see below)
 
 apiVersion: 1
 
@@ -35,7 +35,13 @@ groups:
               # counters for every sender, whatever signal it sends. A bare
               # {project!=""} would scan every project-labelled series in the TSDB on
               # each evaluation, and would still miss a logs-only or traces-only project.
-              expr: count by (project, env) ({__name__=~"telemetry_.+_total", project!="", env!=""} unless on (project, env) (__COVERED_EXPR__))
+              #
+              # demo/demo is exempt. It is this repo's own `just demo` overlay, which
+              # runs in its own throwaway stack and is torn down again; bootstrapping
+              # it would leave a ProjectTelemetrySilent rule firing forever after
+              # `just demo-down`. Exempt as a pair, so a real project named demo in a
+              # real env is still caught.
+              expr: count by (project, env) ({__name__=~"telemetry_.+_total", project!="", env!=""} unless on (project, env) ({__name__=~"telemetry_.+_total", project="demo", env="demo"} or __COVERED_EXPR__))
           - refId: FIRING
             datasourceUid: __expr__
             model:

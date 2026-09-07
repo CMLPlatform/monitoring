@@ -30,6 +30,10 @@ Notable changes to this stack. Format follows
 - `deltatocumulative` tracked an unbounded number of streams. Its counters
   carry the sender's `service.instance.id`, so a service that mints a new id
   on each restart added a stream every time. Capped at 5000.
+- `ProjectsUncovered` no longer fires for `demo/demo`, the pair `just demo`
+  sets. Bootstrapping it would leave a `ProjectTelemetrySilent` rule firing
+  forever once the demo is torn down. Exempt as a pair, so a real project
+  named `demo` in a real environment is still caught.
 
 ## [0.3.0] - 2026-09-06
 
