@@ -3,14 +3,12 @@ name: monitoring
 # Central observability stack.
 #   OTel Collector  →  ingestion gateway (OTLP gRPC 4317 / HTTP 4318)
 #   Loki            →  logs
-#   Tempo           →  traces  (OTLP-native; Grafana has first-class support)
-#   Prometheus      →  metrics (native OTLP remote-write-receiver)
+#   Tempo           →  traces
+#   Prometheus      →  metrics
 #   Grafana         →  UI
 #
-# Projects ship telemetry to this host via OTLP. Do NOT publish :4317/:4318
-# directly to the public internet — expose via Cloudflare Tunnel, Tailscale,
-# WireGuard, or similar. The port bindings below are bound to 127.0.0.1 so
-# they are only reachable from the host / tunnel sidecar.
+# Do NOT publish :4317/:4318 to the public internet. The ports below bind to
+# 127.0.0.1; expose them via Cloudflare Tunnel, Tailscale, WireGuard, or similar.
 
 x-logging: &default-logging
   driver: json-file
@@ -18,114 +16,213 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "3"
 
+# Every service drops all capabilities and carries a pids limit. Each mem_limit
+# is a ceiling sized from observed usage, so one runaway component cannot OOM a
+# host that also runs production. Services that need a tighter pids_limit
+# override it after the merge.
+x-hardened: &hardened
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 1024
+  logging: *default-logging
+
+x-healthcheck: &healthcheck
+  interval: 15s
+  timeout: 3s
+  retries: 5
+  start_period: 30s
+  # Probe often while starting so `up --wait` returns on the first pass.
+  start_interval: 2s
+
 services:
+  # A fresh named volume is root-owned and the collector image is distroless, so
+  # it cannot chown its own queue directory at startup. This one-shot service
+  # does it first. It lives here rather than in the justfile so that a plain
+  # `docker compose up` works, and so the volume stays Compose-managed: a
+  # `docker volume create` from outside leaves it unlabelled, and then
+  # `down --volumes` never removes it.
+  otel-queue-init:
+    image: alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+    command: ["chown", "10001:10001", "/q"]
+    restart: "no"
+    network_mode: none
+    volumes:
+      - otel_queue:/q
+    cap_drop: [ALL]
+    cap_add: [CHOWN]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 16
+    mem_limit: 32m
+    logging: *default-logging
+
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.156.0
+    image: otel/opentelemetry-collector-contrib:0.156.0@sha256:125bdbeb7590cc1952c5b3430ecf14063568980c2c93d5b38676cc0446ed8108
     restart: unless-stopped
-    depends_on: [ loki, tempo, prometheus ]
+    depends_on:
+      otel-queue-init:
+        condition: service_completed_successfully
+      loki:
+        condition: service_started
+      tempo:
+        condition: service_started
+      prometheus:
+        condition: service_healthy
     ports:
       - "127.0.0.1:4317:4317" # OTLP gRPC
       - "127.0.0.1:4318:4318" # OTLP HTTP
     volumes:
       - ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro
-    command: [ "--config=/etc/otelcol/config.yaml" ]
+      # File-backed exporter queue. Must be owned by uid 10001; otel-queue-init
+      # chowns it before this service starts.
+      - otel_queue:/var/lib/otelcol/queue
+    command: ["--config=/etc/otelcol/config.yaml"]
     environment:
       OTLP_AUTH_TOKEN: ${OTLP_AUTH_TOKEN:?set OTLP_AUTH_TOKEN in .env}
-    logging: *default-logging
+    # Keep in step with memory_limiter in config/otel-collector.yaml.
+    mem_limit: 512m
+    !!merge <<: *hardened
+    pids_limit: 512
+    networks: [default, backend]
 
   loki:
-    image: grafana/loki:3.7.3
+    image: grafana/loki:3.7.6@sha256:efd47c67f9bac88ca29bcf8cb997d9ab29d1848bd0aff579282295542a745952
     restart: unless-stopped
     volumes:
       - ./config/loki.yaml:/etc/loki/loki.yaml:ro
       - loki_data:/loki
-    command: [ "-config.file=/etc/loki/loki.yaml" ]
-    logging: *default-logging
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    # No healthcheck: the image is distroless, with no shell or wget to probe with.
+    mem_limit: 2g
+    !!merge <<: *hardened
+    networks: [backend]
 
   tempo:
-    image: grafana/tempo:3.0.2
+    image: grafana/tempo:3.0.3@sha256:0296560ac66f8a3600d7fb3014a52c189d4d9c3549ad6ff441bf2409855d68d5
     restart: unless-stopped
     volumes:
       - ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro
       - tempo_data:/var/tempo
-    command: [ "-config.file=/etc/tempo/tempo.yaml" ]
-    logging: *default-logging
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    # Distroless too, so no healthcheck.
+    mem_limit: 2g
+    !!merge <<: *hardened
+    networks: [backend]
 
   prometheus:
-    image: prom/prometheus:v3.13.0
+    image: prom/prometheus:v3.13.2@sha256:508729e0e2d18e11fd742a5a5ca70e557b940a93948c3c95fd0123a6fd538b69
     restart: unless-stopped
     volumes:
       - ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
-      - ./config/alerts:/etc/prometheus/alerts:ro
       - prometheus_data:/prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yaml
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=30d
-      - --web.enable-remote-write-receiver
-      # Prometheus 3.x: OTLP ingestion is its own flag, no longer a feature flag.
+      # Prometheus 3.x: OTLP ingestion is its own flag, not an --enable-feature entry.
       - --web.enable-otlp-receiver
       - --enable-feature=native-histograms,exemplar-storage
-      # Whichever hits first wins; the disk-space alert is the backstop.
+      # Whichever limit hits first wins; the disk-space alert is the backstop.
       - --storage.tsdb.retention.size=15GB
-    logging: *default-logging
-
-  alertmanager:
-    image: prom/alertmanager:v0.33.1
-    restart: unless-stopped
-    volumes:
-      - ./config/alertmanager.yaml:/etc/alertmanager/alertmanager.yaml:ro
-      - alertmanager_data:/alertmanager
-    environment:
-      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
-      HEARTBEAT_URL: ${HEARTBEAT_URL:-}
-    # Alertmanager can't expand env vars in its config; write the webhook
-    # URLs to the url_file paths the config points at, then start. tmpfs on
-    # purpose: the URLs often carry secrets and must not end up in the
-    # persistent volume (which `just backup` archives).
-    tmpfs: [ /run/am ]
-    entrypoint: [ "/bin/sh", "-c" ]
-    command:
-      - |
-        printf '%s' "$$ALERT_WEBHOOK_URL" > /run/am/webhook_url
-        printf '%s' "$$HEARTBEAT_URL" > /run/am/heartbeat_url
-        exec /bin/alertmanager --config.file=/etc/alertmanager/alertmanager.yaml --storage.path=/alertmanager
-    logging: *default-logging
+    healthcheck:
+      !!merge <<: *healthcheck
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/ready"]
+    mem_limit: 2g
+    !!merge <<: *hardened
+    networks: [backend]
 
   node-exporter:
-    image: prom/node-exporter:v1.11.1
+    image: prom/node-exporter:v1.12.1@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0
     restart: unless-stopped
-    command: [ "--path.rootfs=/host" ]
+    # Same collector allowlist as the spokes' Alloy (templates/alloy/config.alloy).
+    # The defaults add ~1000 series on this host (cpufreq, thermal, cooling,
+    # per-collector scrape stats) that no dashboard, alert or runbook reads.
+    command:
+      - --path.rootfs=/host
+      - --collector.disable-defaults
+      - --collector.cpu
+      - --collector.diskstats
+      - --collector.filesystem
+      - --collector.hwmon
+      - --collector.loadavg
+      - --collector.meminfo
+      - --collector.netdev
+      - --collector.stat
+      - --collector.uname
     pid: host
+    mem_limit: 128m
+    !!merge <<: *hardened
+    # Holds pid:host plus the whole host filesystem, hence the tightest limits.
+    read_only: true
+    pids_limit: 64
     volumes:
-      # No rslave: unsupported on Docker Desktop; only affects mounts added after start.
-      # No network_mode:host either, so node_network_* describes the container
-      # veth, not host NICs — fine while nothing alerts on network metrics.
+      # No rslave (unsupported on Docker Desktop) and no network_mode:host, so
+      # node_network_* describes the container veth, not host NICs.
       - /:/host:ro
-    logging: *default-logging
+    networks: [backend]
 
   grafana:
-    image: grafana/grafana:13.1.0
+    image: grafana/grafana:13.1.4@sha256:9be3a3ccdb06bcbb127f888b0c4c1d151837443e478887897a63a27d7b348043
     restart: unless-stopped
-    depends_on: [ loki, tempo, prometheus ]
+    depends_on:
+      loki:
+        condition: service_started
+      tempo:
+        condition: service_started
+      prometheus:
+        condition: service_healthy
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
       - ./config/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
       - ./config/grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
+      - ./config/grafana/alerting:/etc/grafana/provisioning/alerting:ro
       - ./dashboards:/var/lib/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      # Expanded by Grafana into the provisioned contact points.
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      HEARTBEAT_URL: ${HEARTBEAT_URL:-}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
-      # Land on Stack Health instead of the empty welcome page.
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/stack-health.json
-    logging: *default-logging
+      # Secure cookies break plain-http localhost logins, so opt-in. With the
+      # tunnel overlay active, `just up` refuses to start without it.
+      GF_SECURITY_COOKIE_SECURE: ${GRAFANA_COOKIE_SECURE:-false}
+      GF_SECURITY_COOKIE_SAMESITE: strict
+      # Per-user identity from Cloudflare Access. Off until GRAFANA_JWT_AUTH=true
+      # plus CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD are set (the exposure guards
+      # enforce the pair). No fallback team domain: an unset name must fail
+      # closed, not fetch signing keys from a claimable cloudflareaccess.com
+      # subdomain. The aud pin is required because the JWK set is team-wide.
+      GF_AUTH_JWT_ENABLED: ${GRAFANA_JWT_AUTH:-false}
+      GF_AUTH_JWT_HEADER_NAME: Cf-Access-Jwt-Assertion
+      GF_AUTH_JWT_JWK_SET_URL: https://${CF_ACCESS_TEAM_DOMAIN:-}.cloudflareaccess.com/cdn-cgi/access/certs
+      GF_AUTH_JWT_EXPECT_CLAIMS: '{"aud":"${CF_ACCESS_AUD:-}"}'
+      GF_AUTH_JWT_EMAIL_CLAIM: email
+      GF_AUTH_JWT_USERNAME_CLAIM: email
+      GF_AUTH_JWT_AUTO_SIGN_UP: "true"
+    healthcheck:
+      !!merge <<: *healthcheck
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+    mem_limit: 1g
+    !!merge <<: *hardened
+    networks: [default, backend]
+
+# Loki, Prometheus and Tempo have no authentication of their own, so only
+# Grafana and the collector can reach them. cloudflared stays on `default`: its
+# ingress list comes from Cloudflare at runtime, so an edited ingress cannot
+# publish a backend that skips the collector's token gate.
+networks:
+  backend:
+    internal: true
 
 volumes:
   loki_data:
   tempo_data:
   prometheus_data:
   grafana_data:
-  alertmanager_data:
+  # Not in `just backup`: seconds of in-flight telemetry, worthless by restore time.
+  otel_queue:

@@ -4,5 +4,6 @@
 backups/
 infra/.terraform/
 infra/terraform.tfstate*
+infra/imports.tf
 infra/*.tfvars
 !infra/*.tfvars.example

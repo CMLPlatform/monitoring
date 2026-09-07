@@ -1,6 +1,6 @@
-# Demo overlay: a tiny auto-instrumented FastAPI service plus a load
-# generator, so the stack has real traces, metrics, and correlated logs
-# to show. Not for production — no restart-across-reboots on purpose.
+# Demo overlay: an auto-instrumented FastAPI service plus a load generator, so
+# the stack has traces, metrics, and correlated logs to show. Does not survive a
+# reboot.
 #
 #   just demo        # core stack + this overlay
 #   just demo-down   # remove just the demo services
@@ -15,33 +15,31 @@ services:
   demo-api:
     build: ./demo
     restart: on-failure
-    depends_on: [ otel-collector ]
+    depends_on: [otel-collector]
     environment:
       OTEL_SERVICE_NAME: demo-api
-      OTEL_RESOURCE_ATTRIBUTES: env=demo
+      OTEL_RESOURCE_ATTRIBUTES: project=demo,env=demo
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
       OTEL_EXPORTER_OTLP_HEADERS: Authorization=Bearer ${OTLP_AUTH_TOKEN:?set OTLP_AUTH_TOKEN in .env}
-      # Traces/metrics/logs exporters all default to otlp via opentelemetry-distro.
       # Ship Python log records via OTLP with trace context attached.
       OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED: "true"
       OTEL_METRIC_EXPORT_INTERVAL: "10000"
-      # Emit the *stable* HTTP semconv (http.server.request.duration in seconds,
-      # http.route) rather than the legacy names. Stable metric names are frozen,
-      # so the Service Health dashboard's app-SDK panel survives library bumps.
+      # Stable HTTP semconv (http.server.request.duration, http.route), which the
+      # Service Health dashboard queries.
       OTEL_SEMCONV_STABILITY_OPT_IN: http
     logging: *demo-logging
 
   demo-load:
-    image: curlimages/curl:8.21.0
+    image: curlimages/curl:8.21.0@sha256:7c12af72ceb38b7432ab85e1a265cff6ae58e06f95539d539b654f2cfa64bb13
     restart: on-failure
-    depends_on: [ demo-api ]
+    depends_on: [demo-api]
     command:
       - sh
       - -c
       - |
         while true; do
-          curl -s -o /dev/null demo-api:8000/
+          curl -s -o /dev/null demo-api:8000/work
           curl -s -o /dev/null demo-api:8000/work
           sleep 1
         done

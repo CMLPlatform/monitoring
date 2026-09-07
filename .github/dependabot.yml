@@ -1,21 +1,50 @@
 version: 2
 updates:
+  # Hub images: patch bumps ride together; a minor or major comes on its own,
+  # so a red PR names the one image that broke.
   - package-ecosystem: "docker-compose"
     directory: "/"
     schedule:
       interval: "weekly"
     groups:
-      monitoring-stack-updates:
-        patterns:
-          - "*"
+      hub-patches:
+        update-types: ["patch"]
 
+  # The spoke images every project host runs.
+  - package-ecosystem: "docker-compose"
+    directory: "/templates"
+    schedule:
+      interval: "weekly"
+    groups:
+      spoke-patches:
+        update-types: ["patch"]
+
+  # The demo: one PR per month for all of it.
   - package-ecosystem: "docker"
     directory: "/demo"
     schedule:
       interval: "monthly"
+    groups:
+      demo:
+        patterns: ["*"]
 
   - package-ecosystem: "pip"
     directory: "/demo"
+    schedule:
+      interval: "monthly"
+    groups:
+      demo:
+        patterns: ["*"]
+      # `groups` only cover version updates; without this every advisory opens
+      # its own PR. Only pip gets Dependabot security advisories here.
+      demo-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  # Cloudflare provider for infra/. Dependabot bumps the constraint in
+  # main.tf but not the hashes in .terraform.lock.hcl; see the runbook.
+  - package-ecosystem: "terraform"
+    directory: "/infra"
     schedule:
       interval: "monthly"
 

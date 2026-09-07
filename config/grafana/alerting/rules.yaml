@@ -1,0 +1,258 @@
+# Grafana-managed alert rules (ADR 0002). Every rule has the same shape: the
+# PromQL carries its own comparison and the threshold node fires on value > 0.
+# A comparison whose matching value can be 0 or negative (up == 0, a ratio,
+# predict_linear) needs `bool`, or the rule can never fire.
+#
+# Keep the total around a dozen. The per-project rules beside this file are
+# rendered by bootstrap.sh.
+apiVersion: 1
+
+# Anchors only. Grafana reads apiVersion and groups; every rule below repeats
+# these four blocks verbatim apart from `for` and `expr`, so they live here once
+# and are merged in. Nothing here defines a rule.
+_defaults:
+  - &rule_defaults
+    condition: FIRING
+    noDataState: OK
+    execErrState: Error
+    isPaused: false
+  - &query_node
+    refId: QUERY
+    datasourceUid: prometheus
+    relativeTimeRange:
+      from: 3600
+      to: 0
+  - &query_model
+    refId: QUERY
+    instant: true
+    editorMode: code
+  - &firing
+    refId: FIRING
+    datasourceUid: __expr__
+    model:
+      refId: FIRING
+      type: threshold
+      expression: QUERY
+      conditions:
+        - evaluator:
+            type: gt
+            params: [0]
+
+groups:
+  - orgId: 1
+    name: meta
+    folder: Stack alerts
+    interval: 1m
+    rules:
+      # Always firing. execErrState is Error so a broken query stops the
+      # heartbeat and the switch alarms.
+      - uid: watchdog-heartbeat
+        title: Watchdog
+        !!merge <<: *rule_defaults
+        for: 0m
+        data:
+          - !!merge <<: *query_node
+            model:
+              !!merge <<: *query_model
+              expr: vector(1)
+          - *firing
+        labels:
+          severity: none
+        annotations:
+          summary: "Alerting-pipeline heartbeat (always firing)"
+          description: "Routed to a dead man's switch. Investigate if the pings stop."
+      # Cannot page when the webhook itself is broken; the heartbeat covers that.
+      - uid: alert-delivery-failing
+        title: AlertDeliveryFailing
+        !!merge <<: *rule_defaults
+        for: 10m
+        data:
+          - !!merge <<: *query_node
+            model:
+              !!merge <<: *query_model
+              expr: rate(grafana_alerting_notifications_failed_total[10m]) > 0
+          - *firing
+        labels:
+          severity: critical
+        annotations:
+          summary: "Grafana cannot deliver {{ $labels.integration }} notifications"
+          description: >-
+            Alerts are firing and going nowhere. Most likely an unset ALERT_WEBHOOK_URL,
+            otherwise the receiver is rejecting. Check `just logs grafana`.
+  - orgId: 1
+    name: stack-health
+    folder: Stack alerts
+    interval: 1m
+    rules:
+      - uid: target-down
+        title: TargetDown
+        !!merge <<: *rule_defaults
+        for: 2m
+        data:
+          - !!merge <<: *query_node
+            model:
+              !!merge <<: *query_model
+              expr: up == bool 0
+          - *firing
+        labels:
+          severity: critical
+        annotations:
+          summary: "Scrape target {{ $labels.job }} is down"
+          description: "Prometheus cannot scrape {{ $labels.instance }} (job {{ $labels.job }}) for 2 minutes."
+      - uid: otel-export-failures
+        title: OtelExportFailures
+        !!merge <<: *rule_defaults
+        for: 5m
+        data:
+          - !!merge <<: *query_node
+            model:
+              !!merge <<: *query_model
+              expr: >
+                sum by (exporter) (rate(otelcol_exporter_send_failed_spans[5m])) > 0
+                or sum by (exporter) (rate(otelcol_exporter_send_failed_metric_points[5m])) > 0
+                or sum by (exporter) (rate(otelcol_exporter_send_failed_log_records[5m])) > 0
+          - *firing
+        labels:
+          severity: warning
+        annotations:
+          summary: "OTel Collector failing to export via {{ $labels.exporter }}"
+          description: >-
+            The collector has been failing to deliver telemetry to a backend for
+            5 minutes. Check `just logs otel-collector`.
+  - orgId: 1
+    name: capacity
+    folder: Stack alerts
+    # Every rule here waits 15m or more before firing, and the disk fit reads 6h
+    # of samples per filesystem; evaluating that once a minute bought no warning
+    # time. 5m is 5x less work for the same alert.
+    interval: 5m
+    rules:
+      - uid: host-disk-space-low
+        title: HostDiskSpaceLow
+        !!merge <<: *rule_defaults
+        for: 15m
+        data:
+          - !!merge <<: *query_node
+            model:
+              !!merge <<: *query_model
+              expr: >
+                (node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay"}
+                / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay"}) < bool 0.2
+          - *firing
+        labels:
+          severity: warning
+        annotations:
+          # Spoke series carry host_name; the central node-exporter only instance.
+          summary: "Filesystem {{ $labels.mountpoint }} on {{ or $labels.host_name $labels.instance }} is over 80% full"
+          description: >-
+            Loki and Tempo have no total-size cap, so this alert is the storage
+            backstop. Free space or lower retention (see RUNBOOK).
+      # Linear fit over 6h, projected 3 days out. Filesystems under 10G (boot,
+      # EFI, snap) are skipped: they cross zero on noise.
+      - uid: host-disk-filling
+        title: HostDiskFilling
+        !!merge <<: *rule_defaults
+        for: 30m
+        data:
+          - !!merge <<: *query_node
+            model:
+              !!merge <<: *query_model
+              expr: >
+                predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay"}[6h], 3 * 86400) < bool 0
+                and node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay"} > 10e9
+          - *firing
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            Filesystem {{ $labels.mountpoint }} on {{ or $labels.host_name $labels.instance }}
+            fills up within 3 days at the current rate
+          description: >-
+            Extrapolated from the last 6 hours. Find what is growing (a spoke
+            shipping more than before, a log loop, a backup that stopped
+            rotating) before HostDiskSpaceLow makes it urgent.
+      # ~14x the baseline of ~7k series with one spoke (measured after the scrape
+      # trimming in config/prometheus.yaml and the agent config); raise it as spokes
+      # are onboarded.
+      - uid: prometheus-cardinality
+        title: PrometheusCardinalityHigh
+        !!merge <<: *rule_defaults
+        for: 30m
+        data:
+          - !!merge <<: *query_node
+            model:
+              !!merge <<: *query_model
+              expr: prometheus_tsdb_head_series > 100000
+          - *firing
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus holds {{ $values.QUERY }} active series, over the 100k ceiling"
+          description: >-
+            Find the label that exploded with
+            `topk(10, count by (__name__) ({__name__=~".+"}))` and
+            `topk(10, count by (job) ({__name__=~".+"}))`, then drop it at the
+            spoke's Alloy config or the collector. Retention is 15GB; at this
+            rate it fills.
+  - orgId: 1
+    name: container-lifecycle
+    folder: Stack alerts
+    interval: 1m
+    rules:
+      - uid: container-restarting
+        title: ContainerRestarting
+        !!merge <<: *rule_defaults
+        for: 10m
+        data:
+          - !!merge <<: *query_node
+            model:
+              !!merge <<: *query_model
+              expr: changes(container_start_time_seconds{name!=""}[1h]) > 3
+          - *firing
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container {{ $labels.name }} is crash-looping"
+          description: "{{ $labels.name }} on {{ $labels.host_name }} has restarted more than 3 times in the last hour."
+      - uid: container-oom-killed
+        title: ContainerOOMKilled
+        !!merge <<: *rule_defaults
+        for: 0m
+        data:
+          - !!merge <<: *query_node
+            model:
+              !!merge <<: *query_model
+              expr: increase(container_oom_events_total[5m]) > 0
+          - *firing
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container {{ $labels.name }} was OOM-killed"
+          description: "{{ $labels.name }} on {{ $labels.host_name }} hit an OOM kill in the last 5 minutes."
+  - orgId: 1
+    name: service-red
+    folder: Stack alerts
+    interval: 1m
+    rules:
+      - uid: high-error-rate
+        title: HighErrorRate
+        !!merge <<: *rule_defaults
+        for: 5m
+        data:
+          - !!merge <<: *query_node
+            model:
+              !!merge <<: *query_model
+              # Keyed on (job, project, env): on job alone, a healthy prod
+              # service dilutes a broken staging one below the threshold.
+              expr: >
+                sum by (job, project, env)
+                (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m]))
+                / sum by (job, project, env) (rate(http_server_request_duration_seconds_count[5m])) > 0.05
+          - *firing
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.project }}/{{ $labels.env }} {{ $labels.job }} error rate above 5%"
+          description: >-
+            More than 5% of requests to {{ $labels.job }}
+            ({{ $labels.project }}/{{ $labels.env }}) returned 5xx over the last 5 minutes.

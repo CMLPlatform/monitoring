@@ -1,0 +1,25 @@
+# OpenTofu validation for infra/, on its own trigger: it downloads the
+# provider every run and nothing outside infra/ can change its result.
+name: infra
+
+on:
+  pull_request:
+    paths: ["infra/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+      - run: install -m 600 .env.example .env # 600 or the exposure guards reject it
+      - run: just infra-validate

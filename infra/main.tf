@@ -1,15 +1,19 @@
-# Cloudflare edge for the monitoring stack: the tunnel, its ingress rules,
-# and DNS. This is the only part of the stack that otherwise lives as
-# click-ops in the Zero Trust dashboard.
+# Cloudflare edge for the monitoring stack: the tunnel, its ingress rules, DNS,
+# and the Access policy in front of Grafana.
 #
 # Bootstrap (owner-run, once):
 #   cp terraform.tfvars.example terraform.tfvars   # then fill it in
-#   export CLOUDFLARE_API_TOKEN=...   # needs Tunnel:Edit, DNS:Edit, Access:Edit
-#   cd infra && tofu init && tofu apply
+#   export CLOUDFLARE_API_TOKEN=...   # needs Tunnel:Edit, DNS:Edit, Access:Edit, and
+#                                     # "Access: Organizations, Identity Providers, and
+#                                     # Groups: Read" for the team-domain data source
+#   cd infra && tofu init
+#   ./generate-imports.sh > imports.tf   # the edge already exists: adopt it first
+#   tofu plan                            # expect "0 to add"; see the script's header
+#   tofu apply && rm imports.tf
 #   tofu output -raw tunnel_token     # → CLOUDFLARE_TUNNEL_TOKEN in ../.env
+#   tofu output -raw grafana_access_aud grafana_access_team_domain  # → the CF_ACCESS_* pair
 #
-# State is local (infra/terraform.tfstate, gitignored) — one host, one
-# operator; move it to R2 the day a second operator exists.
+# State is local (infra/terraform.tfstate, gitignored) and holds the tunnel secret.
 
 terraform {
   required_version = ">= 1.8"
@@ -37,7 +41,7 @@ variable "zone_id" {
 
 variable "domain" {
   type        = string
-  description = "Apex domain, e.g. example.org → grafana.example.org, otlp.example.org."
+  description = "Apex domain, e.g. example.org → grafana.example.org, otel.example.org."
 }
 
 variable "grafana_allowed_emails" {
@@ -51,7 +55,8 @@ variable "grafana_allowed_emails" {
 
 resource "cloudflare_zero_trust_tunnel_cloudflared" "monitoring" {
   account_id = var.account_id
-  name       = "monitoring"
+  # Must match the live tunnel's name; a different name here renames it on apply.
+  name       = "cml-monitoring"
   config_src = "cloudflare"
 }
 
@@ -67,7 +72,7 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "monitoring" {
       },
       {
         # OTLP HTTP ingestion; the collector enforces bearer-token auth.
-        hostname = "otlp.${var.domain}"
+        hostname = "otel.${var.domain}"
         service  = "http://otel-collector:4318"
       },
       {
@@ -87,19 +92,19 @@ resource "cloudflare_dns_record" "grafana" {
   ttl     = 1
 }
 
-resource "cloudflare_dns_record" "otlp" {
+# Renamed from `otlp` (2026-09). No `moved` block: nothing was ever in state under
+# the old name, and generate-imports.sh adopts the live record straight into this one.
+resource "cloudflare_dns_record" "otel" {
   zone_id = var.zone_id
-  name    = "otlp.${var.domain}"
+  name    = "otel.${var.domain}"
   type    = "CNAME"
   content = "${cloudflare_zero_trust_tunnel_cloudflared.monitoring.id}.cfargotunnel.com"
   proxied = true
   ttl     = 1
 }
 
-# Cloudflare Access in front of Grafana: email one-time-PIN at the edge, so
-# the public hostname never reaches Grafana's login page unauthenticated.
-# The OTLP hostname is NOT behind Access — machines authenticate with the
-# bearer token instead.
+# Email one-time PIN in front of Grafana. The ingestion hostname is not behind
+# Access; machines authenticate with the bearer token.
 resource "cloudflare_zero_trust_access_application" "grafana" {
   account_id       = var.account_id
   name             = "Grafana (monitoring)"
@@ -128,8 +133,25 @@ data "cloudflare_zero_trust_tunnel_cloudflared_token" "monitoring" {
   tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.monitoring.id
 }
 
+# The Zero Trust team name is account-wide and predates this config, so it is read,
+# not managed. Grafana builds its JWK set URL from it, and an unset name would fetch
+# signing keys from a subdomain anyone could claim, hence the exposure guards.
+data "cloudflare_zero_trust_organization" "team" {
+  account_id = var.account_id
+}
+
+output "grafana_access_team_domain" {
+  description = "Set as CF_ACCESS_TEAM_DOMAIN in ../.env. Grafana appends .cloudflareaccess.com."
+  value       = trimsuffix(data.cloudflare_zero_trust_organization.team.auth_domain, ".cloudflareaccess.com")
+}
+
+output "grafana_access_aud" {
+  description = "Set as CF_ACCESS_AUD in ../.env so Grafana rejects tokens minted for other Access apps."
+  value       = cloudflare_zero_trust_access_application.grafana.aud
+}
+
 output "tunnel_token" {
-  description = "Set as CLOUDFLARE_TUNNEL_TOKEN in ../.env for just up-tunnel."
+  description = "Set as CLOUDFLARE_TUNNEL_TOKEN in ../.env for the tunnel overlay."
   value       = data.cloudflare_zero_trust_tunnel_cloudflared_token.monitoring.token
   sensitive   = true
 }

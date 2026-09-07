@@ -1,12 +1,14 @@
-# Ingestion gateway. Receives OTLP from all projects and fans out to the
-# appropriate backend. Keep this config dumb — do shaping/enrichment at the
-# app edge (per-project collector) where it has context.
+# Ingestion gateway: receives OTLP from all projects and fans out to the
+# backends. Keep it dumb; shaping and enrichment belong at the app edge.
 
-# All senders must present "Authorization: Bearer <OTLP_AUTH_TOKEN>". The
-# OTLP hostnames are public behind the tunnel, so ingestion needs auth.
 extensions:
   bearertokenauth:
     token: ${env:OTLP_AUTH_TOKEN}
+  # Backs the exporter queues so buffered telemetry survives a collector
+  # restart. The directory must be writable by uid 10001; `just up` chowns it.
+  file_storage:
+    directory: /var/lib/otelcol/queue
+    create_directory: true
 
 receivers:
   otlp:
@@ -20,43 +22,114 @@ receivers:
         auth:
           authenticator: bearertokenauth
 
+connectors:
+  # A per-(project, env) ingest counter for every signal. The coverage and silence
+  # rules ask "is this project sending anything?" against a handful of series per
+  # project instead of scanning every project-labelled series in the TSDB, and they
+  # see a logs-only or traces-only project, which reaches no other Prometheus series.
+  # Attributes are read from the resource too, which is where project and env live.
+  #
+  # Every data type is named, including the two that carry no project: a type left
+  # undefined emits the connector's own default metric instead. The rules match
+  # telemetry_.+_total and key on the project label, so the two without it never
+  # reach them.
+  count:
+    datapoints:
+      telemetry.datapoints: &by_project
+        description: Telemetry received, by project and environment.
+        # default_value, or a sender that never set project is counted nowhere and
+        # stays invisible: no series, so nothing for the coverage rule to fire on.
+        # Counted as "unknown" it shows up as an uncovered project instead.
+        attributes:
+          - key: project
+            default_value: unknown
+          - key: env
+            default_value: unknown
+    logs:
+      telemetry.logs: *by_project
+    spans:
+      telemetry.spans: *by_project
+    # Neither of these is read by a rule. A metric stream has no attributes of its
+    # own (its datapoints carry them), and span events are only ever counted
+    # alongside their spans, so one series each is enough.
+    spanevents:
+      telemetry.spanevents:
+        description: Span events received.
+    metrics:
+      telemetry.metrics:
+        description: Metric streams received.
+
 processors:
+  # Stamped here with upsert, so a sender cannot claim another department.
+  # Literal rather than an env knob: one value has ever been correct, and a knob here
+  # is a silent-failure surface. A hub brought up with the wrong value mislabels every
+  # signal and mints a parallel set of Loki streams, with nothing to catch it. Make it
+  # a variable when a second department runs its own hub; if one ever federates into
+  # this one, the upsert itself is what has to go.
+  resource/department:
+    attributes:
+      - key: department
+        value: cml
+        action: upsert
+
+  # The count connector emits delta sums and the Prometheus OTLP receiver refuses
+  # them ("invalid temporality and type combination"). Converting here keeps the
+  # conversion state to the handful of counter streams, rather than turning on
+  # Prometheus's experimental global delta handling.
+  deltatocumulative: {}
+
+  # Sized to the container's mem_limit (512m in compose.yml); keep the two in step.
   memory_limiter:
     check_interval: 2s
-    limit_percentage: 80
-    spike_limit_percentage: 15
+    limit_mib: 400
+    spike_limit_mib: 100
   batch:
     timeout: 5s
     send_batch_size: 1024
 
+# The RUNBOOK's "buffers about five minutes" promise is max_elapsed_time below.
+# Defined once on the loki exporter and aliased onto the other two.
 exporters:
-  # Loki 3.x accepts OTLP natively — no Promtail / loki exporter needed.
   otlp_http/loki:
     endpoint: http://loki:3100/otlp
+    sending_queue: &queue
+      queue_size: 1000
+      storage: file_storage
+    retry_on_failure: &retry
+      max_elapsed_time: 300s
 
   otlp_grpc/tempo:
     endpoint: tempo:4317
     tls:
       insecure: true
+    sending_queue: *queue
+    retry_on_failure: *retry
 
-  # Prometheus native OTLP receiver (requires otlp-write-receiver feature flag).
+  # Needs --web.enable-otlp-receiver in compose.yml.
   otlp_http/prometheus:
     endpoint: http://prometheus:9090/api/v1/otlp
+    sending_queue: *queue
+    retry_on_failure: *retry
 
 service:
-  extensions: [bearertokenauth]
+  extensions: [bearertokenauth, file_storage]
   pipelines:
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [otlp_http/loki]
+      processors: [memory_limiter, resource/department, batch]
+      exporters: [otlp_http/loki, count]
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [otlp_grpc/tempo]
+      processors: [memory_limiter, resource/department, batch]
+      exporters: [otlp_grpc/tempo, count]
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, resource/department, batch]
+      exporters: [otlp_http/prometheus, count]
+    # The counters themselves. Same limiter and batcher as every other pipeline.
+    metrics/count:
+      receivers: [count]
+      processors: [memory_limiter, deltatocumulative, batch]
       exporters: [otlp_http/prometheus]
   telemetry:
     metrics:

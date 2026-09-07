@@ -1,0 +1,26 @@
+# Notification targets. Grafana expands $VAR from the environment.
+#
+# An unset variable leaves the URL empty and every notification fails silently:
+# AlertDeliveryFailing routes to this same webhook, and the heartbeat stays
+# green. The exposure guard in `just up` is the only control.
+
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: webhook
+    receivers:
+      - uid: cp-webhook-default
+        type: webhook
+        settings:
+          url: $ALERT_WEBHOOK_URL
+
+  - orgId: 1
+    name: heartbeat
+    receivers:
+      - uid: cp-heartbeat-dms
+        type: webhook
+        settings:
+          url: $HEARTBEAT_URL
+        # A resolved-notification would ping the switch and mask an outage.
+        disableResolveMessage: true

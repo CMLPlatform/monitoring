@@ -4,20 +4,33 @@
   "schemaVersion": 39,
   "version": 1,
   "refresh": "30s",
-  "time": { "from": "now-3h", "to": "now" },
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
   "graphTooltip": 1,
-  "tags": ["infra"],
+  "tags": [
+    "infra"
+  ],
   "panels": [
     {
       "type": "timeseries",
       "title": "Filesystem Used",
-      "description": "Loki and Tempo have no total-size cap — the HostDiskSpaceLow alert fires at 80%.",
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+      "description": "Loki and Tempo have no total-size cap \u2014 the HostDiskSpaceLow alert fires at 80%.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
       "id": 1,
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
-          "expr": "100 * (1 - node_filesystem_avail_bytes{fstype!~\"tmpfs|ramfs|overlay\"} / node_filesystem_size_bytes{fstype!~\"tmpfs|ramfs|overlay\"})",
+          "expr": "100 * (1 - node_filesystem_avail_bytes{job=\"node\",fstype!~\"tmpfs|ramfs|overlay\"} / node_filesystem_size_bytes{job=\"node\",fstype!~\"tmpfs|ramfs|overlay\"})",
           "legendFormat": "{{mountpoint}}",
           "refId": "A"
         }
@@ -27,8 +40,23 @@
           "unit": "percent",
           "min": 0,
           "max": 100,
-          "custom": { "lineWidth": 2, "fillOpacity": 10 },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 80 }] }
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
         },
         "overrides": []
       }
@@ -36,12 +64,20 @@
     {
       "type": "timeseries",
       "title": "Host CPU",
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 0
+      },
       "id": 2,
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
-          "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[$__rate_interval])))",
+          "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{job=\"node\",mode=\"idle\"}[$__rate_interval])))",
           "legendFormat": "used",
           "refId": "A"
         }
@@ -51,7 +87,10 @@
           "unit": "percent",
           "min": 0,
           "max": 100,
-          "custom": { "lineWidth": 2, "fillOpacity": 10 }
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
         },
         "overrides": []
       }
@@ -59,12 +98,20 @@
     {
       "type": "timeseries",
       "title": "Host Memory Used",
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 0
+      },
       "id": 3,
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
-          "expr": "100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)",
+          "expr": "100 * (1 - node_memory_MemAvailable_bytes{job=\"node\"} / node_memory_MemTotal_bytes{job=\"node\"})",
           "legendFormat": "used",
           "refId": "A"
         }
@@ -74,7 +121,10 @@
           "unit": "percent",
           "min": 0,
           "max": 100,
-          "custom": { "lineWidth": 2, "fillOpacity": 10 }
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
         },
         "overrides": []
       }
@@ -83,9 +133,17 @@
       "type": "timeseries",
       "title": "Collector Ingest Rate",
       "description": "Items accepted by the OTLP receivers, per signal.",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
       "id": 4,
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "sum(rate(otelcol_receiver_accepted_spans[$__rate_interval]))",
@@ -106,7 +164,10 @@
       "fieldConfig": {
         "defaults": {
           "unit": "ops",
-          "custom": { "lineWidth": 2, "fillOpacity": 10 }
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
         },
         "overrides": []
       }
@@ -114,10 +175,18 @@
     {
       "type": "timeseries",
       "title": "Collector Export Failures",
-      "description": "Anything above zero means a backend is rejecting or unreachable — the OtelExportFailures alert covers this.",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "description": "Anything above zero means a backend is rejecting or unreachable \u2014 the OtelExportFailures alert covers this.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
       "id": 5,
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "sum by (exporter) (rate(otelcol_exporter_send_failed_spans[$__rate_interval])) or sum by (exporter) (rate(otelcol_exporter_send_failed_metric_points[$__rate_interval])) or sum by (exporter) (rate(otelcol_exporter_send_failed_log_records[$__rate_interval]))",
@@ -129,47 +198,85 @@
         "defaults": {
           "unit": "ops",
           "min": 0,
-          "color": { "mode": "fixed", "fixedColor": "red" },
-          "custom": { "lineWidth": 2, "fillOpacity": 10 }
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
         },
         "overrides": []
       }
     },
     {
-      "type": "table",
-      "title": "Active Alerts",
-      "description": "Pending and firing alerts (Watchdog excluded — it fires by design).",
-      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 16 },
-      "id": 6,
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "type": "timeseries",
+      "title": "Ingest by Project",
+      "description": "Telemetry accepted per project and environment, from the gateway's count connector. A project missing here is sending nothing, whichever signal it uses.",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "id": 7,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
-          "expr": "ALERTS{alertname!=\"Watchdog\"}",
-          "instant": true,
-          "format": "table",
+          "expr": "sum by (project, env) (rate(telemetry_datapoints_total[$__rate_interval]))",
+          "legendFormat": "{{project}}/{{env}} metric points/s",
           "refId": "A"
-        }
-      ],
-      "transformations": [
+        },
         {
-          "id": "organize",
-          "options": {
-            "excludeByName": { "Time": true, "Value": true, "__name__": true },
-            "indexByName": { "alertname": 0, "alertstate": 1, "severity": 2 }
-          }
+          "expr": "sum by (project, env) (rate(telemetry_logs_total[$__rate_interval]))",
+          "legendFormat": "{{project}}/{{env}} log records/s",
+          "refId": "B"
+        },
+        {
+          "expr": "sum by (project, env) (rate(telemetry_spans_total[$__rate_interval]))",
+          "legendFormat": "{{project}}/{{env}} spans/s",
+          "refId": "C"
         }
       ],
       "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "alertstate" },
-            "properties": [
-              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
-              { "id": "mappings", "value": [{ "type": "value", "options": { "firing": { "color": "red" }, "pending": { "color": "orange" } } }] }
-            ]
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
           }
-        ]
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "alertlist",
+      "title": "Active Alerts",
+      "id": 6,
+      "description": "Grafana-managed alerts. The old panel queried Prometheus's ALERTS series, which only exists while Prometheus evaluates rules \u2014 it stopped existing when alerting moved to Grafana (ADR 0002).",
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "options": {
+        "viewMode": "list",
+        "groupMode": "default",
+        "maxItems": 20,
+        "sortOrder": 1,
+        "alertInstanceLabelFilter": "{alertname!=\"Watchdog\"}",
+        "stateFilter": {
+          "firing": true,
+          "pending": true,
+          "noData": false,
+          "normal": false,
+          "error": true
+        }
       }
     }
   ]

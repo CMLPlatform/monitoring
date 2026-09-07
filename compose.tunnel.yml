@@ -1,18 +1,25 @@
-# Production overlay: expose Grafana (and the OTLP endpoints) via Cloudflare
-# Tunnel. Requires CLOUDFLARE_TUNNEL_TOKEN in .env.
+# Production overlay: expose Grafana and the OTLP endpoint via Cloudflare Tunnel.
 #
-#   just up-tunnel
+#   COMPOSE_FILE=compose.yml:compose.tunnel.yml in .env, then `just up`
 #
-# The tunnel, its public hostnames, and DNS are managed as code in infra/
-# (OpenTofu); `tofu output -raw tunnel_token` yields the token for .env.
-# See infra/main.tf for the bootstrap steps.
-
+# The tunnel, its hostnames, and DNS are OpenTofu in infra/;
+# `tofu output -raw tunnel_token` yields CLOUDFLARE_TUNNEL_TOKEN for .env.
 services:
   cloudflared:
-    image: cloudflare/cloudflared:2026.7.0
+    image: cloudflare/cloudflared:2026.8.2@sha256:0aa26e284f05e6c77ae375b8c9c11d9eb6a448fb7bcd8d40f31cb6176189eb38
     restart: unless-stopped
-    depends_on: [ grafana, otel-collector ]
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in .env}
+    depends_on: [grafana, otel-collector]
+    # Token via env, not --token: argv is readable from the host and from any
+    # container with pid:host (node-exporter has it).
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in .env}
+    mem_limit: 256m
+    pids_limit: 256
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     logging:
       driver: json-file
       options:

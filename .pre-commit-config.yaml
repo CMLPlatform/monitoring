@@ -1,0 +1,38 @@
+# Installed by `just hooks` (prek).
+#   pre-commit  gitleaks on the staged diff
+#   commit-msg  Conventional Commits shape on the first line
+#   pre-push    `just check`, plus `just infra-validate` when infra/ changed
+# `prek run` runs the pre-commit stage on demand; `--hook-stage pre-push` the rest.
+repos:
+  - repo: local
+    hooks:
+      - id: gitleaks
+        name: gitleaks (staged)
+        entry: just _gitleaks-staged
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+      - id: commit-msg
+        name: conventional commit message
+        entry: >-
+          sh -c 'head -n1 "$1"
+          | grep -Eq "^((build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9._/-]+\))?!?:
+          [a-z].{0,81}|(Merge|Revert|fixup!|squash!) .*)$"
+          || { echo "commit message must be type(scope): lower-case summary, at most 82 chars" >&2; exit 1; }' --
+        language: system
+        stages: [commit-msg]
+      - id: check
+        name: just check
+        entry: just check
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+      - id: infra-validate
+        name: just infra-validate
+        entry: just infra-validate
+        language: system
+        pass_filenames: false
+        files: ^infra/
+        stages: [pre-push]

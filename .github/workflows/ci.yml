@@ -1,29 +1,51 @@
-# Thin wrapper around the `just` contract: everything CI runs, you can run
-# locally with the same command.
+# Everything CI runs, you can run locally with the same `just` command. `lint`
+# has its own job so a lint failure reports without pulling the stack images.
 name: CI
 
+# Pull requests only: main moves through PRs, so a push run would repeat the
+# check. No path filter: gitleaks must see every PR, and a skipped workflow
+# never reports the checks a PR needs. infra/ also has its own (infra.yml).
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+# A push to an open PR supersedes the run in flight.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  check:
+  lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: extractions/setup-just@v4
-      - run: cp .env.example .env
-      - run: just check
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # gitleaks scans git history; a shallow clone would pass vacuously.
+        with:
+          fetch-depth: 0
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+      # 600, or the exposure guards refuse it as world-readable.
+      - run: install -m 600 .env.example .env
+      - run: just lint
 
   smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-      - uses: extractions/setup-just@v4
-      - run: cp .env.example .env
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+      # 600, or the exposure guards refuse it as world-readable.
+      - run: install -m 600 .env.example .env
+      - run: just validate
+      # SMOKE_ALERTS adds the TargetDown round trip (about 3 minutes).
       - run: just smoke
-      - run: just down
+        env:
+          SMOKE_ALERTS: "1"
+      # The smoke failure messages point at these logs.
+      - if: failure()
+        run: just smoke-logs
+      - if: always()
+        run: just smoke-down

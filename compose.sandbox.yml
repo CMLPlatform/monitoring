@@ -1,0 +1,12 @@
+# Isolation overlay shared by `just smoke` and `just demo`.
+#
+# A separate compose project gives them their own containers and volumes, but
+# not their own host ports. This overlay drops the ingestion ports (the demo app
+# and the smoke assertions reach the collector over the project network) and
+# moves Grafana to SANDBOX_PORT, so neither can collide with a running stack.
+services:
+  otel-collector:
+    ports: !override []
+
+  grafana:
+    ports: !override ["127.0.0.1:${SANDBOX_PORT:-3001}:3000"]

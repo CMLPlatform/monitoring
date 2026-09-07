@@ -4,21 +4,74 @@
   "schemaVersion": 39,
   "version": 1,
   "refresh": "30s",
-  "time": { "from": "now-1h", "to": "now" },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
   "graphTooltip": 1,
-  "tags": ["red", "otlp"],
+  "tags": [
+    "red",
+    "otlp"
+  ],
   "templating": {
     "list": [
+      {
+        "name": "project",
+        "label": "Project",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values(http_server_request_duration_seconds_count, project)",
+        "query": {
+          "qryType": 1,
+          "query": "label_values(http_server_request_duration_seconds_count, project)",
+          "refId": "var"
+        },
+        "refresh": 1,
+        "sort": 1,
+        "current": {},
+        "options": [],
+        "hide": 0
+      },
+      {
+        "name": "env",
+        "label": "Environment",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values(http_server_request_duration_seconds_count{project=\"$project\"}, env)",
+        "query": {
+          "qryType": 1,
+          "query": "label_values(http_server_request_duration_seconds_count{project=\"$project\"}, env)",
+          "refId": "var"
+        },
+        "refresh": 1,
+        "sort": 1,
+        "current": {},
+        "options": [],
+        "hide": 0
+      },
       {
         "name": "service",
         "label": "Service",
         "type": "query",
-        "datasource": { "type": "prometheus", "uid": "prometheus" },
-        "definition": "label_values(traces_spanmetrics_calls_total, service)",
-        "query": { "qryType": 1, "query": "label_values(traces_spanmetrics_calls_total, service)", "refId": "var" },
-        "refresh": 2,
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\"}, job)",
+        "query": {
+          "qryType": 1,
+          "query": "label_values(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\"}, job)",
+          "refId": "var"
+        },
+        "refresh": 1,
         "sort": 1,
-        "current": { "text": "demo-api", "value": "demo-api" },
+        "current": {},
         "options": [],
         "hide": 0
       }
@@ -27,22 +80,33 @@
   "panels": [
     {
       "type": "timeseries",
-      "title": "Request Rate by Endpoint",
-      "description": "Server spans per second, from Tempo span metrics — works for any service that sends traces.",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "title": "Request Rate by Route",
+      "description": "Requests per second per route, from the app's own OTLP metrics.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
       "id": 1,
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
-          "expr": "sum by (span_name) (rate(traces_spanmetrics_calls_total{service=\"$service\", span_kind=\"SPAN_KIND_SERVER\"}[$__rate_interval]))",
-          "legendFormat": "{{span_name}}",
+          "expr": "sum by (http_route) (rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\"}[$__rate_interval]))",
+          "legendFormat": "{{http_route}}",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "reqps",
-          "custom": { "lineWidth": 2, "fillOpacity": 10 }
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
         },
         "overrides": []
       }
@@ -51,12 +115,20 @@
       "type": "timeseries",
       "title": "Error Rate",
       "description": "Share of server spans with STATUS_CODE_ERROR.",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
       "id": 2,
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
-          "expr": "100 * sum(rate(traces_spanmetrics_calls_total{service=\"$service\", span_kind=\"SPAN_KIND_SERVER\", status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval])) / sum(rate(traces_spanmetrics_calls_total{service=\"$service\", span_kind=\"SPAN_KIND_SERVER\"}[$__rate_interval]))",
+          "expr": "100 * sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\", http_response_status_code=~\"5..\"}[$__rate_interval])) / sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\"}[$__rate_interval]))",
           "legendFormat": "errors",
           "refId": "A"
         }
@@ -65,35 +137,57 @@
         "defaults": {
           "unit": "percent",
           "min": 0,
-          "color": { "mode": "fixed", "fixedColor": "red" },
-          "custom": { "lineWidth": 2, "fillOpacity": 10 },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }] }
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              }
+            ]
+          }
         },
         "overrides": []
       }
     },
     {
       "type": "timeseries",
-      "title": "Latency (from traces, with exemplars)",
-      "description": "Quantiles over Tempo span-metrics latency. Dots are exemplars — click one to open the exact trace in Tempo.",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "title": "Latency percentiles",
+      "description": "Quantiles over Tempo span-metrics latency. Dots are exemplars \u2014 click one to open the exact trace in Tempo.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
       "id": 3,
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(traces_spanmetrics_latency_bucket{service=\"$service\", span_kind=\"SPAN_KIND_SERVER\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(http_server_request_duration_seconds_bucket{project=\"$project\", env=\"$env\", job=\"$service\"}[$__rate_interval])))",
           "legendFormat": "p50",
           "refId": "A",
           "exemplar": true
         },
         {
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_latency_bucket{service=\"$service\", span_kind=\"SPAN_KIND_SERVER\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{project=\"$project\", env=\"$env\", job=\"$service\"}[$__rate_interval])))",
           "legendFormat": "p95",
           "refId": "B",
           "exemplar": true
         },
         {
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(traces_spanmetrics_latency_bucket{service=\"$service\", span_kind=\"SPAN_KIND_SERVER\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{project=\"$project\", env=\"$env\", job=\"$service\"}[$__rate_interval])))",
           "legendFormat": "p99",
           "refId": "C",
           "exemplar": true
@@ -102,21 +196,32 @@
       "fieldConfig": {
         "defaults": {
           "unit": "s",
-          "custom": { "lineWidth": 2, "fillOpacity": 5 }
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 5
+          }
         },
         "overrides": []
       }
     },
     {
       "type": "timeseries",
-      "title": "HTTP Server Duration p95 (app SDK metrics)",
-      "description": "From the service's own OTLP metrics (OTel SDK), i.e. the collector → Prometheus OTLP path.",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "title": "Latency p95 by route",
+      "description": "From the service's own OTLP metrics (OTel SDK), i.e. the collector \u2192 Prometheus OTLP path.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
       "id": 4,
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"$service\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{project=\"$project\", env=\"$env\", job=\"$service\"}[$__rate_interval])))",
           "legendFormat": "{{http_route}}",
           "refId": "A"
         }
@@ -124,7 +229,10 @@
       "fieldConfig": {
         "defaults": {
           "unit": "s",
-          "custom": { "lineWidth": 2, "fillOpacity": 10 }
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
         },
         "overrides": []
       }
@@ -133,12 +241,20 @@
       "type": "logs",
       "title": "Logs",
       "description": "OTLP logs for the service. Expand a line and follow trace_id to jump to the trace in Tempo.",
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 16 },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
       "id": 5,
-      "datasource": { "type": "loki", "uid": "loki" },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "targets": [
         {
-          "expr": "{service_name=\"$service\"}",
+          "expr": "{project=\"$project\", env=\"$env\", service_name=~\"$service\"}",
           "refId": "A"
         }
       ],
@@ -149,5 +265,6 @@
         "sortOrder": "Descending"
       }
     }
-  ]
+  ],
+  "description": "RED for any onboarded project, from the applications' own OTLP metrics (ADR 0002 moved this off Tempo's span-metrics generator). The project/env variables mean a new service appears here without anyone editing JSON."
 }

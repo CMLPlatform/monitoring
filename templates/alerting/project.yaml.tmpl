@@ -1,0 +1,57 @@
+# Rendered by bootstrap.sh into config/grafana/alerting/. Do not edit the rendered
+# files by hand; edit this template so every project gets the fix.
+#
+# Nothing on a project host can detect its own absence, so this rule lives here.
+#
+# bootstrap.sh reads the marker below to regenerate coverage.yaml. It carries the pair,
+# not the filename, because both halves may contain a dash.
+# COVERS: __PROJECT__ __ENV__
+
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: project-__PROJECT__-__ENV__
+    folder: Stack alerts
+    interval: 1m
+    rules:
+      # absent() yields nothing while telemetry flows, so NoData is the HEALTHY state
+      # and must map to OK.
+      - uid: proj-silent-__PROJECT__-__ENV__
+        title: ProjectTelemetrySilent
+        condition: FIRING
+        for: 15m
+        noDataState: OK
+        execErrState: Error
+        isPaused: false
+        data:
+          - refId: QUERY
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            model:
+              refId: QUERY
+              instant: true
+              editorMode: code
+              # The collector's ingest counters, as in coverage.yaml.tmpl. absent() loads
+              # every series its selector matches, once a minute per project, so it is
+              # bounded to a few per service rather than everything the project sends.
+              expr: absent({__name__=~"telemetry_.+_total", project="__PROJECT__",env="__ENV__"})
+          - refId: FIRING
+            datasourceUid: __expr__
+            model:
+              refId: FIRING
+              type: threshold
+              expression: QUERY
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+        labels:
+          severity: critical
+          project: __PROJECT__
+          env: __ENV__
+        annotations:
+          summary: "No telemetry from __PROJECT__/__ENV__ in 15m"
+          description: "Host down, Docker down, the agent down, tunnel down, token rotated wrong, or the collector is rejecting this project's data. Nothing on the __PROJECT__ side can detect this on its own. Expect this ~20m after the last sample: absent() needs the series to go stale first."

@@ -1,7 +1,6 @@
 """Minimal FastAPI service for the demo overlay.
 
-All telemetry (traces, metrics, logs with trace context) comes from OTel
-auto-instrumentation — see compose.demo.yml. No OTel code needed here.
+All telemetry comes from OTel auto-instrumentation; see compose.demo.yml.
 """
 
 import logging
@@ -10,9 +9,9 @@ import time
 
 from fastapi import FastAPI, HTTPException
 
-ERROR_RATE = 0.1  # fixed error rate, enough to light up RED panels
+ERROR_RATE = 0.1
 
-logging.basicConfig(level=logging.INFO)  # root logger defaults to WARNING; we want the INFO lines too
+logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("demo-api")
 app = FastAPI()
 
@@ -26,7 +25,7 @@ def root() -> dict[str, bool]:
 @app.get("/work")
 def work() -> dict[str, bool]:
     """Simulate variable-latency work that sometimes fails."""
-    time.sleep(random.uniform(0.02, 0.3))  # noqa: S311 — not crypto, just jitter
+    time.sleep(random.uniform(0.02, 0.3))  # noqa: S311
     if random.random() < ERROR_RATE:  # noqa: S311
         log.error("work failed: upstream flaked")
         raise HTTPException(status_code=500, detail="upstream flaked")

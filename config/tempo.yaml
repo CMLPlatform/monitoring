@@ -1,8 +1,4 @@
-# Tempo 3.x single-binary. Traces arrive only from the collector
-# (collector → tempo:4317) so external apps never talk to Tempo directly.
-# Migrated from 2.x: the ingester/compactor blocks and the local-blocks
-# processor are gone (handled internally by the live-store/backend worker);
-# block retention now lives under overrides.
+# Tempo single-binary. Traces arrive only from the collector.
 
 server:
   http_listen_port: 3200
@@ -11,7 +7,6 @@ distributor:
   receivers:
     otlp:
       protocols:
-        # gRPC only: the collector is the sole sender (otlp_grpc/tempo).
         grpc:
           endpoint: 0.0.0.0:4317
 
@@ -23,24 +18,12 @@ storage:
     local:
       path: /var/tempo/blocks
 
-# Derive RED metrics (requests/errors/duration) + a service graph from traces.
-# These land in Prometheus and power the Service Health dashboard.
-metrics_generator:
-  registry:
-    external_labels:
-      source: tempo
-  storage:
-    path: /var/tempo/generator/wal
-    remote_write:
-      - url: http://prometheus:9090/api/v1/write
-        send_exemplars: true
+# No metrics_generator: RED comes from the applications' own OTLP metrics (ADR 0002).
 
 overrides:
   defaults:
-    metrics_generator:
-      processors: [service-graphs, span-metrics]
     compaction:
-      block_retention: 168h  # 7 days — traces are bulky, tune to disk budget
+      block_retention: 168h # 7 days
 
 usage_report:
   reporting_enabled: false
