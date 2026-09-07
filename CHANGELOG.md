@@ -35,6 +35,20 @@ Notable changes to this stack. Format follows
   forever once the demo is torn down. Exempt as a pair, so a real project
   named `demo` in a real environment is still caught.
 
+### Changed
+
+- **`PrometheusCardinalityHigh` fires at 30k active series, not 100k.** At
+  ~1,400 series per spoke the old ceiling was 67 spokes away, and 100k would
+  have put Prometheus near its 2g `mem_limit` before the warning arrived. 30k
+  is ~18 spokes of room and fires at about a quarter of that limit.
+- **New `PrometheusCardinalitySpike`**, on 5,000 new series in 30 minutes. A
+  ceiling only catches slow growth and has to be raised as spokes are
+  onboarded; this catches the failure that actually hurts, a label that
+  explodes, and needs no re-tuning at any fleet size. Calibrated on the hub:
+  steady state moves under 100 series/hour and one spoke onboarding adds
+  ~1,400, so the threshold clears both by a wide margin. Head-block
+  truncations move the delta several thousand negative, never positive.
+
 ## [0.3.0] - 2026-09-06
 
 The hub runs the department's telemetry in production, with one spoke on the

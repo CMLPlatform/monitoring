@@ -171,9 +171,13 @@ groups:
             Extrapolated from the last 6 hours. Find what is growing (a spoke
             shipping more than before, a log loop, a backup that stopped
             rotating) before HostDiskSpaceLow makes it urgent.
-      # ~14x the baseline of ~7k series with one spoke (measured after the scrape
+      # ~4x the baseline of ~7k series with one spoke (measured after the scrape
       # trimming in config/prometheus.yaml and the agent config); raise it as spokes
-      # are onboarded.
+      # are onboarded. A spoke costs ~1,400 series, so this is ~18 spokes of room,
+      # and it fires while Prometheus is near a quarter of its 2g mem_limit rather
+      # than at the wall. The ceiling only ever catches slow growth; a label that
+      # explodes is caught by PrometheusCardinalitySpike below, whatever the
+      # fleet size.
       - uid: prometheus-cardinality
         title: PrometheusCardinalityHigh
         !!merge <<: *rule_defaults
@@ -182,18 +186,48 @@ groups:
           - !!merge <<: *query_node
             model:
               !!merge <<: *query_model
-              expr: prometheus_tsdb_head_series > 100000
+              expr: prometheus_tsdb_head_series > 30000
           - *firing
         labels:
           severity: warning
         annotations:
-          summary: "Prometheus holds {{ $values.QUERY }} active series, over the 100k ceiling"
+          summary: "Prometheus holds {{ $values.QUERY }} active series, over the 30k ceiling"
           description: >-
             Find the label that exploded with
             `topk(10, count by (__name__) ({__name__=~".+"}))` and
             `topk(10, count by (job) ({__name__=~".+"}))`, then drop it at the
             spoke's Alloy config or the collector. Retention is 15GB; at this
             rate it fills.
+
+      # The ceiling above only catches growth, and it has to be raised as spokes
+      # are onboarded. This one catches the failure that actually hurts, a label
+      # that explodes, and needs no re-tuning at any fleet size. Calibrated on the
+      # hub: steady state moves under 100 series/hour, one spoke onboarding adds
+      # ~1,400, so 5,000 in 30 minutes clears both by a wide margin. Measured over
+      # 30m, not an hour, so the window fits inside the shared relativeTimeRange.
+      # A head-block truncation moves this several thousand negative, never
+      # positive, so it cannot false-fire.
+      - uid: prometheus-cardinality-spike
+        title: PrometheusCardinalitySpike
+        !!merge <<: *rule_defaults
+        for: 15m
+        data:
+          - !!merge <<: *query_node
+            model:
+              !!merge <<: *query_model
+              expr: delta(prometheus_tsdb_head_series[30m]) > 5000
+          - *firing
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus gained {{ $values.QUERY }} active series in 30 minutes"
+          description: >-
+            Series are appearing far faster than onboarding a spoke would explain,
+            so a label has most likely exploded. Find it with
+            `topk(10, count by (__name__) ({__name__=~".+"}))` and
+            `topk(10, count by (job) ({__name__=~".+"}))`, then drop it at the
+            spoke's Alloy config or the collector. If a batch of spokes really was
+            onboarded at once, this is expected and clears on its own.
   - orgId: 1
     name: container-lifecycle
     folder: Stack alerts

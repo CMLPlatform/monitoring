@@ -36,8 +36,11 @@ Retention is only partially size-bounded:
 Loki and Tempo cannot cap their total size, so the disk alert at 80% is the
 backstop. Two warnings fire earlier. `HostDiskFilling` means a 6-hour linear
 fit says a filesystem is full within 3 days. `PrometheusCardinalityHigh`
-means active series passed 100k, about 14x the baseline of ~7k with one
-spoke. Series count, not time, is what grows the TSDB.
+means active series passed 30k, about 4x the baseline of ~7k with one spoke,
+which is roughly 18 spokes of room at ~1,400 series each.
+`PrometheusCardinalitySpike` means 5,000 series appeared in 30 minutes, far
+faster than onboarding explains, so a label has most likely exploded. Series
+count, not time, is what grows the TSDB.
 
 When one fires:
 
