@@ -142,8 +142,9 @@ telemetry silent per project, a project sending telemetry with no rule file,
 container crash-looping or OOM-killed, scrape target down, OTel export
 failures, alert delivery failing, error rate above 5%, disk above 80%, disk
 projected full within 3 days, Prometheus active series above 30k, and 5,000
-new series in 30 minutes. There is no Alertmanager. Grafana rules can query Loki as
-well as Prometheus, and one engine means one answer to "who gets told".
+new series in 30 minutes. There is no Alertmanager. Grafana rules can query
+Loki as well as Prometheus, and one engine means one answer to "who gets
+told".
 
 Notifications go to the webhook in `ALERT_WEBHOOK_URL` (ntfy, Slack, and so
 on). One rule, `Watchdog`, fires permanently and posts to `HEARTBEAT_URL`
