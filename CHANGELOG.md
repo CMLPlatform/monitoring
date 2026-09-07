@@ -4,6 +4,33 @@ Notable changes to this stack. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Prometheus rejected the ingest counters every few minutes**, and three
+  separate faults were behind it. `batch` sat after `deltatocumulative` and
+  handed it datapoints whose timestamps had regressed, ~1/min; removing it
+  took `delta.ErrOutOfOrder` from 55 per collector hour to none. The count
+  connector emits one `ResourceMetrics` per incoming batch and merges none of
+  them, so a spoke shipping 50 log batches at once produced 50 samples for one
+  series microseconds apart; `interval` now collapses a stream to one sample
+  per 30s scrape. And the counters inherited the source telemetry's own
+  timestamp, so a backlog of logs minted counter samples up to 11 hours old,
+  past the 30m `out_of_order_time_window`; they are now stamped when the hub
+  receives them, which is what an ingest counter means.
+
+  Five of the eight `telemetry_logs_total` senders had never appeared in
+  Prometheus at all, and the ones that did reset on their own. Both are what
+  `ProjectTelemetrySilent` and `ProjectsUncovered` read.
+- The ingest counters export through their own `otlp_http/prometheus_count`
+  exporter. Same endpoint, but `otelcol_exporter_send_failed_metric_points`
+  is now labelled by pipeline, so a rejected batch of counters and a rejected
+  batch of a spoke's application metrics are no longer one number.
+- `deltatocumulative` tracked an unbounded number of streams. Its counters
+  carry the sender's `service.instance.id`, so a service that mints a new id
+  on each restart added a stream every time. Capped at 5000.
+
 ## [0.3.0] - 2026-09-06
 
 The hub runs the department's telemetry in production, with one spoke on the

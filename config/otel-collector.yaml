@@ -74,9 +74,39 @@ processors:
 
   # The count connector emits delta sums and the Prometheus OTLP receiver refuses
   # them ("invalid temporality and type combination"). Converting here keeps the
-  # conversion state to the handful of counter streams, rather than turning on
-  # Prometheus's experimental global delta handling.
-  deltatocumulative: {}
+  # conversion state to the counter streams, rather than turning on Prometheus's
+  # experimental global delta handling.
+  #
+  # A stream is per sender resource, not per project: the counters carry the
+  # sender's service.instance.id, so one spoke already tracks ~28 and a service
+  # that mints a new instance id on each restart adds one every time. The default
+  # limit is unbounded. Cap it: at 28 streams the process sits at ~51 MiB heap
+  # against the 400 MiB limiter below, so this is a runaway guard, not a budget.
+  deltatocumulative:
+    max_streams: 5000
+
+  # The count connector emits one ResourceMetrics per incoming batch and never
+  # merges identical ones, so a spoke that ships 50 ResourceLogs at once produces
+  # 50 datapoints for one counter stream, microseconds apart. Prometheus sees
+  # duplicate samples for one series in one write and rejects the whole request
+  # with a 400. Collapsing each stream to its latest value per scrape interval is
+  # what the counter meant all along; 30s matches scrape_interval in
+  # config/prometheus.yaml.
+  interval:
+    interval: 30s
+
+  # These counters answer "what has the hub received", so they are stamped when the
+  # hub receives it. Left alone, the count connector inherits the source telemetry's
+  # own timestamp: a spoke shipping a backlog of logs mints counter samples hours
+  # old, Prometheus refuses anything past out_of_order_time_window (30m in
+  # config/prometheus.yaml) and 400s the whole write. Must run after `interval`,
+  # which collapses a stream to one datapoint first; restamping several datapoints
+  # of one stream would make them duplicate samples instead.
+  transform/count_ingest_time:
+    metric_statements:
+      - context: datapoint
+        statements:
+          - set(time, Now())
 
   # Sized to the container's mem_limit (512m in compose.yml); keep the two in step.
   memory_limiter:
@@ -111,6 +141,14 @@ exporters:
     sending_queue: *queue
     retry_on_failure: *retry
 
+  # Same endpoint, separate instance, so otelcol_exporter_send_failed_metric_points
+  # is labelled by pipeline. Shared, a rejected batch of ingest counters and a
+  # rejected batch of a spoke's application metrics are one number.
+  otlp_http/prometheus_count:
+    endpoint: http://prometheus:9090/api/v1/otlp
+    sending_queue: *queue
+    retry_on_failure: *retry
+
 service:
   extensions: [bearertokenauth, file_storage]
   pipelines:
@@ -126,11 +164,15 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, resource/department, batch]
       exporters: [otlp_http/prometheus, count]
-    # The counters themselves. Same limiter and batcher as every other pipeline.
+    # The counters themselves. No batcher, unlike every other pipeline: after
+    # deltatocumulative it handed on datapoints whose timestamps had regressed,
+    # ~1/min, which deltatocumulative then refused as out of order. Without it that
+    # stopped dead. `interval` then collapses each stream to one sample per scrape,
+    # which is what makes the export safe for Prometheus; see the processor.
     metrics/count:
       receivers: [count]
-      processors: [memory_limiter, deltatocumulative, batch]
-      exporters: [otlp_http/prometheus]
+      processors: [memory_limiter, deltatocumulative, interval, transform/count_ingest_time]
+      exporters: [otlp_http/prometheus_count]
   telemetry:
     metrics:
       level: basic
