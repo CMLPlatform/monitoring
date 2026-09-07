@@ -48,6 +48,9 @@ updates:
     directory: "/infra"
     schedule:
       interval: "monthly"
+    groups:
+      infra:
+        patterns: ["*"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -55,4 +58,8 @@ updates:
       interval: "weekly"
     groups:
       actions:
+        patterns: ["*"]
+      # As with pip above, advisories ignore the version-update group.
+      actions-security:
+        applies-to: security-updates
         patterns: ["*"]
