@@ -63,9 +63,9 @@ fi
 # rendered file, plus the pair being bootstrapped now.
 pairs="$({ sed -n 's/^# COVERS: //p' "$out_dir"/project-*.yaml 2>/dev/null || true
            echo "$project $env_name"; } | sort -u)"
-# The args were validated above, but these markers come off disk and land in a
-# sed replacement and a PromQL label value. Refuse the run rather than render a
-# rule that silently never matches; the fix is to delete the edited file.
+# The markers come off disk and land in a sed replacement and a PromQL label
+# value. Refuse the run rather than render a rule that silently never matches;
+# the fix is to delete the edited file.
 while read -r p e; do
     valid_pair "$p" "$e" \
         || { echo "error: bad '# COVERS:' marker in $out_dir: '$p $e'" >&2; exit 2; }

@@ -91,9 +91,8 @@ on the host.
   against the sender. Every project host can therefore spoof another
   project's labels.
 
-  Bearer is the only scheme the collector accepts; a second HTTP Basic
-  listener was considered and rejected. A sender that cannot set a raw
-  `Authorization` header ships through the host's Alloy agent instead.
+  Bearer is the only scheme the collector accepts. A sender that cannot set a
+  raw `Authorization` header ships through the host's Alloy agent instead.
 - **Tunnel token:** rotate the tunnel secret in Cloudflare Zero Trust, then
   run `cd infra && tofu apply` to refresh the token data source, then read
   the new value with `tofu output -raw tunnel_token`. To rotate from code

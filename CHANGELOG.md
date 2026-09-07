@@ -8,34 +8,29 @@ Notable changes to this stack. Format follows
 
 ### Fixed
 
-- **Prometheus rejected the ingest counters every few minutes.** Three faults:
-  `batch` after `deltatocumulative` reordered timestamps (~1/min); the count
-  connector emitted one sample per incoming batch, so 50 log batches became 50
-  samples of one series microseconds apart; and the counters carried the source
-  telemetry's timestamp, so a log backlog minted samples hours past the 30m
-  `out_of_order_time_window`. `batch` is gone from that pipeline, `interval`
-  collapses each stream to one sample per 30s, and samples are stamped on
-  receipt. Five of eight `telemetry_logs_total` senders had never reached
-  Prometheus; both `ProjectTelemetrySilent` and `ProjectsUncovered` read them.
-- The ingest counters export through their own `otlp_http/prometheus_count`
-  exporter, so `otelcol_exporter_send_failed_metric_points` separates them per
-  exporter from a spoke's application metrics.
-- `deltatocumulative` streams capped at 5000; a service that mints a new
+- **Prometheus rejected the ingest counters every few minutes**, so five of
+  eight `telemetry_logs_total` senders never reached it. Both coverage alerts
+  read that counter. Three faults: `batch` reordered timestamps after
+  `deltatocumulative`; the count connector emitted one sample per incoming
+  batch, which Prometheus rejects as duplicates; and the counters carried the
+  source telemetry's timestamp, so a log backlog fell outside
+  `out_of_order_time_window`. The pipeline now drops `batch`, collapses each
+  stream to one sample per 30s, and stamps samples on receipt.
+- The ingest counters get their own `otlp_http/prometheus_count` exporter, so
+  their send failures are counted apart from a spoke's application metrics.
+- `deltatocumulative` streams are capped at 5000. A service that mints a new
   `service.instance.id` per restart added one each time.
 - `ProjectsUncovered` no longer fires for `demo/demo`, the pair `just demo`
-  sets; bootstrapping it would leave `ProjectTelemetrySilent` firing forever
-  after teardown. Exempt as a pair, so a real project named `demo` is still
-  caught.
+  sets. A real project named `demo` is still caught.
 
 ### Changed
 
-- **`PrometheusCardinalityHigh` fires at 30k active series, not 100k.** At
-  ~1,400 series per spoke, 100k would have put Prometheus near its 2g
-  `mem_limit` before the warning arrived; 30k is ~18 spokes of room.
-- **New `PrometheusCardinalitySpike`**, on 5,000 new series in 30 minutes.
-  Catches a label that explodes, which a ceiling cannot, and needs no
-  re-tuning as spokes are onboarded: steady state moves under 100 series/hour
-  and one onboarding adds ~1,400.
+- **`PrometheusCardinalityHigh` fires at 30k active series, not 100k.** 100k
+  would have put Prometheus near its 2g `mem_limit` before the warning
+  arrived; 30k is ~18 spokes of room.
+- **New `PrometheusCardinalitySpike`**, on 5,000 new series in 30 minutes: a
+  label that explodes, which a ceiling cannot catch. One spoke onboarding adds
+  ~1,400.
 
 ## [0.3.0] - 2026-09-06
 

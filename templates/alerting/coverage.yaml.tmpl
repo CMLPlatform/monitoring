@@ -36,11 +36,10 @@ groups:
               # {project!=""} would scan every project-labelled series in the TSDB on
               # each evaluation, and would still miss a logs-only or traces-only project.
               #
-              # demo/demo is exempt. It is this repo's own `just demo` overlay, which
-              # runs in its own throwaway stack and is torn down again; bootstrapping
-              # it would leave a ProjectTelemetrySilent rule firing forever after
-              # `just demo-down`. Exempt as a pair, so a real project named demo in a
-              # real env is still caught.
+              # demo/demo is this repo's own `just demo` overlay. Bootstrapping it
+              # would leave ProjectTelemetrySilent firing forever after `just
+              # demo-down`, so it is exempt as a pair; a real project named demo in
+              # a real env is still caught.
               expr: count by (project, env) ({__name__=~"telemetry_.+_total", project!="", env!=""} unless on (project, env) ({__name__=~"telemetry_.+_total", project="demo", env="demo"} or __COVERED_EXPR__))
           - refId: FIRING
             datasourceUid: __expr__
