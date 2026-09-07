@@ -1,0 +1,40 @@
+# A tag is the deployable unit: bootstrap.sh pins every spoke's vendored
+# templates to the latest one. So a tag must carry release notes and pass the
+# same checks as a PR before it becomes a release.
+#
+# To release: add a `## [x.y.z] - date` section to CHANGELOG.md, merge, then
+#   git tag vx.y.z && git push origin vx.y.z
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # gitleaks scans git history; a shallow clone would pass vacuously.
+        with:
+          fetch-depth: 0
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+      # The tag's section of CHANGELOG.md is the release body. No section, no
+      # release: the tag stays, so fix the changelog on main and re-tag.
+      - name: Extract release notes
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          awk -v v="$v" '/^## \[/{p=($0 ~ "^## \\[" v "\\]")} p' CHANGELOG.md \
+            | tail -n +2 > notes.md
+          grep -q '[^[:space:]]' notes.md \
+            || { echo "error: CHANGELOG.md has no '## [$v]' section" >&2; exit 1; }
+      # 600, or the exposure guards refuse it as world-readable.
+      - run: install -m 600 .env.example .env
+      - run: just check
+      - run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md
+        env:
+          GH_TOKEN: ${{ github.token }}
