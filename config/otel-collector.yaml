@@ -80,8 +80,9 @@ processors:
   # A stream is per sender resource, not per project: the counters carry the
   # sender's service.instance.id, so one spoke already tracks ~28 and a service
   # that mints a new instance id on each restart adds one every time. The default
-  # limit is unbounded. Cap it: at 28 streams the process sits at ~51 MiB heap
-  # against the 400 MiB limiter below, so this is a runaway guard, not a budget.
+  # limit is unbounded. Cap it: at 28 streams the process sat at ~51 MiB heap
+  # (measured before `interval` below added its own per-stream state) against the
+  # 400 MiB limiter, so this is a runaway guard, not a budget.
   deltatocumulative:
     max_streams: 5000
 
@@ -143,10 +144,13 @@ exporters:
 
   # Same endpoint, separate instance, so otelcol_exporter_send_failed_metric_points
   # is labelled by pipeline. Shared, a rejected batch of ingest counters and a
-  # rejected batch of a spoke's application metrics are one number.
+  # rejected batch of a spoke's application metrics are one number. No file_storage:
+  # the counters resume counting after a restart, so in-flight samples are not
+  # worth a fourth queue on disk.
   otlp_http/prometheus_count:
     endpoint: http://prometheus:9090/api/v1/otlp
-    sending_queue: *queue
+    sending_queue:
+      queue_size: 1000
     retry_on_failure: *retry
 
 service:

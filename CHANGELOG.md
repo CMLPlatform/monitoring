@@ -4,50 +4,38 @@ Notable changes to this stack. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.3.1] - 2026-09-07
 
 ### Fixed
 
-- **Prometheus rejected the ingest counters every few minutes**, and three
-  separate faults were behind it. `batch` sat after `deltatocumulative` and
-  handed it datapoints whose timestamps had regressed, ~1/min; removing it
-  took `delta.ErrOutOfOrder` from 55 per collector hour to none. The count
-  connector emits one `ResourceMetrics` per incoming batch and merges none of
-  them, so a spoke shipping 50 log batches at once produced 50 samples for one
-  series microseconds apart; `interval` now collapses a stream to one sample
-  per 30s scrape. And the counters inherited the source telemetry's own
-  timestamp, so a backlog of logs minted counter samples up to 11 hours old,
-  past the 30m `out_of_order_time_window`; they are now stamped when the hub
-  receives them, which is what an ingest counter means.
-
-  Five of the eight `telemetry_logs_total` senders had never appeared in
-  Prometheus at all, and the ones that did reset on their own. Both are what
-  `ProjectTelemetrySilent` and `ProjectsUncovered` read.
+- **Prometheus rejected the ingest counters every few minutes.** Three faults:
+  `batch` after `deltatocumulative` reordered timestamps (~1/min); the count
+  connector emitted one sample per incoming batch, so 50 log batches became 50
+  samples of one series microseconds apart; and the counters carried the source
+  telemetry's timestamp, so a log backlog minted samples hours past the 30m
+  `out_of_order_time_window`. `batch` is gone from that pipeline, `interval`
+  collapses each stream to one sample per 30s, and samples are stamped on
+  receipt. Five of eight `telemetry_logs_total` senders had never reached
+  Prometheus; both `ProjectTelemetrySilent` and `ProjectsUncovered` read them.
 - The ingest counters export through their own `otlp_http/prometheus_count`
-  exporter. Same endpoint, but `otelcol_exporter_send_failed_metric_points`
-  is now labelled by pipeline, so a rejected batch of counters and a rejected
-  batch of a spoke's application metrics are no longer one number.
-- `deltatocumulative` tracked an unbounded number of streams. Its counters
-  carry the sender's `service.instance.id`, so a service that mints a new id
-  on each restart added a stream every time. Capped at 5000.
+  exporter, so `otelcol_exporter_send_failed_metric_points` separates them per
+  exporter from a spoke's application metrics.
+- `deltatocumulative` streams capped at 5000; a service that mints a new
+  `service.instance.id` per restart added one each time.
 - `ProjectsUncovered` no longer fires for `demo/demo`, the pair `just demo`
-  sets. Bootstrapping it would leave a `ProjectTelemetrySilent` rule firing
-  forever once the demo is torn down. Exempt as a pair, so a real project
-  named `demo` in a real environment is still caught.
+  sets; bootstrapping it would leave `ProjectTelemetrySilent` firing forever
+  after teardown. Exempt as a pair, so a real project named `demo` is still
+  caught.
 
 ### Changed
 
 - **`PrometheusCardinalityHigh` fires at 30k active series, not 100k.** At
-  ~1,400 series per spoke the old ceiling was 67 spokes away, and 100k would
-  have put Prometheus near its 2g `mem_limit` before the warning arrived. 30k
-  is ~18 spokes of room and fires at about a quarter of that limit.
-- **New `PrometheusCardinalitySpike`**, on 5,000 new series in 30 minutes. A
-  ceiling only catches slow growth and has to be raised as spokes are
-  onboarded; this catches the failure that actually hurts, a label that
-  explodes, and needs no re-tuning at any fleet size. Calibrated on the hub:
-  steady state moves under 100 series/hour and one spoke onboarding adds
-  ~1,400, so the threshold clears both by a wide margin. Head-block
-  truncations move the delta several thousand negative, never positive.
+  ~1,400 series per spoke, 100k would have put Prometheus near its 2g
+  `mem_limit` before the warning arrived; 30k is ~18 spokes of room.
+- **New `PrometheusCardinalitySpike`**, on 5,000 new series in 30 minutes.
+  Catches a label that explodes, which a ceiling cannot, and needs no
+  re-tuning as spokes are onboarded: steady state moves under 100 series/hour
+  and one onboarding adds ~1,400.
 
 ## [0.3.0] - 2026-09-06
 
