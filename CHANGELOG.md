@@ -4,15 +4,29 @@ Notable changes to this stack. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.3.1] - 2026-09-07
+
+### Upgrade
+
+- Re-vendor `compose.telemetry.yml` on each spoke at `v0.3.1` for Alloy
+  v1.19.2.
 
 ### Added
 
-- Pushing a `v*` tag now cuts the GitHub release. The workflow takes the
-  tag's section of this file as the body and refuses a tag without one, or
-  one that fails `just check`.
+- Pushing a `v*` tag cuts the GitHub release. The workflow takes the tag's
+  section of this file as the body and refuses a tag without one, or one that
+  fails `just check`.
 
-## [0.3.1] - 2026-09-07
+### Changed
+
+- **`PrometheusCardinalityHigh` fires at 30k active series, not 100k.** 100k
+  would have put Prometheus near its 2g `mem_limit` before the warning
+  arrived; 30k is ~18 spokes of room.
+- **New `PrometheusCardinalitySpike`**, on 5,000 new series in 30 minutes: a
+  label that explodes, which a ceiling cannot catch. One spoke onboarding adds
+  ~1,400.
+- Hub images: Grafana 13.2.1, Prometheus v3.14.0, otel-collector-contrib
+  0.160.0. Dependabot groups the `/infra` provider bumps and action advisories.
 
 ### Fixed
 
@@ -30,15 +44,6 @@ Notable changes to this stack. Format follows
   `service.instance.id` per restart added one each time.
 - `ProjectsUncovered` no longer fires for `demo/demo`, the pair `just demo`
   sets. A real project named `demo` is still caught.
-
-### Changed
-
-- **`PrometheusCardinalityHigh` fires at 30k active series, not 100k.** 100k
-  would have put Prometheus near its 2g `mem_limit` before the warning
-  arrived; 30k is ~18 spokes of room.
-- **New `PrometheusCardinalitySpike`**, on 5,000 new series in 30 minutes: a
-  label that explodes, which a ceiling cannot catch. One spoke onboarding adds
-  ~1,400.
 
 ## [0.3.0] - 2026-09-06
 
