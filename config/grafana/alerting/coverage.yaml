@@ -4,7 +4,7 @@
 # Fires on any series whose project/env pair has no rendered rule file: a project that
 # ships telemetry but was never bootstrapped has no ProjectTelemetrySilent rule.
 #
-# Covered right now: relab/staging (plus demo/demo, exempt: see below)
+# Covered right now: relab/prod, relab/staging (plus demo/demo, exempt: see below)
 
 apiVersion: 1
 
@@ -40,7 +40,7 @@ groups:
               # would leave ProjectTelemetrySilent firing forever after `just
               # demo-down`, so it is exempt as a pair; a real project named demo in
               # a real env is still caught.
-              expr: count by (project, env) ({__name__=~"telemetry_.+_total", project!="", env!=""} unless on (project, env) ({__name__=~"telemetry_.+_total", project="demo", env="demo"} or {__name__=~"telemetry_.+_total", project="relab",env="staging"}))
+              expr: count by (project, env) ({__name__=~"telemetry_.+_total", project!="", env!=""} unless on (project, env) ({__name__=~"telemetry_.+_total", project="demo", env="demo"} or {__name__=~"telemetry_.+_total", project="relab",env="prod"} or {__name__=~"telemetry_.+_total", project="relab",env="staging"}))
           - refId: FIRING
             datasourceUid: __expr__
             model:
