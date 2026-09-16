@@ -58,7 +58,7 @@ services:
     logging: *default-logging
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.160.0@sha256:799dc6cf12c96192af37b5bdba804da8c10b3bc563b43cb90c3f3c58d9572ad6
+    image: otel/opentelemetry-collector-contrib:0.161.0@sha256:fd328de2552466ad78385e1b1289c3f2402b1c45f265b252aab1955b42845ac1
     restart: unless-stopped
     depends_on:
       otel-queue-init:
@@ -163,7 +163,7 @@ services:
     networks: [backend]
 
   grafana:
-    image: grafana/grafana:13.2.1@sha256:f772d434e8fab0049deb2b1b30abd43342bcfca1537614aa8d36080232cf4283
+    image: grafana/grafana:13.2.2@sha256:ac461fb352abc50da10a51c7d02462e9c05488f11f53f14b3ad79a8145f638a0
     restart: unless-stopped
     depends_on:
       loki:
