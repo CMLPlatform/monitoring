@@ -171,6 +171,27 @@ groups:
             Extrapolated from the last 6 hours. Find what is growing (a spoke
             shipping more than before, a log loop, a backup that stopped
             rotating) before HostDiskSpaceLow makes it urgent.
+      # MemAvailable, not MemFree: page cache counts as free here, so this fires on
+      # real pressure, not on a warm cache. 15m rides out a build or a backup.
+      - uid: host-memory-high
+        title: HostMemoryHigh
+        !!merge <<: *rule_defaults
+        for: 15m
+        data:
+          - !!merge <<: *query_node
+            model:
+              !!merge <<: *query_model
+              expr: >
+                (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > bool 0.9
+          - *firing
+        labels:
+          severity: warning
+        annotations:
+          summary: "Memory on {{ or $labels.host_name $labels.instance }} is over 90% used"
+          description: >-
+            Sustained for 15 minutes. The OOM killer picks by RSS, so the next
+            allocation spike can take a database or the application. Find the
+            consumer on the host-containers dashboard.
       # ~4x the baseline of ~7k series with one spoke (measured after the scrape
       # trimming in config/prometheus.yaml and the agent config); raise it as spokes
       # are onboarded. A spoke costs ~1,400 series, so this is ~18 spokes of room,
@@ -284,3 +305,26 @@ groups:
           description: >-
             More than 5% of requests to {{ $labels.job }}
             ({{ $labels.project }}/{{ $labels.env }}) returned 5xx over the last 5 minutes.
+      # The traffic floor (30 requests in 5m) keeps a single slow request on a
+      # quiet service from being its own p99. Same (job, project, env) key as above.
+      - uid: high-latency-p99
+        title: HighLatencyP99
+        !!merge <<: *rule_defaults
+        for: 5m
+        data:
+          - !!merge <<: *query_node
+            model:
+              !!merge <<: *query_model
+              expr: >
+                histogram_quantile(0.99, sum by (le, job, project, env)
+                (rate(http_server_request_duration_seconds_bucket[5m]))) > 2
+                and sum by (job, project, env) (rate(http_server_request_duration_seconds_count[5m])) > 0.1
+          - *firing
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.project }}/{{ $labels.env }} {{ $labels.job }} p99 latency above 2s"
+          description: >-
+            The slowest 1% of requests to {{ $labels.job }}
+            ({{ $labels.project }}/{{ $labels.env }}) took over 2 seconds for 5 minutes.
+            The Latency p95 by route panel on Service Health shows which route.
