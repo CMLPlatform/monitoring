@@ -4,6 +4,18 @@ Notable changes to this stack. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **`HighLatencyP99`**: p99 request latency above 2s for 5 minutes, per
+  (job, project, env), once a service handles more than 30 requests in 5
+  minutes.
+- **`HostMemoryHigh`**: host memory above 90% used (by `MemAvailable`) for 15
+  minutes.
+- Service Health shows a **DB connection pool** panel (used and idle) from the
+  OpenTelemetry SQLAlchemy instrumentation.
+
 ## [0.3.1] - 2026-09-07
 
 ### Upgrade

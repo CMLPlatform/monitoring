@@ -238,6 +238,43 @@
       }
     },
     {
+      "type": "timeseries",
+      "title": "DB connection pool",
+      "description": "Client-side pool state from the OpenTelemetry SQLAlchemy instrumentation. Used near the pool size means requests queue for a connection. Empty for services that do not instrument SQLAlchemy.",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "id": 6,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (state) ({__name__=~\"db_client_connections_usage(_connections)?\", project=\"$project\", env=\"$env\", job=\"$service\"})",
+          "legendFormat": "{{state}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
       "type": "logs",
       "title": "Logs",
       "description": "OTLP logs for the service. Expand a line and follow trace_id to jump to the trace in Tempo.",
@@ -245,7 +282,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 16
+        "y": 24
       },
       "id": 5,
       "datasource": {

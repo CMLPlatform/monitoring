@@ -140,9 +140,9 @@ agent that ships container logs and host metrics.
 Grafana evaluates and delivers the rules in `config/grafana/alerting/`:
 telemetry silent per project, a project sending telemetry with no rule file,
 container crash-looping or OOM-killed, scrape target down, OTel export
-failures, alert delivery failing, error rate above 5%, disk above 80%, disk
-projected full within 3 days, Prometheus active series above 30k, and 5,000
-new series in 30 minutes. There is no Alertmanager. Grafana rules can query
+failures, alert delivery failing, error rate above 5%, p99 latency above 2s,
+host memory above 90%, disk above 80%, disk projected full within 3 days,
+Prometheus active series above 30k, and 5,000 new series in 30 minutes. There is no Alertmanager. Grafana rules can query
 Loki as well as Prometheus, and one engine means one answer to "who gets
 told".
 
