@@ -63,7 +63,9 @@ Contracts that make it scale:
   tag (three, plus one for a GPU host), add six `.env` variables, include the
   overlay, run `bootstrap.sh`. A GPU host is an ordinary host plus one opt-in
   overlay (`nvidia_gpu_exporter` scraped by Alloy, not dcgm-exporter, whose
-  profiling fields are datacentre-only) and three GPU alert rules.
+  profiling fields are datacentre-only) and the GPU dashboard. (Corrected
+  2026-10-02: this said "three GPU alert rules", which were never added. GPU
+  state is diagnosed from the dashboard; nothing pages on it.)
 
 ## Alternatives considered
 

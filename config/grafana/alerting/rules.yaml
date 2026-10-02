@@ -78,7 +78,7 @@ groups:
           summary: "Grafana cannot deliver {{ $labels.integration }} notifications"
           description: >-
             Alerts are firing and going nowhere. Most likely an unset ALERT_WEBHOOK_URL,
-            otherwise the receiver is rejecting. Check `just logs grafana`.
+            otherwise the receiver is rejecting. Check `docker compose logs grafana`.
   - orgId: 1
     name: stack-health
     folder: Stack alerts
@@ -118,7 +118,7 @@ groups:
           summary: "OTel Collector failing to export via {{ $labels.exporter }}"
           description: >-
             The collector has been failing to deliver telemetry to a backend for
-            5 minutes. Check `just logs otel-collector`.
+            5 minutes. Check `docker compose logs otel-collector`.
   - orgId: 1
     name: capacity
     folder: Stack alerts

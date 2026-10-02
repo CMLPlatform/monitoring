@@ -25,10 +25,6 @@ terraform {
   }
 }
 
-provider "cloudflare" {
-  # Auth via the CLOUDFLARE_API_TOKEN environment variable.
-}
-
 variable "account_id" {
   type        = string
   description = "Cloudflare account ID (dash.cloudflare.com → overview sidebar)."

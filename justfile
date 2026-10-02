@@ -4,7 +4,6 @@ set dotenv-load
 stateful := "grafana prometheus loki tempo"
 
 # Helper and lint images, pinned once.
-alpine := "alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b"
 jq := "ghcr.io/jqlang/jq:1.8.1@sha256:4f34c6d23f4b1372ac789752cc955dc67c2ae177eb1b5860b75cdc5091ce6f91"
 yamllint := "pipelinecomponents/yamllint:0.35.13@sha256:5ab5eb7da0ed5e606b07c1723fc8b275e925189f70ac259b26b7329cb5f8f44d"
 yamlfmt := "ghcr.io/google/yamlfmt:0.17.2@sha256:fa6874890092db69f35ece6a50e574522cae2a59b6148a1f6ac6d510e5bcf3cc"
@@ -40,9 +39,8 @@ compose_smoke := smoke_env + " docker compose -p " + smoke_project + " -f compos
 # image ref out of them needs the set.
 spoke_env := "ENVIRONMENT=dummy PROJECT=dummy COMPOSE_PROJECT_NAME=dummy OTEL_EXPORTER_OTLP_ENDPOINT=https://dummy OTLP_AUTH_TOKEN=dummy"
 
-# dashboards/*.json as mounted at /dashboards. 2>/dev/null so an empty
-# dashboards/ doesn't abort every recipe; `lint` refuses the empty list instead.
-dash_paths := `ls dashboards/*.json 2>/dev/null | sed 's|^dashboards|/dashboards|' | tr '\n' ' '`
+# dashboards/*.json as mounted at /dashboards.
+dash_paths := `ls dashboards/*.json | sed 's|^dashboards|/dashboards|' | tr '\n' ' '`
 
 # List the recipes.
 default:
@@ -70,10 +68,6 @@ _expose-guards:
     @for f in .env infra/terraform.tfvars infra/terraform.tfstate infra/terraform.tfstate.backup; do [ ! -e "$f" ] || case "$(stat -c %a "$f")" in *00) ;; *) echo "error: $f is readable by other users (mode $(stat -c %a "$f")); it holds live secrets, run: chmod 600 $f" >&2; exit 1;; esac; done
     @[ -n "${ALERT_WEBHOOK_URL:-}" ] || { echo "error: ALERT_WEBHOOK_URL is empty; every alert would fire into an empty webhook URL and be dropped. The heartbeat keeps pinging either way, so this failure looks healthy from the outside. Set it, or comment out this guard" >&2; exit 1; }
 
-# Stop the stack; volumes stay.
-down:
-    docker compose down --remove-orphans
-
 # Core stack plus a demo telemetry source, isolated from any running stack (:3002).
 demo:
     {{compose_demo}} up -d --build
@@ -86,25 +80,9 @@ demo-down:
 demo-destroy:
     {{compose_demo}} down --remove-orphans --volumes
 
-# Follow logs, optionally of one service.
-logs service="":
-    docker compose logs -f {{service}}
-
-# Container status of the stack.
-ps:
-    docker compose ps
-
 # Restart one service.
 restart service: _guard-if-exposed
     docker compose restart {{service}}
-
-# Pull the pinned images.
-pull:
-    docker compose pull
-
-# Tail a service's logs as JSON, decoded. Useful before Grafana is set up.
-tail service:
-    docker compose logs -f --no-log-prefix {{service}} | jq -R 'fromjson? // .'
 
 # Every check runs in a container: no host installs, no network.
 # Validate every config in the repo.
@@ -129,10 +107,9 @@ lint:
       for bad in OTLP_AUTH_TOKEN=local-dev-token GRAFANA_ADMIN_PASSWORD=change-me GRAFANA_ROOT_URL=http://g.example GRAFANA_COOKIE_SECURE=false CF_ACCESS_AUD= ALERT_WEBHOOK_URL=; do \
         ! env $good $bad just _expose-guards 2>/dev/null || { echo "error: exposure guards accepted $bad" >&2; exit 1; }; \
       done
-    # The rendered project-*/coverage rules are skipped (their expr lines grow
-    # with every project); their templates are checked by rendering them into
-    # a scratch dir instead.
-    docker run --rm --network none -v .:/code:ro {{yamllint}} yamllint -d '{extends: relaxed, rules: {line-length: {max: 120, allow-non-breakable-inline-mappings: true}}, ignore: [.git/, backups/, infra/.terraform/, config/grafana/alerting/project-*.yaml, config/grafana/alerting/coverage.yaml]}' .
+    # The rendered projects.yaml is skipped (its expr lines grow with every
+    # project); its template is checked by rendering it into a scratch dir instead.
+    docker run --rm --network none -v .:/code:ro {{yamllint}} yamllint -d '{extends: relaxed, rules: {line-length: {max: 120, allow-non-breakable-inline-mappings: true}}, ignore: [.git/, backups/, infra/.terraform/, config/grafana/alerting/projects.yaml]}' .
     @d=$(mktemp -d) && BOOTSTRAP_OUT_DIR="$d" ./bootstrap.sh dummy dummy >/dev/null && docker run --rm --network none -v "$d":/code:ro {{yamllint}} yamllint -d '{extends: relaxed, rules: {line-length: disable}}' .; rc=$?; rm -rf "$d"; exit $rc
     docker run --rm --network none -v .:/repo:ro -w /repo {{actionlint}} -color
     docker run --rm --network none -v .:/mnt:ro {{shellcheck}} bootstrap.sh scripts/smoke.sh templates/run_scheduled.sh infra/generate-imports.sh
@@ -143,7 +120,6 @@ lint:
     docker run --rm --network none -v ./infra:/infra:ro -w /infra {{tofu}} fmt -check
     # Dashboards: valid JSON, and every datasource uid they name is provisioned.
     # A typo provisions fine and renders empty panels.
-    @[ -n "{{dash_paths}}" ] || { echo "error: no dashboards/*.json to check" >&2; exit 1; }
     docker run --rm --network none -v ./dashboards:/dashboards:ro {{jq}} empty {{dash_paths}}
     @bad=$(docker run --rm --network none -v ./dashboards:/dashboards:ro {{jq}} -r '.. | objects | select(has("datasource")) | .datasource | (if type == "object" then .uid else . end) | strings' {{dash_paths}} | sort -u | grep -vxF "$(sed -n 's/^ *uid: *//p' config/grafana/datasources.yaml; echo grafana)"); \
       [ -z "$bad" ] || { echo "error: dashboards reference datasource uids that are not provisioned:" $bad >&2; exit 1; }
@@ -170,7 +146,7 @@ validate:
 # container, which has network access to fetch the provider.
 # Full OpenTofu validation (downloads the provider, so not part of `check`).
 infra-validate:
-    @d=$(mktemp -d) && cp infra/main.tf infra/.terraform.lock.hcl "$d"/ && docker run --rm --entrypoint sh -v "$d":/src:ro {{tofu}} -c 'mkdir /work && cp /src/main.tf /src/.terraform.lock.hcl /work && cd /work && tofu init -backend=false -input=false >/dev/null && tofu validate'; rc=$?; rm -rf "$d"; exit $rc
+    docker run --rm --entrypoint sh -v ./infra/main.tf:/src/main.tf:ro -v ./infra/.terraform.lock.hcl:/src/.terraform.lock.hcl:ro {{tofu}} -c 'cp -r /src /work && cd /work && tofu init -backend=false -input=false >/dev/null && tofu validate'
 
 # gitleaks over the staged diff (the pre-commit hook; see .pre-commit-config.yaml).
 _gitleaks-staged:
@@ -196,7 +172,7 @@ _mounts project:
 _backup project dir:
     mkdir -p {{dir}}
     @-docker compose -p {{project}} unpause {{stateful}} >/dev/null 2>&1
-    @rc=0; m=$(just _mounts {{project}}); docker compose -p {{project}} pause {{stateful}} && docker run --rm --network none $m -v {{absolute_path(dir)}}:/backups {{alpine}} sh -c 'set -o pipefail; umask 077 && tar cf - -C /data . | gzip -1 > /backups/monitoring-$(date +%Y%m%d-%H%M%S).tar.gz' || rc=$?; docker compose -p {{project}} unpause {{stateful}} || { echo "error: unpause failed; the stack is still paused" >&2; rc=1; }; exit $rc
+    @rc=0; img=$(just _image compose.yml otel-queue-init); m=$(just _mounts {{project}}); docker compose -p {{project}} pause {{stateful}} && docker run --rm --network none $m -v {{absolute_path(dir)}}:/backups "$img" sh -c 'set -o pipefail; umask 077 && tar cf - -C /data . | gzip -1 > /backups/monitoring-$(date +%Y%m%d-%H%M%S).tar.gz' || rc=$?; docker compose -p {{project}} unpause {{stateful}} || { echo "error: unpause failed; the stack is still paused" >&2; rc=1; }; exit $rc
     @ls -lh {{dir}}/ | tail -1
 
 # Restore a backup tarball into the volumes (stops the stack; wipes current state).
@@ -208,17 +184,17 @@ restore file: (_restore core_project file "backups")
 _restore project file dir:
     @[ -f "{{file}}" ] || { echo "error: {{file}} not found" >&2; exit 1; }
     @for s in {{stateful}}; do docker volume inspect {{project}}_${s}_data > /dev/null 2>&1 || { echo "error: volume {{project}}_${s}_data does not exist. 'docker run -v' would create it empty, so the pre-restore snapshot below would be a tarball of nothing. On a fresh host run 'just up' once first; otherwise check COMPOSE_PROJECT_NAME." >&2; exit 1; }; done
-    docker run --rm --network none -v {{absolute_path(file)}}:/backup.tar.gz:ro {{alpine}} tar tzf /backup.tar.gz > /dev/null
+    docker run --rm --network none -v {{absolute_path(file)}}:/backup.tar.gz:ro $(just _image compose.yml otel-queue-init) tar tzf /backup.tar.gz > /dev/null
     docker compose -p {{project}} down --remove-orphans
     mkdir -p {{dir}}
-    m=$(just _mounts {{project}}); docker run --rm --network none $m -v {{absolute_path(dir)}}:/backups {{alpine}} sh -c 'set -o pipefail; umask 077 && tar cf - -C /data . | gzip -1 > /backups/pre-restore-$(date +%Y%m%d-%H%M%S).tar.gz'
-    m=$(just _mounts {{project}}); docker run --rm --network none $m -v {{absolute_path(file)}}:/backup.tar.gz:ro {{alpine}} sh -c 'for d in /data/*; do find "$d" -mindepth 1 -delete; done && tar xzf /backup.tar.gz -C /data'
+    m=$(just _mounts {{project}}); docker run --rm --network none $m -v {{absolute_path(dir)}}:/backups $(just _image compose.yml otel-queue-init) sh -c 'set -o pipefail; umask 077 && tar cf - -C /data . | gzip -1 > /backups/pre-restore-$(date +%Y%m%d-%H%M%S).tar.gz'
+    m=$(just _mounts {{project}}); docker run --rm --network none $m -v {{absolute_path(file)}}:/backup.tar.gz:ro $(just _image compose.yml otel-queue-init) sh -c 'for d in /data/*; do find "$d" -mindepth 1 -delete; done && tar xzf /backup.tar.gz -C /data'
 
 # Needs a booted smoke stack (`just smoke`). Run it after touching _backup/_restore.
 # COMPOSE_FILE is pinned so the host's overlay list stays out, as for `smoke`.
 # Round-trip backup and restore on the smoke stack.
 restore-check:
-    @export COMPOSE_FILE=compose.yml:compose.sandbox.yml; d=$(mktemp -d) && just _backup {{smoke_project}} "$d" && f=$(ls "$d"/monitoring-*.tar.gz) && just _restore {{smoke_project}} "$f" "$d" && docker run --rm --network none -v {{smoke_project}}_grafana_data:/g:ro {{alpine}} test -s /g/grafana.db && echo "Backup round-trip ok"; rc=$?; rm -rf "$d"; exit $rc
+    @export COMPOSE_FILE=compose.yml:compose.sandbox.yml; d=$(mktemp -d) && just _backup {{smoke_project}} "$d" && f=$(ls "$d"/monitoring-*.tar.gz) && just _restore {{smoke_project}} "$f" "$d" && docker run --rm --network none -v {{smoke_project}}_grafana_data:/g:ro $(just _image compose.yml otel-queue-init) test -s /g/grafana.db && echo "Backup round-trip ok"; rc=$?; rm -rf "$d"; exit $rc
 
 # `--wait` blocks on the healthchecks and fails if any container exits, so a
 # crash-looping service is caught (after the full timeout). scripts/smoke.sh
@@ -228,7 +204,7 @@ smoke:
     {{compose_smoke}} up -d --wait --wait-timeout 120
     {{smoke_env}} SMOKE_URL=http://localhost:{{smoke_port}} SMOKE_PROJECT={{smoke_project}} scripts/smoke.sh
 
-# Logs from the smoke stack (its own project, so `just logs` will not show it).
+# Logs from the smoke stack (its own project, so `docker compose logs` will not show it).
 smoke-logs:
     {{compose_smoke}} logs --no-color --tail=200
 

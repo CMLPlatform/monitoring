@@ -16,12 +16,6 @@ log = logging.getLogger("demo-api")
 app = FastAPI()
 
 
-@app.get("/")
-def root() -> dict[str, bool]:
-    """Fast, always-successful endpoint."""
-    return {"ok": True}
-
-
 @app.get("/work")
 def work() -> dict[str, bool]:
     """Simulate variable-latency work that sometimes fails."""

@@ -161,7 +161,7 @@
     {
       "type": "timeseries",
       "title": "Latency percentiles",
-      "description": "Quantiles over Tempo span-metrics latency. Dots are exemplars \u2014 click one to open the exact trace in Tempo.",
+      "description": "Quantiles over the applications' own request-duration histograms. Dots are exemplars \u2014 click one to open the exact trace in Tempo.",
       "gridPos": {
         "h": 8,
         "w": 12,

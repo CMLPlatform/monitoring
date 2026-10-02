@@ -4,7 +4,6 @@ datasources:
   - name: Prometheus
     type: prometheus
     uid: prometheus
-    access: proxy
     url: http://prometheus:9090
     isDefault: true
     jsonData:
@@ -16,7 +15,6 @@ datasources:
   - name: Loki
     type: loki
     uid: loki
-    access: proxy
     url: http://loki:3100
     jsonData:
       # trace_id in a log line links to the trace in Tempo.
@@ -35,7 +33,6 @@ datasources:
   - name: Tempo
     type: tempo
     uid: tempo
-    access: proxy
     url: http://tempo:3200
     jsonData:
       # No tracesToMetrics/serviceMap/nodeGraph: they need span-metrics this

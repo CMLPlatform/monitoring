@@ -1,8 +1,5 @@
 global:
   scrape_interval: 30s
-  evaluation_interval: 30s
-  external_labels:
-    origin: monitoring-host
 
 storage:
   tsdb:
@@ -18,9 +15,16 @@ otlp:
 
 # Apps push metrics via OTLP. Scrape only what this stack hosts.
 scrape_configs:
+  # Only `up`, prometheus_tsdb_head_series and grafana_alerting_notifications_failed_total
+  # are read from the stack's own jobs; their histogram buckets were 5.2k of 14.1k head
+  # series. The _sum and _count series stay, so latency is still visible in Explore.
   - job_name: prometheus
     static_configs:
       - targets: ["localhost:9090"]
+    metric_relabel_configs: &drop_buckets
+      - source_labels: [__name__]
+        regex: .*_bucket
+        action: drop
 
   - job_name: otel-collector
     static_configs:
@@ -30,16 +34,10 @@ scrape_configs:
     static_configs:
       - targets: ["node-exporter:9100"]
 
-  # Only `up` and grafana_alerting_notifications_failed_total are read from these
-  # three; their histogram buckets were 5.2k of 14.1k head series. The _sum and
-  # _count series stay, so latency is still visible in Explore.
   - job_name: grafana
     static_configs:
       - targets: ["grafana:3000"]
-    metric_relabel_configs: &drop_buckets
-      - source_labels: [__name__]
-        regex: .*_bucket
-        action: drop
+    metric_relabel_configs: *drop_buckets
 
   - job_name: loki
     static_configs:

@@ -80,24 +80,36 @@
   },
   "panels": [
     {
+      "type": "row",
+      "title": "Host",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": [],
+      "id": 1
+    },
+    {
       "type": "timeseries",
       "title": "Host CPU",
-      "description": "All cores, aggregated.",
+      "description": "Busy time by mode across all cores. Sustained iowait means disk-bound; steal means a noisy hypervisor neighbour.",
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 0
+        "y": 1
       },
-      "id": 1,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "targets": [
         {
-          "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{project=\"$project\", env=\"$env\", host_name=\"$host\", mode=\"idle\"}[$__rate_interval])))",
-          "legendFormat": "cpu",
+          "expr": "100 * avg by (mode) (rate(node_cpu_seconds_total{project=\"$project\", env=\"$env\", host_name=\"$host\", mode!=\"idle\"}[$__rate_interval]))",
+          "legendFormat": "{{mode}}",
           "refId": "A"
         }
       ],
@@ -106,11 +118,17 @@
           "unit": "percent",
           "custom": {
             "lineWidth": 2,
-            "fillOpacity": 10
-          }
+            "fillOpacity": 30,
+            "stacking": {
+              "mode": "normal"
+            }
+          },
+          "max": 100,
+          "min": 0
         },
         "overrides": []
-      }
+      },
+      "id": 2
     },
     {
       "type": "timeseries",
@@ -120,9 +138,9 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 0
+        "y": 1
       },
-      "id": 2,
+      "id": 3,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -153,9 +171,9 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 0
+        "y": 1
       },
-      "id": 3,
+      "id": 4,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -180,15 +198,263 @@
     },
     {
       "type": "timeseries",
+      "title": "Load per Core",
+      "description": "Run-queue length divided by core count. Above 1 means work waits for a CPU.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 9
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "node_load1{project=\"$project\", env=\"$env\", host_name=\"$host\"} / scalar(count(node_cpu_seconds_total{project=\"$project\", env=\"$env\", host_name=\"$host\", mode=\"idle\"}))",
+          "legendFormat": "1m",
+          "refId": "A"
+        },
+        {
+          "expr": "node_load5{project=\"$project\", env=\"$env\", host_name=\"$host\"} / scalar(count(node_cpu_seconds_total{project=\"$project\", env=\"$env\", host_name=\"$host\", mode=\"idle\"}))",
+          "legendFormat": "5m",
+          "refId": "B"
+        },
+        {
+          "expr": "node_load15{project=\"$project\", env=\"$env\", host_name=\"$host\"} / scalar(count(node_cpu_seconds_total{project=\"$project\", env=\"$env\", host_name=\"$host\", mode=\"idle\"}))",
+          "legendFormat": "15m",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "id": 5
+    },
+    {
+      "type": "timeseries",
+      "title": "Disk Utilisation",
+      "description": "Share of time each disk had I/O in flight. Near 100% the disk is saturated.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 9
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "100 * rate(node_disk_io_time_seconds_total{project=\"$project\", env=\"$env\", host_name=\"$host\"}[$__rate_interval])",
+          "legendFormat": "{{device}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "max": 100,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "id": 6
+    },
+    {
+      "type": "timeseries",
+      "title": "Disk Throughput",
+      "description": "Bytes read (up) and written (down) per disk.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 9
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "rate(node_disk_read_bytes_total{project=\"$project\", env=\"$env\", host_name=\"$host\"}[$__rate_interval])",
+          "legendFormat": "read {{device}}",
+          "refId": "A"
+        },
+        {
+          "expr": "-rate(node_disk_written_bytes_total{project=\"$project\", env=\"$env\", host_name=\"$host\"}[$__rate_interval])",
+          "legendFormat": "write {{device}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "id": 7
+    },
+    {
+      "type": "timeseries",
+      "title": "Host Network",
+      "description": "Received (up) and transmitted (down) per host interface; container bridges and veths are excluded at the agent.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 17
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "rate(node_network_receive_bytes_total{project=\"$project\", env=\"$env\", host_name=\"$host\"}[$__rate_interval])",
+          "legendFormat": "rx {{device}}",
+          "refId": "A"
+        },
+        {
+          "expr": "-rate(node_network_transmit_bytes_total{project=\"$project\", env=\"$env\", host_name=\"$host\"}[$__rate_interval])",
+          "legendFormat": "tx {{device}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "id": 8
+    },
+    {
+      "type": "timeseries",
+      "title": "Temperature",
+      "description": "Hardware sensors by chip. Nothing alerts on this.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 17
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "node_hwmon_temp_celsius{project=\"$project\", env=\"$env\", host_name=\"$host\"}",
+          "legendFormat": "{{chip}} {{sensor}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "id": 9
+    },
+    {
+      "type": "timeseries",
+      "title": "Scheduler",
+      "description": "Context switches and interrupts per second, plus runnable and I/O-blocked processes.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 17
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "rate(node_context_switches_total{project=\"$project\", env=\"$env\", host_name=\"$host\"}[$__rate_interval])",
+          "legendFormat": "context switches/s",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(node_intr_total{project=\"$project\", env=\"$env\", host_name=\"$host\"}[$__rate_interval])",
+          "legendFormat": "interrupts/s",
+          "refId": "B"
+        },
+        {
+          "expr": "node_procs_running{project=\"$project\", env=\"$env\", host_name=\"$host\"}",
+          "legendFormat": "running",
+          "refId": "C"
+        },
+        {
+          "expr": "node_procs_blocked{project=\"$project\", env=\"$env\", host_name=\"$host\"}",
+          "legendFormat": "blocked",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "id": 10
+    },
+    {
+      "type": "row",
+      "title": "Containers",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 25
+      },
+      "panels": [],
+      "id": 11
+    },
+    {
+      "type": "timeseries",
       "title": "Container CPU",
       "description": "Per container, by name.",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 8
+        "y": 26
       },
-      "id": 4,
+      "id": 12,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -219,9 +485,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 8
+        "y": 26
       },
-      "id": 5,
+      "id": 13,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -246,15 +512,227 @@
     },
     {
       "type": "timeseries",
+      "title": "Container CPU Pressure",
+      "description": "Share of time tasks in the container waited on cpu (Linux PSI, `some`). Sustained above a few percent means the container is starved, limit or not.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 34
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "100 * sum by (name) (rate(container_pressure_cpu_waiting_seconds_total{project=\"$project\", env=\"$env\", host_name=\"$host\", name!=\"\"}[$__rate_interval]))",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "id": 14
+    },
+    {
+      "type": "timeseries",
+      "title": "Container Memory Pressure",
+      "description": "Share of time tasks in the container waited on memory (Linux PSI, `some`). Sustained above a few percent means the container is starved, limit or not.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 34
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "100 * sum by (name) (rate(container_pressure_memory_waiting_seconds_total{project=\"$project\", env=\"$env\", host_name=\"$host\", name!=\"\"}[$__rate_interval]))",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "id": 15
+    },
+    {
+      "type": "timeseries",
+      "title": "Container IO Pressure",
+      "description": "Share of time tasks in the container waited on io (Linux PSI, `some`). Sustained above a few percent means the container is starved, limit or not.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 34
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "100 * sum by (name) (rate(container_pressure_io_waiting_seconds_total{project=\"$project\", env=\"$env\", host_name=\"$host\", name!=\"\"}[$__rate_interval]))",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "id": 16
+    },
+    {
+      "type": "timeseries",
+      "title": "Container Memory vs Limit",
+      "description": "Working set as a share of the memory limit. At 100% the kernel OOM-kills. Only containers with a limit appear.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 42
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "100 * sum by (name) (container_memory_working_set_bytes{project=\"$project\", env=\"$env\", host_name=\"$host\", name!=\"\"}) / sum by (name) (container_spec_memory_limit_bytes{project=\"$project\", env=\"$env\", host_name=\"$host\", name!=\"\"} > 0)",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "id": 17
+    },
+    {
+      "type": "timeseries",
+      "title": "Container Network",
+      "description": "Received (up) and transmitted (down) per container.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 42
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (name) (rate(container_network_receive_bytes_total{project=\"$project\", env=\"$env\", host_name=\"$host\", name!=\"\"}[$__rate_interval]))",
+          "legendFormat": "rx {{name}}",
+          "refId": "A"
+        },
+        {
+          "expr": "-sum by (name) (rate(container_network_transmit_bytes_total{project=\"$project\", env=\"$env\", host_name=\"$host\", name!=\"\"}[$__rate_interval]))",
+          "legendFormat": "tx {{name}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "id": 18
+    },
+    {
+      "type": "timeseries",
+      "title": "Container Disk I/O",
+      "description": "Bytes read (up) and written (down) per container, all devices.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 42
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (name) (rate(container_fs_reads_bytes_total{project=\"$project\", env=\"$env\", host_name=\"$host\", name!=\"\"}[$__rate_interval]))",
+          "legendFormat": "read {{name}}",
+          "refId": "A"
+        },
+        {
+          "expr": "-sum by (name) (rate(container_fs_writes_bytes_total{project=\"$project\", env=\"$env\", host_name=\"$host\", name!=\"\"}[$__rate_interval]))",
+          "legendFormat": "write {{name}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "id": 19
+    },
+    {
+      "type": "timeseries",
       "title": "Container Restarts (1h)",
       "description": "ContainerRestarting fires above 3.",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 16
+        "y": 50
       },
-      "id": 6,
+      "id": 20,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -269,39 +747,6 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 10
-          }
-        },
-        "overrides": []
-      }
-    },
-    {
-      "type": "timeseries",
-      "title": "Host Network",
-      "description": "Receive and transmit, all non-loopback interfaces.",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 16
-      },
-      "id": 7,
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "targets": [
-        {
-          "expr": "sum by (device) (rate(node_network_receive_bytes_total{project=\"$project\", env=\"$env\", host_name=\"$host\", device!=\"lo\"}[$__rate_interval]))",
-          "legendFormat": "rx {{device}}",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "Bps",
           "custom": {
             "lineWidth": 2,
             "fillOpacity": 10

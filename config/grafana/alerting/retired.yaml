@@ -1,0 +1,11 @@
+# The per-project ProjectTelemetrySilent rules that projects.yaml replaced. Grafana
+# keeps a provisioned rule after its file is gone and only drops it on a deleteRules
+# entry. Delete this file once the hub has restarted Grafana on this release.
+
+apiVersion: 1
+
+deleteRules:
+  - orgId: 1
+    uid: proj-silent-relab-prod
+  - orgId: 1
+    uid: proj-silent-relab-staging

@@ -5,7 +5,8 @@ extensions:
   bearertokenauth:
     token: ${env:OTLP_AUTH_TOKEN}
   # Backs the exporter queues so buffered telemetry survives a collector
-  # restart. The directory must be writable by uid 10001; `just up` chowns it.
+  # restart. otel-queue-init (compose.yml) chowns the volume to uid 10001.
+  # create_directory only matters to `just validate`, which has no volume.
   file_storage:
     directory: /var/lib/otelcol/queue
     create_directory: true

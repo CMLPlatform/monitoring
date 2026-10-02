@@ -3,8 +3,9 @@
 #
 #   ./bootstrap.sh <project> <env>
 #
-#   1. renders the ProjectTelemetrySilent rule and reloads Grafana;
-#   2. regenerates the coverage rule that catches projects never bootstrapped;
+#   1. renders the ProjectTelemetrySilent rule for every covered project/env;
+#   2. renders the coverage rule that catches projects never bootstrapped, and
+#      reloads Grafana;
 #   3. creates the project's healthchecks.io checks (if an API key is present);
 #   4. prints the `.env` block for the project host and the curls that vendor the
 #      templates at a pinned tag.
@@ -31,7 +32,7 @@ cd "$root"
 
 # A bare ./bootstrap.sh does not load .env, so read single keys out of it.
 # Sourcing the whole file would drag the stack's secrets into scope.
-env_get() { [[ -f .env ]] && sed -n "s/^$1=//p" .env | tail -1; }
+env_get() { [[ ! -f .env ]] || sed -n "s/^$1=//p" .env | tail -1; }
 
 if [[ -z "${HEALTHCHECKS_API_KEY:-}" ]]; then
     HEALTHCHECKS_API_KEY="$(env_get HEALTHCHECKS_API_KEY)"
@@ -58,37 +59,28 @@ if [[ -z "${BOOTSTRAP_OUT_DIR:-}" ]]; then
     repo_raw="https://raw.githubusercontent.com/CMLPlatform/monitoring/${tag}/templates"
 fi
 
-# --------------------------------------------------------------- 1. the keystone rules
-# Every covered project/env pair, read back from the COVERS marker in each
-# rendered file, plus the pair being bootstrapped now.
-pairs="$({ sed -n 's/^# COVERS: //p' "$out_dir"/project-*.yaml 2>/dev/null || true
-           echo "$project $env_name"; } | sort -u)"
-# The markers come off disk and land in a sed replacement and a PromQL label
-# value. Refuse the run rather than render a rule that silently never matches;
-# the fix is to delete the edited file.
+# ------------------------------------------------------- 1-2. keystone rule and backstop
+# Every covered project/env pair, read back from the COVERS marker in the rendered
+# file, plus the pair being bootstrapped now.
+rendered="${out_dir}/projects.yaml"
+pairs="$({ sed -n 's/^# COVERS: //p' "$rendered" 2>/dev/null | tr ' /' '\n ' || true
+           echo "$project $env_name"; } | sed '/^$/d' | sort -u)"
+# The marker comes off disk and lands in a sed replacement and a PromQL label
+# value. Refuse the run rather than render a rule that silently never matches.
 while read -r p e; do
     valid_pair "$p" "$e" \
-        || { echo "error: bad '# COVERS:' marker in $out_dir: '$p $e'" >&2; exit 2; }
+        || { echo "error: bad '# COVERS:' marker in $rendered: '$p $e'" >&2; exit 2; }
 done <<<"$pairs"
 
-# All pairs are re-rendered, so a template fix reaches every project.
-while read -r p e; do
-    rendered="${out_dir}/project-${p}-${e}.yaml"
-    sed -e "s/__PROJECT__/${p}/g" \
-        -e "s/__ENV__/${e}/g" \
-        templates/alerting/project.yaml.tmpl > "$rendered"
-    echo "rendered  $rendered"
-done <<<"$pairs"
-
-# ------------------------------------------------------------ 2. the coverage backstop
-covered="$(echo "$pairs" | sed 's| |/|' | paste -sd',' - | sed 's/,/, /g')"
-covered_expr="$(echo "$pairs" \
-    | sed 's@^\([^ ]*\) \([^ ]*\)$@{__name__=~"telemetry_.+_total", project="\1",env="\2"}@' \
-    | paste -sd'@' - | sed 's/@/ or /g')"
-sed -e "s@__COVERED__@${covered}@" \
+covers="$(echo "$pairs" | sed 's| |/|' | paste -sd' ' -)"
+selector='s@^\([^ ]*\) \([^ ]*\)$@{__name__=~"telemetry_.+_total", project="\1",env="\2"}@'
+silent_expr="$(echo "$pairs" | sed -e "$selector" -e 's/.*/absent(&)/' | paste -sd'@' - | sed 's/@/ or /g')"
+covered_expr="$(echo "$pairs" | sed "$selector" | paste -sd'@' - | sed 's/@/ or /g')"
+sed -e "s@__COVERS__@${covers}@" \
+    -e "s@__SILENT_EXPR__@${silent_expr}@" \
     -e "s@__COVERED_EXPR__@${covered_expr}@" \
-    templates/alerting/coverage.yaml.tmpl > "${out_dir}/coverage.yaml"
-echo "rendered  ${out_dir}/coverage.yaml  (covering: ${covered})"
+    templates/alerting/projects.yaml.tmpl > "$rendered"
+echo "rendered  $rendered  (covering: ${covers})"
 [[ -z "${BOOTSTRAP_OUT_DIR:-}" ]] || exit 0
 
 # ------------------------------------------------------------------ 3. reload Grafana
@@ -109,26 +101,30 @@ if docker compose ps --status running --services 2>/dev/null | grep -qx grafana;
     # curl's config parser unescapes \ and " inside a quoted value, so escape both.
     gpw="${GRAFANA_ADMIN_PASSWORD//\\/\\\\}"
     gpw="${gpw//\"/\\\"}"
-    uid="proj-silent-${project}-${env_name}"
+    # One rule covers every pair, so read it back and look for this pair's selector.
+    want="project=\\\"${project}\\\",env=\\\"${env_name}\\\""
+    verified=""
     for _ in $(seq 30); do
         sleep 2
         # Password on stdin, never argv. A wrong password would otherwise poll
         # for a minute and then report the rule as missing.
-        code="$(printf 'user = "admin:%s"\n' "$gpw" \
-            | curl -s -o /dev/null -w '%{http_code}' -K - "http://localhost:3000/api/v1/provisioning/alert-rules/${uid}")" || continue
-        case "$code" in
+        resp="$(printf 'user = "admin:%s"\n' "$gpw" \
+            | curl -s -w '\n%{http_code}' -K - "http://localhost:3000/api/v1/provisioning/alert-rules/projects-silent")" || continue
+        case "${resp##*$'\n'}" in
             200)
-                echo "verified  rule ${uid} is provisioned"
-                uid=""
-                break
+                if grep -qF "$want" <<<"$resp"; then
+                    echo "verified  rule projects-silent covers ${project}/${env_name}"
+                    verified=1
+                    break
+                fi
                 ;;
             401 | 403)
-                echo "error: grafana rejected the admin credentials (HTTP ${code}); check GRAFANA_ADMIN_PASSWORD" >&2
+                echo "error: grafana rejected the admin credentials (HTTP ${resp##*$'\n'}); check GRAFANA_ADMIN_PASSWORD" >&2
                 exit 1
                 ;;
         esac
     done
-    [[ -z "$uid" ]] || { echo "error: grafana restarted but rule ${uid} is not provisioned; check 'just logs grafana' for the rejected file" >&2; exit 1; }
+    [[ -n "$verified" ]] || { echo "error: grafana restarted but rule projects-silent does not cover ${project}/${env_name}; check 'docker compose logs grafana' for the rejected file" >&2; exit 1; }
 else
     echo "note      grafana is not running; the rules apply next time it starts"
 fi

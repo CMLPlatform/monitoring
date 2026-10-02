@@ -1,0 +1,98 @@
+# Rendered by bootstrap.sh into config/grafana/alerting/projects.yaml. Do not edit
+# the rendered file except for the COVERS marker; edit this template instead.
+#
+# bootstrap.sh reads the covered project/env pairs back from this marker and adds the
+# one it is run for. To remove a project, delete its pair here and re-run bootstrap.sh
+# for any project that remains.
+# COVERS: relab/prod relab/staging
+
+apiVersion: 1
+
+groups:
+  # Nothing on a project host can detect its own absence, so this rule lives here.
+  - orgId: 1
+    name: projects
+    folder: Stack alerts
+    interval: 1m
+    rules:
+      # absent() yields nothing while telemetry flows, so NoData is the HEALTHY state
+      # and must map to OK. Each absent() keeps its project/env equality matchers as
+      # labels, so every silent pair is its own alert instance.
+      - uid: projects-silent
+        title: ProjectTelemetrySilent
+        condition: FIRING
+        for: 15m
+        noDataState: OK
+        execErrState: Error
+        isPaused: false
+        data:
+          - refId: QUERY
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            model:
+              refId: QUERY
+              instant: true
+              editorMode: code
+              # The collector's count connector (config/otel-collector.yaml) mints these
+              # ingest counters for every sender, whatever signal it sends. absent()
+              # loads every series its selector matches, so this is bounded to a few
+              # per service rather than everything a project sends.
+              expr: absent({__name__=~"telemetry_.+_total", project="relab",env="prod"}) or absent({__name__=~"telemetry_.+_total", project="relab",env="staging"})
+          - &firing
+            refId: FIRING
+            datasourceUid: __expr__
+            model:
+              refId: FIRING
+              type: threshold
+              expression: QUERY
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+        labels:
+          severity: critical
+        annotations:
+          summary: "No telemetry from {{ $labels.project }}/{{ $labels.env }} in 15m"
+          description: "Host down, Docker down, the agent down, tunnel down, token rotated wrong, or the collector is rejecting this project's data. Nothing on the project side can detect this on its own. Expect this ~20m after the last sample: absent() needs the series to go stale first."
+
+  # The backstop: a project that ships telemetry but was never bootstrapped has no
+  # ProjectTelemetrySilent instance.
+  - orgId: 1
+    name: _coverage
+    folder: Stack alerts
+    interval: 5m
+    rules:
+      - uid: projects-uncovered
+        title: ProjectsUncovered
+        condition: FIRING
+        for: 15m
+        noDataState: OK
+        execErrState: Error
+        isPaused: false
+        data:
+          - refId: QUERY
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            model:
+              refId: QUERY
+              instant: true
+              editorMode: code
+              # A bare {project!=""} would scan every project-labelled series in the
+              # TSDB on each evaluation, and would still miss a logs-only or
+              # traces-only project.
+              #
+              # demo/demo is this repo's own `just demo` overlay. Bootstrapping it
+              # would leave ProjectTelemetrySilent firing forever after `just
+              # demo-down`, so it is exempt as a pair; a real project named demo in
+              # a real env is still caught.
+              expr: count by (project, env) ({__name__=~"telemetry_.+_total", project!="", env!=""} unless on (project, env) ({__name__=~"telemetry_.+_total", project="demo", env="demo"} or {__name__=~"telemetry_.+_total", project="relab",env="prod"} or {__name__=~"telemetry_.+_total", project="relab",env="staging"}))
+          - *firing
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.project }}/{{ $labels.env }} is sending telemetry but has no alert rules"
+          description: "Telemetry is arriving for a project/environment bootstrap.sh was never run for, so nothing would notice if it went silent. Run ./bootstrap.sh {{ $labels.project }} {{ $labels.env }} on the monitoring host. A literal `unknown` means the sender set no project or env resource attribute at all: fix the sender (docs/ONBOARDING.md), do not bootstrap a project by that name."
