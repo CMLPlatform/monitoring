@@ -6,10 +6,12 @@ Notable changes to this stack. Format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-02
+
 ### Upgrade
 
 - Re-vendor `templates/alloy/config.alloy` and `templates/run_scheduled.sh` on
-  each spoke. Host & Containers needs the first for the new panels and the
+  each spoke at `v0.4.0`. Host & Containers needs the first for the new panels and the
   corrected host network panel.
 - On the hub, `git pull` and restart Grafana once. `retired.yaml` removes the
   old per-project rules; delete it after that restart.
