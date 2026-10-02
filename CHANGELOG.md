@@ -6,6 +6,11 @@ Notable changes to this stack. Format follows
 
 ## [Unreleased]
 
+### Upgrade
+
+- Re-vendor `templates/alloy/config.alloy` on each spoke. Host & Containers
+  needs it for the new panels and the corrected host network panel.
+
 ### Added
 
 - **`HighLatencyP99`**: p99 request latency above 2s for 5 minutes, per
@@ -15,14 +20,30 @@ Notable changes to this stack. Format follows
   minutes.
 - Service Health shows a **DB connection pool** panel (used and idle) from the
   OpenTelemetry SQLAlchemy instrumentation.
+- **Host & Containers covers the USE method.** Host rows add CPU by mode,
+  load per core, disk utilisation and throughput, transmit traffic,
+  temperature and scheduler activity, from collectors the agent already ran.
+  Container rows add CPU, memory and I/O pressure (PSI wait time, which works
+  without limits), memory against the limit, and network and disk I/O.
 
 ### Changed
 
-- **The spoke agent's cAdvisor collects only CPU, memory and OOM events.** It
-  used to gather disk and network stats for every container each second and
-  then discard them: a third to a half of cAdvisor's CPU on a 12-container host.
-  The four shipped container metrics are unchanged. Re-vendor
-  `templates/alloy/config.alloy` to pick it up.
+- **The spoke agent's cAdvisor skips its per-container filesystem walk**, a
+  third of its CPU on a 12-container host, by enabling only the metric kinds
+  the stack reads.
+- **The spoke agent ships 8 of its own series instead of ~415**: `up`, the
+  export failures and the export queue gauges.
+- The spoke agent batches for 5s instead of 200ms, so a trickle of logs is
+  one request per 5s rather than up to five a second.
+- The hub drops its own Prometheus histogram buckets, like the other
+  stack jobs.
+- GPU panels no longer request exemplars, which the GPU exporter never has.
+
+### Fixed
+
+- **The host network panel showed the agent container's own interface.**
+  `/host/proc/net` resolves to the reading process's namespace; the agent now
+  reads PID 1's, and leaves out bridges and veths. Transmit is shown too.
 
 ## [0.3.1] - 2026-09-07
 
