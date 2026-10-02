@@ -141,6 +141,12 @@ prometheus.exporter.cadvisor "containers" {
 		"com.docker.compose.project",
 		"com.docker.compose.service",
 	]
+
+	// cAdvisor collects every enabled kind about once a second per container, long
+	// before the keep-list in cadvisor_scope runs. These three cover the four kept
+	// families (start_time_seconds is always on); the defaults add per-tick disk and
+	// network collection nothing reads. Widen this together with that keep-list.
+	enabled_metrics = ["cpu", "memory", "oom_event"]
 }
 
 prometheus.scrape "cadvisor" {
@@ -164,8 +170,8 @@ prometheus.relabel "cadvisor_scope" {
 
 	// cAdvisor emits ~59 metric families per container (per-cpu, per-disk, per-NIC,
 	// TCP state); the stack reads four. The rest is the fastest-growing block in the
-	// series budget, since it scales per container per host. Add a name here when a
-	// dashboard or rule starts using one.
+	// series budget, since it scales per container per host. Add a name here, and its kind
+	// to enabled_metrics above, when a dashboard or rule starts using one.
 	rule {
 		source_labels = ["__name__"]
 		regex         = "container_(start_time_seconds|oom_events_total|cpu_usage_seconds_total|memory_working_set_bytes)"

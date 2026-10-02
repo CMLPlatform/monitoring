@@ -16,6 +16,14 @@ Notable changes to this stack. Format follows
 - Service Health shows a **DB connection pool** panel (used and idle) from the
   OpenTelemetry SQLAlchemy instrumentation.
 
+### Changed
+
+- **The spoke agent's cAdvisor collects only CPU, memory and OOM events.** It
+  used to gather disk and network stats for every container each second and
+  then discard them: a third to a half of cAdvisor's CPU on a 12-container host.
+  The four shipped container metrics are unchanged. Re-vendor
+  `templates/alloy/config.alloy` to pick it up.
+
 ## [0.3.1] - 2026-09-07
 
 ### Upgrade
