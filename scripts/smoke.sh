@@ -61,6 +61,12 @@ n_jobs="$(grep -c '^ *- job_name:' config/prometheus.yaml)"
 all_up() { [[ "$(promq 'count(up == 1)' | jq -r '.data.result[0].value[1] // 0')" == "$n_jobs" ]]; }
 poll all_up || die "not all $n_jobs scrape targets are up: $(promq up | jq -r '.data.result[] | "\(.metric.job)=\(.value[1])"' | tr '\n' ' ')"
 
+# The alert-pipeline check below waits out TargetDown's `for`. Stopping its target
+# here lets that clock run during the data-path checks, none of which scrape it.
+if [[ "${SMOKE_ALERTS:-}" == 1 ]]; then
+    docker compose -p "$project" stop -t 1 node-exporter >/dev/null
+fi
+
 # ------------------------------------------------------------- data paths
 # One metric and one log through the collector's bearer auth, read back with
 # the identity labels the alert rules key on. Posted from inside the stack's
@@ -93,12 +99,12 @@ counted() { promq "count by (project, env) ({__name__=~\"telemetry_.+_total\", p
 poll counted || die "the count connector never produced telemetry_*_total{project=smoke,env=ci}; the alert rules that key on it would never fire"
 
 # ------------------------------------------------------------- alert pipeline
-# Opt-in (SMOKE_ALERTS=1): stop one scrape target and wait for TargetDown to
-# reach firing. Costs the rule's `for` (2m) plus an evaluation, so it is off
-# for the local loop and on in CI. Guards the threshold-node contract in
-# rules.yaml: a query whose matching value is 0 never fires without `bool`.
+# Opt-in (SMOKE_ALERTS=1): node-exporter was stopped after the scrape-target
+# check; wait for TargetDown to reach firing. Costs the rule's `for` (2m) plus an
+# evaluation, so it is off for the local loop and on in CI. Guards the
+# threshold-node contract in rules.yaml: a query whose matching value is 0 never
+# fires without `bool`.
 if [[ "${SMOKE_ALERTS:-}" == 1 ]]; then
-    docker compose -p "$project" stop -t 1 node-exporter >/dev/null
     target_down_firing() {
         gf "$url/api/prometheus/grafana/api/v1/rules" \
             | jq -e '.data.groups[].rules[] | select(.name == "TargetDown") | .state == "firing"' >/dev/null

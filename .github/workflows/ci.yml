@@ -40,7 +40,7 @@ jobs:
       # 600, or the exposure guards refuse it as world-readable.
       - run: install -m 600 .env.example .env
       - run: just validate
-      # SMOKE_ALERTS adds the TargetDown round trip (about 3 minutes).
+      # SMOKE_ALERTS adds the TargetDown round trip (about 2 minutes).
       - run: just smoke
         env:
           SMOKE_ALERTS: "1"
