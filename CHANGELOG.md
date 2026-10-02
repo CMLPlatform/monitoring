@@ -6,6 +6,10 @@ Notable changes to this stack. Format follows
 
 ## [Unreleased]
 
+### Removed
+
+- `retired.yaml`: the hub has dropped the per-project rules it deleted.
+
 ## [0.4.0] - 2026-10-02
 
 ### Upgrade
