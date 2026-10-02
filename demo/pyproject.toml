@@ -1,10 +1,10 @@
 [project]
   dependencies = [
     "fastapi==0.141.1",
-    "uvicorn==0.52.4",
-    "opentelemetry-distro==0.65b0",
-    "opentelemetry-exporter-otlp==1.44.0",
-    "opentelemetry-instrumentation-fastapi==0.65b0",
+    "uvicorn==0.54.0",
+    "opentelemetry-distro==0.66b0",
+    "opentelemetry-exporter-otlp==1.45.0",
+    "opentelemetry-instrumentation-fastapi==0.66b0",
   ]
   name = "demo"
   requires-python = ">=3.14"
