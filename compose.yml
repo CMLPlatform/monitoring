@@ -185,7 +185,6 @@ services:
       # Expanded by Grafana into the provisioned contact points.
       ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
       HEARTBEAT_URL: ${HEARTBEAT_URL:-}
-      GF_USERS_ALLOW_SIGN_UP: "false"
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/stack-health.json
       # Secure cookies break plain-http localhost logins, so opt-in. With the

@@ -32,8 +32,8 @@ stack's own alert rules.
 Skipping `bootstrap.sh` leaves a project unmonitored with no error anywhere.
 The rule that notices a host's *silence* lives on this stack, not on the
 host. The backstop is `ProjectsUncovered`, regenerated on every bootstrap
-run: it fires on any project the gateway counts telemetry for that has no
-rendered rule file, whichever signal that project sends.
+run: it fires on any project the gateway counts telemetry for that is not
+covered in `projects.yaml`, whichever signal that project sends.
 
 ## Two settings that silently produce nothing
 
@@ -83,27 +83,10 @@ from [14574](https://grafana.com/grafana/dashboards/14574)) and
 
 ## Removing a project
 
-Deleting `config/grafana/alerting/project-<project>-<env>.yaml` is **not**
-enough. Grafana provisioning never deletes a rule because its file vanished,
-and the API refuses to delete a provisioned rule (409). The orphan keeps
-evaluating and firing.
-
-1. Delete the project file.
-2. Add a temporary provisioning file that drops the rule:
-
-   ```yaml
-   # config/grafana/alerting/zz-delete.yaml (temporary)
-   apiVersion: 1
-   deleteRules:
-     - orgId: 1
-       uid: proj-silent-<project>-<env>
-   ```
-
-3. Restart Grafana and confirm the rule group is gone.
-4. Remove `zz-delete.yaml` and restart Grafana again. Left in place, it
-   deletes the rule again the next time `bootstrap.sh` renders it.
-5. Re-run `bootstrap.sh` for a project that remains, so `coverage.yaml` stops
-   listing the removed one as covered.
+Delete its pair from the `# COVERS:` line in
+`config/grafana/alerting/projects.yaml`, re-run `bootstrap.sh` for any project
+that remains, and commit the result. The one ProjectTelemetrySilent rule then
+no longer checks it, and the coverage rule no longer counts it as covered.
 
 ## Limits
 

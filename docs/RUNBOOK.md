@@ -1,7 +1,7 @@
 # Runbook
 
 All commands run from the repo root on the monitoring host. Start with
-`just ps` and the **Stack Health** dashboard. Between them they answer most
+`docker compose ps` and the **Stack Health** dashboard. Between them they answer most
 "what is wrong" questions.
 
 ![Stack Health dashboard](img/stack-health.png)
@@ -12,8 +12,8 @@ the ingest panel is a backup/restore drill.
 ## A service is down or misbehaving
 
 ```sh
-just ps                    # what's running, what's restarting
-just logs <service>        # follow logs (otel-collector, loki, tempo, prometheus, grafana)
+docker compose ps                 # what's running, what's restarting
+docker compose logs -f <service>  # follow logs (otel-collector, loki, tempo, prometheus, grafana)
 just restart <service>
 ```
 
@@ -233,14 +233,14 @@ account. Only a plan proves the provider still maps the config to the same
 resources.
 
 Nothing watches the tool images pinned in the `justfile` (yamllint,
-actionlint, shellcheck, ruff, gitleaks, OpenTofu, jq, Alloy, alpine). Bump
-those by hand. The alpine pin appears twice: in the `justfile` and on
-`otel-queue-init` in `compose.yml`. Bump both together.
+actionlint, shellcheck, ruff, gitleaks, OpenTofu, jq). Bump those by hand.
+The backup recipes reuse the alpine image of `otel-queue-init` in
+`compose.yml`.
 
 After merging, on the host:
 
 ```sh
-git pull && just pull && just up
+git pull && docker compose pull && just up
 ```
 
 `just up` adds the exposure guards, but a plain `docker compose up -d` is now
