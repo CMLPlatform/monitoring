@@ -20,7 +20,7 @@ Never expose 4317/4318 directly.
 ## The conventions
 
 - **`service.name`** is required: one stable name per deployable unit
-  (`relab-api`, not `relab-api-prod-2`). Dashboards key on it.
+  (`r9lab-api`, not `r9lab-api-prod-2`). Dashboards key on it.
 - **`project`** and **`env`** are both required resource attributes: `project`
   is the name `bootstrap.sh` was run with, `env` is `prod`, `staging`, or
   `dev`. Together they are what every alert and dashboard filters on, and a
