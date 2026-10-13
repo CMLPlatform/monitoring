@@ -90,8 +90,9 @@ no longer checks it, and the coverage rule no longer counts it as covered.
 
 ## Limits
 
-The healthchecks.io free tier is 20 checks. `bootstrap.sh` creates three per
-project/environment, so about six environments fit.
+The healthchecks.io free tier is 20 checks. `bootstrap.sh` creates one per
+project/environment (`watchdog`, which reports the other scheduled jobs), so
+20 environments fit. Set `HC_JOBS` to create more.
 
 ## Verifying, from the monitoring host
 

@@ -6,6 +6,17 @@ Notable changes to this stack. Format follows
 
 ## [Unreleased]
 
+### Changed
+
+- `bootstrap.sh` creates only a `watchdog` healthchecks.io check per
+  project/environment, since that check reports the other scheduled jobs.
+  The `backup` and `restore-check` checks it used to create were never
+  pinged; delete them at healthchecks.io. `HC_JOBS` still overrides the list.
+
+### Fixed
+
+- `bootstrap.sh` prints each `PING_<JOB>=` line on its own line.
+
 ### Removed
 
 - `retired.yaml`: the hub has dropped the per-project rules it deleted.
