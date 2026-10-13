@@ -4,7 +4,7 @@
 # bootstrap.sh reads the covered project/env pairs back from this marker and adds the
 # one it is run for. To remove a project, delete its pair here and re-run bootstrap.sh
 # for any project that remains.
-# COVERS: relab/prod relab/staging
+# COVERS: r9lab/prod r9lab/staging
 
 apiVersion: 1
 
@@ -39,7 +39,7 @@ groups:
               # ingest counters for every sender, whatever signal it sends. absent()
               # loads every series its selector matches, so this is bounded to a few
               # per service rather than everything a project sends.
-              expr: absent({__name__=~"telemetry_.+_total", project="relab",env="prod"}) or absent({__name__=~"telemetry_.+_total", project="relab",env="staging"})
+              expr: absent({__name__=~"telemetry_.+_total", project="r9lab",env="prod"}) or absent({__name__=~"telemetry_.+_total", project="r9lab",env="staging"})
           - &firing
             refId: FIRING
             datasourceUid: __expr__
@@ -89,7 +89,7 @@ groups:
               # would leave ProjectTelemetrySilent firing forever after `just
               # demo-down`, so it is exempt as a pair; a real project named demo in
               # a real env is still caught.
-              expr: count by (project, env) ({__name__=~"telemetry_.+_total", project!="", env!=""} unless on (project, env) ({__name__=~"telemetry_.+_total", project="demo", env="demo"} or {__name__=~"telemetry_.+_total", project="relab",env="prod"} or {__name__=~"telemetry_.+_total", project="relab",env="staging"}))
+              expr: count by (project, env) ({__name__=~"telemetry_.+_total", project!="", env!=""} unless on (project, env) ({__name__=~"telemetry_.+_total", project="demo", env="demo"} or {__name__=~"telemetry_.+_total", project="r9lab",env="prod"} or {__name__=~"telemetry_.+_total", project="r9lab",env="staging"}))
           - *firing
         labels:
           severity: warning
