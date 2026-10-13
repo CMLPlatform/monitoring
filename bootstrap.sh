@@ -6,7 +6,7 @@
 #   1. renders the ProjectTelemetrySilent rule for every covered project/env;
 #   2. renders the coverage rule that catches projects never bootstrapped, and
 #      reloads Grafana;
-#   3. creates the project's healthchecks.io checks (if an API key is present);
+#   3. creates the project's healthchecks.io watchdog check (if an API key is present);
 #   4. prints the `.env` block for the project host and the curls that vendor the
 #      templates at a pinned tag.
 #
@@ -131,11 +131,13 @@ fi
 
 # ------------------------------------------------------- 4. healthchecks.io + printout
 if [[ -n "${HEALTHCHECKS_API_KEY:-}" ]]; then
-    # Default job set; override per project with HC_JOBS="backup nightly-sync" etc.
-    for job in ${HC_JOBS:-backup watchdog restore-check}; do
+    # One watchdog check per project: it reports the project's other scheduled
+    # jobs, so a check per job would never be pinged. Override with
+    # HC_JOBS="watchdog nightly-sync" etc. for a job that pings its own check.
+    for job in ${HC_JOBS:-watchdog}; do
         # Key via curl's stdin config, not -H: argv is readable in `ps`.
         printf 'header = "X-Api-Key: %s"\n' "$HEALTHCHECKS_API_KEY" \
-            | curl -fsS -K - -X POST https://healthchecks.io/api/v3/checks/ \
+            | curl -fsS -w '\n' -K - -X POST https://healthchecks.io/api/v3/checks/ \
             -H "Content-Type: application/json" \
             -d "{\"name\":\"${project}-${env_name}-${job}\",\"slug\":\"${project}-${env_name}-${job}\",\"unique\":[\"name\"],\"timeout\":93600,\"grace\":3600,\"channels\":\"*\"}" \
             | sed -n 's/.*"ping_url": *"\([^"]*\)".*/  PING_'"$(echo "$job" | tr 'a-z-' 'A-Z_')"'=\1/p'
