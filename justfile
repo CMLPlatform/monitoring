@@ -100,6 +100,9 @@ lint:
     {{compose_smoke}} config -q
     # The spoke overlays, which otherwise first fail on a project host after vendoring.
     {{spoke_env}} docker compose -f templates/compose.telemetry.yml -f templates/compose.telemetry.gpu.yml config -q
+    # Image tags must name the multi-arch manifest. Dependabot sometimes proposes a
+    # single-platform tag such as `-386`, which an amd64 host still runs, so smoke passes.
+    @! grep -nE 'image: [^ ]+:[^@ ]*-(386|amd64|arm64|armv[5-7]|ppc64le|s390x|riscv64)(@|$)' compose*.yml templates/*.yml || { echo "error: single-platform image tag above; use the plain tag" >&2; exit 1; }
     # The exposure guards, both ways: a fully set .env passes, and each
     # documented default is refused on its own.
     @good="OTLP_AUTH_TOKEN=t GRAFANA_ADMIN_PASSWORD=p GRAFANA_ROOT_URL=https://g.example GRAFANA_COOKIE_SECURE=true GRAFANA_JWT_AUTH=true CF_ACCESS_TEAM_DOMAIN=d CF_ACCESS_AUD=a HEARTBEAT_URL=https://h ALERT_WEBHOOK_URL=https://w"; \
