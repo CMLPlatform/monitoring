@@ -16,6 +16,9 @@ Notable changes to this stack. Format follows
 ### Fixed
 
 - `bootstrap.sh` prints each `PING_<JOB>=` line on its own line.
+- The OpenTelemetry Collector runs the multi-arch `0.163.2` image again. The
+  Dependabot bump to `0.163.2-386` pulled the 32-bit x86 build. `just lint` now
+  refuses single-platform image tags.
 
 ### Removed
 
