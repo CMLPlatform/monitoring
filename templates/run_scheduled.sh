@@ -22,7 +22,7 @@ if [[ -z "$job" || -z "$env_name" ]]; then
     echo "usage: $0 <job> <env>" >&2
     exit 2
 fi
-# Job and env become part of a variable name below; a stray character would look up
+# The job name becomes part of a variable name below; a stray character would look up
 # the wrong variable and silently disable the ping.
 if [[ ! "$job" =~ ^[A-Za-z0-9_-]+$ || ! "$env_name" =~ ^[A-Za-z0-9_-]+$ ]]; then
     echo "error: job and env must match [A-Za-z0-9_-]+" >&2
