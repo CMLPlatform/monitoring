@@ -1,6 +1,7 @@
 # Observability stack
 
 [![CI](https://github.com/CMLPlatform/monitoring/actions/workflows/ci.yml/badge.svg)](https://github.com/CMLPlatform/monitoring/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/CMLPlatform/monitoring/badge)](https://scorecard.dev/viewer/?uri=github.com/CMLPlatform/monitoring)
 [![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-OTLP-425cc7?logo=opentelemetry&logoColor=white)](config/otel-collector.yaml)
 [![Grafana LGTM](https://img.shields.io/badge/Grafana-Loki%20%7C%20Tempo%20%7C%20Prometheus-f46800?logo=grafana&logoColor=white)](compose.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -108,9 +109,10 @@ top of [infra/main.tf](infra/main.tf).
 | `just check` | `lint` plus `validate` |
 | `just smoke` | Boots an isolated copy of the stack and asserts it works end to end |
 | `just restore-check` | Rehearses backup and restore on the smoke stack |
-| `just hooks` | Installs the git hooks: gitleaks at commit, a Conventional Commits check on the message, `check` at push, `infra-validate` at push when `infra/` changed |
+| `just hooks` | Installs the git hooks: gitleaks, a CITATION.cff schema check and citesync at commit, a Conventional Commits check on the message, `check` at push, `infra-validate` at push when `infra/` changed |
 
-Every check runs in a pinned container. Nothing is installed on the host.
+Every `just` check runs in a pinned container. Nothing is installed on the host.
+The citation hooks are the exception: prek builds their Python environments itself.
 
 `just smoke` covers what has no offline validator. It boots the stack in
 production shape with JWT auth on, then asserts that every dashboard and
@@ -201,5 +203,8 @@ file.
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) | Operations: rotating secrets, disk pressure, backup and restore |
 | [docs/adr/](docs/adr/) | Why the stack looks like this |
 | [CHANGELOG.md](CHANGELOG.md) | Release history |
+| [CONTRIBUTING.md](.github/CONTRIBUTING.md) | Issues, pull requests, checks, commit style |
+| [SECURITY.md](.github/SECURITY.md) | Reporting a vulnerability, and what is in scope |
 
-Licensed under the [MIT License](LICENSE).
+Licensed under the [MIT License](LICENSE). To cite the stack, use GitHub's
+"Cite this repository" button, which reads [CITATION.cff](CITATION.cff).

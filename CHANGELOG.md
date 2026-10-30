@@ -6,6 +6,16 @@ Notable changes to this stack. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- `CITATION.cff` and `.zenodo.json`, so GitHub offers a citation and a Zenodo
+  archive of a release has the metadata it needs. A citesync git hook keeps `.zenodo.json` in line with
+  `CITATION.cff`.
+- `SECURITY.md` says how to report a vulnerability and what is in scope;
+  `CONTRIBUTING.md` covers issues, pull requests and the checks.
+- An OpenSSF Scorecard run, weekly and on each push to `main`, with its score
+  as a README badge.
+
 ### Changed
 
 - `bootstrap.sh` creates only a `watchdog` healthchecks.io check per

@@ -1,5 +1,6 @@
 # Installed by `just hooks` (prek).
-#   pre-commit  gitleaks on the staged diff
+#   pre-commit  gitleaks on the staged diff; CITATION.cff against its schema
+#               and .zenodo.json against CITATION.cff (citesync)
 #   commit-msg  Conventional Commits shape on the first line
 #   pre-push    `just check`, plus `just infra-validate` when infra/ changed
 # `prek run` runs the pre-commit stage on demand; `--hook-stage pre-push` the rest.
@@ -36,3 +37,17 @@ repos:
         pass_filenames: false
         files: ^infra/
         stages: [pre-push]
+
+  # GitHub's "Cite this repository" silently drops a CITATION.cff that fails its schema.
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0494aa7fa1314e98913a41227d8f0a515b2c1049 # frozen: 0.38.2
+    hooks:
+      - id: check-citation-file-format
+
+  # CITATION.cff is the source; `prek run citesync-write --hook-stage manual --all-files`
+  # rewrites .zenodo.json to agree with it.
+  - repo: https://github.com/simonvanlierde/citesync
+    rev: a3c5a9794449e78a33583e456af41bb24ebd240e # frozen: v0.1.0
+    hooks:
+      - id: citesync
+      - id: citesync-write
