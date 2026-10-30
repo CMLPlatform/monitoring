@@ -9,8 +9,10 @@ project="${SMOKE_PROJECT:?}"
 command -v jq >/dev/null || { echo "error: jq is required" >&2; exit 1; }
 
 die() { echo "error: $*" >&2; exit 1; }
+# curl's config parser unescapes \ and " inside a quoted value, so escape both.
+cfg_quote() { local v="${1//\\/\\\\}"; printf '%s' "${v//\"/\\\"}"; }
 # Admin basic auth through curl's stdin config: argv is world-readable in ps.
-gf() { printf 'user = "admin:%s"\n' "$GRAFANA_ADMIN_PASSWORD" | curl -sf -K - "$@"; }
+gf() { printf 'user = "admin:%s"\n' "$(cfg_quote "$GRAFANA_ADMIN_PASSWORD")" | curl -sf -K - "$@"; }
 promq() { gf -G --data-urlencode "query=$1" "$url/api/datasources/proxy/uid/prometheus/api/v1/query"; }
 poll() { local n=0; until "$@"; do n=$((n + 1)); [[ $n -lt ${POLL_MAX:-60} ]] || return 1; sleep "${POLL_SLEEP:-1}"; done; }
 
@@ -78,7 +80,7 @@ res='{"attributes":[{"key":"service.name","value":{"stringValue":"smoke"}},{"key
 otlp() {
     docker compose -p "$project" exec -T grafana sh -c \
         'curl -sf -K - -o /dev/null -H "Content-Type: application/json" --data-binary "$1" "http://otel-collector:4318/v1/$2"' \
-        _ "$2" "$1" <<<"header = \"Authorization: Bearer $OTLP_AUTH_TOKEN\""
+        _ "$2" "$1" <<<"header = \"Authorization: Bearer $(cfg_quote "$OTLP_AUTH_TOKEN")\""
 }
 otlp metrics '{"resourceMetrics":[{"resource":'"$res"',"scopeMetrics":[{"metrics":[{"name":"smoke_up","gauge":{"dataPoints":[{"asInt":"1","timeUnixNano":"'"$ts"'"}]}}]}]}]}' \
     || die "the collector refused an OTLP metric with the .env token"
