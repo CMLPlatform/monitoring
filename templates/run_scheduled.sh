@@ -78,8 +78,10 @@ trap 'on_terminate INT' INT
 
 status=0
 # Job control on for the fork only, so the job gets its own process group.
+# With it on, bash no longer gives a background job /dev/null as stdin, so a
+# job run by hand would stop on a terminal read: pass /dev/null explicitly.
 set -m
-"${command[@]}" >>"$output_file" 2>&1 &
+"${command[@]}" </dev/null >>"$output_file" 2>&1 &
 job_pid=$!
 set +m
 wait "$job_pid" || status=$?

@@ -118,6 +118,15 @@ lint:
       for _ in $(seq 50); do [ -s "$d/pid" ] && break; sleep 0.1; done; kill -INT $rs; wait $rs; sleep 0.5; \
       p=$(cat "$d/pid" 2>/dev/null); rm -rf "$d"; [ -n "$p" ] || { echo "error: run_scheduled.sh never started its job" >&2; exit 1; }; \
       ! kill -0 "$p" 2>/dev/null || { kill "$p"; echo "error: run_scheduled.sh left its job running after SIGINT" >&2; exit 1; }
+    # The job reads /dev/null, not the caller's stdin: a job run by hand from a
+    # terminal would otherwise stop on its first read.
+    @d=$(mktemp -d) && mkdir "$d/templates" && cp templates/run_scheduled.sh "$d/templates/" && printf '#!/bin/sh\nread x && echo "read: $x"\n' >"$d/job" && chmod +x "$d/job" || exit 1; \
+      out=$(echo caller-input | JUST_BIN="$d/job" "$d/templates/run_scheduled.sh" job env 2>&1); rm -rf "$d"; \
+      case "$out" in *caller-input*) echo "error: run_scheduled.sh passed its stdin to the job" >&2; exit 1 ;; esac
+    # smoke.sh's cfg_quote must escape \ and " for curl's config parser.
+    @bash -c "$(sed -n '/^cfg_quote()/p' scripts/smoke.sh)"' && [ "$(cfg_quote "$1")" = "$2" ]' _ 'a"b\c' 'a\"b\\c' || { echo "error: cfg_quote no longer escapes \\ and \"" >&2; exit 1; }
+    # The backup listing names the new backup, not a pre-restore snapshot.
+    @d=$(mktemp -d) && touch "$d/monitoring-20261030-100000.tar.gz" "$d/pre-restore-20261030-110000.tar.gz" && just _newest-backup "$d" | grep -q 'monitoring-20261030-100000'; rc=$?; rm -rf "$d"; [ $rc -eq 0 ] || { echo "error: the backup listing does not name the new backup" >&2; exit 1; }
     # The rendered projects.yaml is skipped (its expr lines grow with every
     # project); its template is checked by rendering it into a scratch dir instead.
     docker run --rm --network none -v .:/code:ro {{yamllint}} yamllint -d '{extends: relaxed, rules: {line-length: {max: 120, allow-non-breakable-inline-mappings: true}}, ignore: [.git/, backups/, infra/.terraform/, config/grafana/alerting/projects.yaml]}' .
@@ -184,6 +193,10 @@ _backup project dir:
     mkdir -p {{dir}}
     @-docker compose -p {{project}} unpause {{stateful}} >/dev/null 2>&1
     @rc=0; img=$(just _image compose.yml otel-queue-init); m=$(just _mounts {{project}}); docker compose -p {{project}} pause {{stateful}} && docker run --rm --network none $m -v {{absolute_path(dir)}}:/backups "$img" sh -c 'set -o pipefail; umask 077 && tar cf - -C /data . | gzip -1 > /backups/monitoring-$(date +%Y%m%d-%H%M%S).tar.gz' || rc=$?; docker compose -p {{project}} unpause {{stateful}} || { echo "error: unpause failed; the stack is still paused" >&2; rc=1; }; exit $rc
+    @just _newest-backup {{dir}}
+
+# pre-restore-* snapshots share the dir and sort after monitoring-* by name.
+_newest-backup dir:
     @ls -lh {{dir}}/monitoring-*.tar.gz | tail -1
 
 # Restore a backup tarball into the volumes (stops the stack; wipes current state).
