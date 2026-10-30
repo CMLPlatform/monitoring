@@ -1,7 +1,6 @@
 # GitHub reads this for its "Cite this repository" button, and Zenodo when it
-# archives a release. Edit this file only: the citesync hook fails while
-# .zenodo.json disagrees with it, and
-# `prek run citesync-write --hook-stage manual --all-files` rewrites .zenodo.json to match.
+# archives a release. Edit this file only: there is no .zenodo.json, since Zenodo
+# reads only that file when one exists.
 cff-version: 1.2.0
 message: If you use this software, please cite it as below.
 title: "Observability stack"

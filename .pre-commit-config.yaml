@@ -1,6 +1,6 @@
 # Installed by `just hooks` (prek).
 #   pre-commit  gitleaks on the staged diff; CITATION.cff against its schema
-#               and .zenodo.json against CITATION.cff (citesync)
+#               and citesync
 #   commit-msg  Conventional Commits shape on the first line
 #   pre-push    `just check`, plus `just infra-validate` when infra/ changed
 # `prek run` runs the pre-commit stage on demand; `--hook-stage pre-push` the rest.
@@ -44,8 +44,8 @@ repos:
     hooks:
       - id: check-citation-file-format
 
-  # CITATION.cff is the source; `prek run citesync-write --hook-stage manual --all-files`
-  # rewrites .zenodo.json to agree with it.
+  # CITATION.cff is the source: any codemeta.json or .zenodo.json must agree with it, and
+  # `prek run citesync-write --hook-stage manual --all-files` rewrites them to match.
   - repo: https://github.com/simonvanlierde/citesync
     rev: a3c5a9794449e78a33583e456af41bb24ebd240e # frozen: v0.1.0
     hooks:
