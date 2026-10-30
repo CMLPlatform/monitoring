@@ -19,6 +19,13 @@ Notable changes to this stack. Format follows
 - The OpenTelemetry Collector runs the multi-arch `0.163.2` image again. The
   Dependabot bump to `0.163.2-386` pulled the 32-bit x86 build. `just lint` now
   refuses single-platform image tags.
+- `run_scheduled.sh` stops its job when interrupted with Ctrl-C. Before, the
+  job kept running after the script had exited. Re-vendor the template to pick
+  this up.
+- `just smoke` sends an admin password or OTLP token that contains `"` or `\`
+  as written. Before, curl changed it and the smoke run failed on auth.
+- `just backup` prints the backup it just wrote, not a `pre-restore-*`
+  snapshot from an earlier restore.
 
 ### Removed
 

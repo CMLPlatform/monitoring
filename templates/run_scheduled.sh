@@ -58,10 +58,13 @@ ping_status() {
 
 # A killed job must still report: systemd's TimeoutStartSec TERMs the whole cgroup, and
 # without this trap a hung job would send neither ping. The job runs in the background
-# so `wait` can be interrupted; the child receives the same TERM from systemd.
+# so `wait` can be interrupted. systemd TERMs the job too, but an INT (Ctrl-C) reaches
+# only this script, so the trap TERMs the job's process group: the job is usually
+# `just`, which does not pass the signal on to what its recipe started.
 # shellcheck disable=SC2329  # invoked via the TERM/INT traps below
 on_terminate() {
     local sig="$1"
+    [[ -z "${job_pid:-}" ]] || kill -TERM -- "-$job_pid" 2>/dev/null
     echo "run_scheduled: received SIG${sig}; job killed (likely a systemd timeout)" >>"$output_file"
     cat "$output_file"
     if [[ -n "$ping_url" ]]; then
@@ -74,8 +77,12 @@ trap 'on_terminate TERM' TERM
 trap 'on_terminate INT' INT
 
 status=0
-"${command[@]}" >"$output_file" 2>&1 &
-wait $! || status=$?
+# Job control on for the fork only, so the job gets its own process group.
+set -m
+"${command[@]}" >>"$output_file" 2>&1 &
+job_pid=$!
+set +m
+wait "$job_pid" || status=$?
 cat "$output_file"
 
 [[ -z "$ping_url" ]] || ping_status "$status"
