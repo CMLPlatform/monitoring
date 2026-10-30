@@ -1,0 +1,13 @@
+# GitHub reads this for its "Cite this repository" button, and Zenodo when it
+# archives a release. Edit this file only: there is no .zenodo.json, since Zenodo
+# reads only that file when one exists.
+cff-version: 1.2.0
+message: If you use this software, please cite it as below.
+title: "Observability stack"
+abstract: "Central OpenTelemetry observability stack for CML research platforms: Grafana, Loki, Tempo, Prometheus"
+authors:
+  - given-names: "Simon"
+    family-names: "van Lierde"
+    orcid: "https://orcid.org/0009-0006-6953-909X"
+repository-code: "https://github.com/CMLPlatform/monitoring"
+license: MIT
