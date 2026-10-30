@@ -86,13 +86,17 @@ just check              # validate every config in the repo
 Grafana: <http://localhost:3000>.
 
 `COMPOSE_FILE` in `.env` names the overlays a host runs. In production, set
-`COMPOSE_FILE=compose.yml:compose.tunnel.yml`. Every recipe (`up`, `logs`,
-`ps`, `backup`) then acts on that set.
+`COMPOSE_FILE=compose.yml:compose.tunnel.yml`. `just up`, `just restart`, `just backup`,
+`just restore`, and plain `docker compose logs` or `ps` then act on that set.
 
 With the tunnel overlay active, `just up` refuses to start until five settings
 are real: a generated `OTLP_AUTH_TOKEN`, a changed `GRAFANA_ADMIN_PASSWORD`,
 `GRAFANA_ROOT_URL` pointing at the tunnel hostname, `GRAFANA_COOKIE_SECURE=true`,
-and a non-empty `ALERT_WEBHOOK_URL`. An empty `HEARTBEAT_URL` only warns.
+and a non-empty `ALERT_WEBHOOK_URL`. It also refuses `GRAFANA_JWT_AUTH=true`
+without `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD`, and a `.env`,
+`infra/terraform.tfvars` or OpenTofu state file that its group or other users
+can read.
+An empty `HEARTBEAT_URL` only warns.
 
 The Cloudflare edge is code too. The tunnel, its hostnames, DNS, and the
 Access rule that puts an email one-time PIN in front of Grafana live in
