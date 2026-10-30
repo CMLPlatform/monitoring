@@ -2,7 +2,8 @@
 
 Thank you for your interest in the observability stack. Bug reports, feature requests and
 pull requests are welcome. Report vulnerabilities as [SECURITY.md](SECURITY.md) describes,
-not in a public issue.
+not in a public issue. Everyone taking part follows the
+[Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Report a bug or ask for a feature
 
@@ -36,6 +37,7 @@ telemetry, and `just fmt` formats the YAML. CI runs `just lint`, `just validate`
   when the change needs one, with a bullet per logical chunk. The commit-msg hook refuses a
   first line that breaks the rule.
 - **The pull request title** becomes the squash commit subject, so it follows the same rule.
+- **The pull request body** starts from the [template](pull_request_template.md).
 - **The changelog** ([CHANGELOG.md](../CHANGELOG.md)) follows
   [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/). Write each entry for
   the people who run the stack or connect a project to it, not as a commit subject. Mark

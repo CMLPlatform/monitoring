@@ -205,6 +205,7 @@ file.
 | [CHANGELOG.md](CHANGELOG.md) | Release history |
 | [CONTRIBUTING.md](.github/CONTRIBUTING.md) | Issues, pull requests, checks, commit style |
 | [SECURITY.md](.github/SECURITY.md) | Reporting a vulnerability, and what is in scope |
+| [Code of Conduct](.github/CODE_OF_CONDUCT.md) | How we treat each other, and how to report a problem |
 
 Licensed under the [MIT License](LICENSE). To cite the stack, use GitHub's
 "Cite this repository" button, which reads [CITATION.cff](CITATION.cff).

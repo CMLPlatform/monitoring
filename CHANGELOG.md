@@ -14,6 +14,8 @@ Notable changes to this stack. Format follows
   `CONTRIBUTING.md` covers issues, pull requests and the checks.
 - An OpenSSF Scorecard run, weekly and on each push to `main`, with its score
   as a README badge.
+- A code of conduct (Contributor Covenant 3.0), issue forms for bugs and
+  feature requests, and a pull request template.
 
 ### Changed
 
