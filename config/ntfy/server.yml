@@ -14,5 +14,5 @@ cache-duration: "12h"
 enable-signup: false
 enable-login: true
 
-# Prometheus metrics exposed at /metrics
-enable-metrics: true
+# Prometheus metrics exposed on internal port 9090 (isolated from public ingress on port 80)
+metrics-listen-http: ":9090"

@@ -51,7 +51,7 @@ scrape_configs:
 
   - job_name: ntfy
     static_configs:
-      - targets: ["ntfy:80"]
+      - targets: ["ntfy:9090"]
     metric_relabel_configs: *drop_buckets
 
   - job_name: blackbox
