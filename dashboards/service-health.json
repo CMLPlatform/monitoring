@@ -101,7 +101,7 @@
       "description": "Total requests per second across all routes.",
       "gridPos": {
         "h": 4,
-        "w": 6,
+        "w": 4,
         "x": 0,
         "y": 0
       },
@@ -156,8 +156,8 @@
       "description": "Percentage of requests resulting in 5xx HTTP server errors.",
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 6,
+        "w": 4,
+        "x": 4,
         "y": 0
       },
       "id": 8,
@@ -220,8 +220,8 @@
       "description": "95th percentile request latency.",
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 12,
+        "w": 4,
+        "x": 8,
         "y": 0
       },
       "id": 9,
@@ -283,8 +283,8 @@
       "description": "Median request latency.",
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 18,
+        "w": 4,
+        "x": 12,
         "y": 0
       },
       "id": 10,
@@ -319,6 +319,134 @@
               {
                 "color": "red",
                 "value": 0.8
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Availability (SLI)",
+      "description": "Success rate over the active time range. Target: >= 99.5%.",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 0
+      },
+      "id": 11,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "100 * (1 - (sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\", http_response_status_code=~\"5..\"}[$__range])) or 0) / (sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\"}[$__range])) > 0))",
+          "legendFormat": "Availability",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "#EAB839",
+                "value": 99.0
+              },
+              {
+                "color": "green",
+                "value": 99.5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Error Budget Remaining",
+      "description": "Remaining 99.5% SLO error budget in current window. Exhausted at 0%.",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 0
+      },
+      "id": 12,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "100 * (1 - ((sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\", http_response_status_code=~\"5..\"}[$__range])) or 0) / (sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\"}[$__range])) > 0)) / 0.005)",
+          "legendFormat": "Budget Remaining",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "#EAB839",
+                "value": 20.0
+              },
+              {
+                "color": "green",
+                "value": 50.0
               }
             ]
           }
