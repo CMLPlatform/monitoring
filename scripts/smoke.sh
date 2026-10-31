@@ -60,7 +60,10 @@ code="$(curl -s -o /dev/null -w '%{http_code}' -H 'Cf-Access-Jwt-Assertion: not-
 # A renamed service leaves its scrape job silently empty, and TargetDown then
 # matches nothing. Every job in prometheus.yaml must have scraped its target.
 n_jobs="$(grep -c '^ *- job_name:' config/prometheus.yaml)"
-all_up() { [[ "$(promq 'count(up == 1)' | jq -r '.data.result[0].value[1] // 0')" == "$n_jobs" ]]; }
+all_up() {
+    [[ "$(promq 'count(count by (job) (up == 1))' | jq -r '.data.result[0].value[1] // 0')" == "$n_jobs" ]] \
+        && [[ "$(promq 'count(up == 0)' | jq -r '.data.result[0].value[1] // 0')" == "0" ]]
+}
 poll all_up || die "not all $n_jobs scrape targets are up: $(promq up | jq -r '.data.result[] | "\(.metric.job)=\(.value[1])"' | tr '\n' ' ')"
 
 # The alert-pipeline check below waits out TargetDown's `for`. Stopping its target

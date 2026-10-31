@@ -48,3 +48,25 @@ scrape_configs:
     static_configs:
       - targets: ["tempo:3200"]
     metric_relabel_configs: *drop_buckets
+
+  - job_name: ntfy
+    static_configs:
+      - targets: ["ntfy:80"]
+    metric_relabel_configs: *drop_buckets
+
+  - job_name: blackbox
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - https://app.r9lab.io
+          - https://docs.r9lab.io
+          - https://api.r9lab.io/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

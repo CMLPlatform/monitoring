@@ -72,6 +72,11 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "monitoring" {
         service  = "http://otel-collector:4318"
       },
       {
+        # Self-hosted alert delivery (Issue #19); authenticates with its own auth-file.
+        hostname = "ntfy.${var.domain}"
+        service  = "http://ntfy:80"
+      },
+      {
         service = "http_status:404"
       },
     ]
@@ -93,6 +98,15 @@ resource "cloudflare_dns_record" "grafana" {
 resource "cloudflare_dns_record" "otel" {
   zone_id = var.zone_id
   name    = "otel.${var.domain}"
+  type    = "CNAME"
+  content = "${cloudflare_zero_trust_tunnel_cloudflared.monitoring.id}.cfargotunnel.com"
+  proxied = true
+  ttl     = 1
+}
+
+resource "cloudflare_dns_record" "ntfy" {
+  zone_id = var.zone_id
+  name    = "ntfy.${var.domain}"
   type    = "CNAME"
   content = "${cloudflare_zero_trust_tunnel_cloudflared.monitoring.id}.cfargotunnel.com"
   proxied = true

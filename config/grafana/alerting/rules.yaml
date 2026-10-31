@@ -328,3 +328,73 @@ groups:
             The slowest 1% of requests to {{ $labels.job }}
             ({{ $labels.project }}/{{ $labels.env }}) took over 2 seconds for 5 minutes.
             The Latency p95 by route panel on Service Health shows which route.
+      - uid: blackbox-probe-failed
+        title: BlackboxProbeFailed
+        !!merge <<: *rule_defaults
+        for: 2m
+        data:
+          - !!merge <<: *query_node
+            model:
+              !!merge <<: *query_model
+              expr: probe_success{job="blackbox"} == bool 0
+          - *firing
+        labels:
+          severity: critical
+        annotations:
+          summary: "Outside-in HTTP probe failed for {{ $labels.instance }}"
+          description: "Blackbox prober failed to reach {{ $labels.instance }} for 2 minutes."
+      # Google SRE multi-window burn rate alerts for a 99.5% availability SLO
+      # (0.5% error budget over 30 days). A 14.4x burn consumes 2% of budget in 1 hour;
+      # 5m short and 1h long windows must both exceed the threshold to prevent flapping.
+      - uid: error-budget-burn-fast
+        title: ErrorBudgetBurnFast
+        !!merge <<: *rule_defaults
+        for: 2m
+        data:
+          - !!merge <<: *query_node
+            model:
+              !!merge <<: *query_model
+              expr: >
+                (sum by (job, project, env)
+                (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[1h]))
+                / sum by (job, project, env) (rate(http_server_request_duration_seconds_count[1h])) > (14.4 * 0.005))
+                and
+                (sum by (job, project, env)
+                (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m]))
+                / sum by (job, project, env) (rate(http_server_request_duration_seconds_count[5m])) > (14.4 * 0.005))
+                and sum by (job, project, env) (rate(http_server_request_duration_seconds_count[5m])) > 0.1
+          - *firing
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.project }}/{{ $labels.env }} {{ $labels.job }} 14.4x error budget burn (fast burn)"
+          description: >-
+            Consuming 2% of the 30-day 99.5% error budget within 1 hour.
+            Investigate immediately to protect the availability SLO.
+      # 6x burn consumes 5% of budget in 6 hours. Both 30m short and 6h long
+      # windows must exceed 6x (3% error rate) with minimum traffic floor.
+      - uid: error-budget-burn-slow
+        title: ErrorBudgetBurnSlow
+        !!merge <<: *rule_defaults
+        for: 15m
+        data:
+          - !!merge <<: *query_node
+            model:
+              !!merge <<: *query_model
+              expr: >
+                (sum by (job, project, env)
+                (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[6h]))
+                / sum by (job, project, env) (rate(http_server_request_duration_seconds_count[6h])) > (6 * 0.005))
+                and
+                (sum by (job, project, env)
+                (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[30m]))
+                / sum by (job, project, env) (rate(http_server_request_duration_seconds_count[30m])) > (6 * 0.005))
+                and sum by (job, project, env) (rate(http_server_request_duration_seconds_count[30m])) > 0.1
+          - *firing
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.project }}/{{ $labels.env }} {{ $labels.job }} 6x error budget burn (slow burn)"
+          description: >-
+            Consuming 5% of the 30-day 99.5% error budget within 6 hours.
+            Investigate to prevent error budget exhaustion.

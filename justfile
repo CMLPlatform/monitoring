@@ -1,7 +1,7 @@
 set dotenv-load
 
 # Stateful services; their volumes are <project>_<service>_data.
-stateful := "grafana prometheus loki tempo"
+stateful := "grafana prometheus loki tempo ntfy"
 
 # Helper and lint images, pinned once.
 jq := "ghcr.io/jqlang/jq:1.8.1@sha256:4f34c6d23f4b1372ac789752cc955dc67c2ae177eb1b5860b75cdc5091ce6f91"

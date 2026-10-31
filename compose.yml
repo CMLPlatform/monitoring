@@ -210,6 +210,38 @@ services:
     !!merge <<: *hardened
     networks: [default, backend]
 
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.26.0@sha256:92e05d5fe0df01d3980518dc42f07b778a8997048b57392ebc7f7391ebd7bb06
+    restart: unless-stopped
+    volumes:
+      - ./config/blackbox.yaml:/etc/blackbox_exporter/config.yml:ro
+    command: ["--config.file=/etc/blackbox_exporter/config.yml"]
+    healthcheck:
+      !!merge <<: *healthcheck
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9115/-/healthy"]
+    mem_limit: 64m
+    pids_limit: 64
+    read_only: true
+    !!merge <<: *hardened
+    networks: [default, backend]
+
+  ntfy:
+    image: binwiederhier/ntfy:v2.11.0@sha256:4a7d0f0adc6d5d9fc36e64ab55ef676e76e124a2bdd50ce115b6d9c1c7430294
+    restart: unless-stopped
+    volumes:
+      - ./config/ntfy/server.yml:/etc/ntfy/server.yml:ro
+      - ntfy_data:/var/lib/ntfy
+    command: ["serve", "--config=/etc/ntfy/server.yml"]
+    healthcheck:
+      !!merge <<: *healthcheck
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/v1/health"]
+    environment:
+      NTFY_BASE_URL: ${NTFY_BASE_URL:-http://localhost:80}
+    mem_limit: 128m
+    pids_limit: 128
+    !!merge <<: *hardened
+    networks: [default, backend]
+
 # Loki, Prometheus and Tempo have no authentication of their own, so only
 # Grafana and the collector can reach them. cloudflared stays on `default`: its
 # ingress list comes from Cloudflare at runtime, so an edited ingress cannot
@@ -223,5 +255,6 @@ volumes:
   tempo_data:
   prometheus_data:
   grafana_data:
+  ntfy_data:
   # Not in `just backup`: seconds of in-flight telemetry, worthless by restore time.
   otel_queue:
