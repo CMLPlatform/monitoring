@@ -167,7 +167,7 @@
       },
       "targets": [
         {
-          "expr": "100 * sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\", http_response_status_code=~\"5..\"}[$__rate_interval])) / sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\"}[$__rate_interval]))",
+          "expr": "(100 * sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\", http_response_status_code=~\"5..\"}[$__rate_interval])) / sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\"}[$__rate_interval]))) or vector(0)",
           "legendFormat": "Error Rate",
           "refId": "A"
         }
@@ -357,7 +357,7 @@
       },
       "targets": [
         {
-          "expr": "100 * (1 - (sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\", http_response_status_code=~\"5..\"}[$__range])) or 0) / (sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\"}[$__range])) > 0))",
+          "expr": "100 * (1 - ((sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\", http_response_status_code=~\"5..\"}[$__range])) or vector(0)) / (sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\"}[$__range])) > 0)))",
           "legendFormat": "Availability",
           "refId": "A"
         }
@@ -422,7 +422,7 @@
       },
       "targets": [
         {
-          "expr": "100 * (1 - ((sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\", http_response_status_code=~\"5..\"}[$__range])) or 0) / (sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\"}[$__range])) > 0)) / 0.005)",
+          "expr": "100 * (1 - (((sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\", http_response_status_code=~\"5..\"}[$__range])) or vector(0)) / (sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\"}[$__range])) > 0)) / 0.005))",
           "legendFormat": "Budget Remaining",
           "refId": "A"
         }
@@ -503,7 +503,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Error Rate",
+      "title": "Error Rate over Time",
       "description": "Share of server spans with STATUS_CODE_ERROR.",
       "gridPos": {
         "h": 8,
