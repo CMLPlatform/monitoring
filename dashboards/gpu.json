@@ -24,15 +24,15 @@
   "links": [
     {
       "asDropdown": false,
-      "icon": "external link",
-      "includeVars": false,
+      "icon": "dashboard",
+      "includeVars": true,
       "keepTime": true,
       "tags": [
-        "nvidia_gpu_exporter"
+        "cml"
       ],
       "targetBlank": false,
-      "title": "Related dashboards",
-      "tooltip": "",
+      "title": "CML Dashboards",
+      "tooltip": "Switch to another dashboard in the CML monitoring stack",
       "type": "dashboards",
       "url": ""
     }
@@ -3723,6 +3723,7 @@
   "refresh": "30s",
   "schemaVersion": 39,
   "tags": [
+    "cml",
     "gpu",
     "project"
   ],

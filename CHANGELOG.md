@@ -16,6 +16,14 @@ Notable changes to this stack. Format follows
   as a README badge.
 - A code of conduct (Contributor Covenant 3.0), issue forms for bugs and
   feature requests, and a pull request template.
+- Unified dashboard navigation bar across all five dashboards, preserving active
+  project/environment variables and time range.
+- Six headline KPI cards on Service Health (RED): request rate, error rate %, p95
+  and p50 latency, rolling availability (SLI), and 99.5% SLO error budget remaining.
+- "Who reports here" adoption table in the README and a 15-rule alert catalog
+  matrix in `docs/RUNBOOK.md`.
+- Log detail expansion and Tempo trace drill-down documentation in the Logs
+  dashboard.
 
 ### Changed
 
@@ -26,6 +34,10 @@ Notable changes to this stack. Format follows
 
 ### Fixed
 
+- Replaced the dead upstream `nvidia_gpu_exporter` tag link in the GPU dashboard
+  with unified stack navigation.
+- Moved `Container Restarts (1h)` to the top of the Containers section in Host &
+  Containers with restart alert thresholds.
 - `bootstrap.sh` prints each `PING_<JOB>=` line on its own line.
 - The OpenTelemetry Collector runs the multi-arch `0.163.2` image again. The
   Dependabot bump to `0.163.2-386` pulled the 32-bit x86 build. `just lint` now

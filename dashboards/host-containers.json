@@ -2,9 +2,26 @@
   "uid": "host-containers",
   "title": "Host & Containers",
   "tags": [
+    "cml",
     "host",
     "containers",
     "project"
+  ],
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "cml"
+      ],
+      "targetBlank": false,
+      "title": "CML Dashboards",
+      "tooltip": "Switch to another dashboard in the CML monitoring stack",
+      "type": "dashboards",
+      "url": ""
+    }
   ],
   "time": {
     "from": "now-6h",
@@ -446,13 +463,63 @@
     },
     {
       "type": "timeseries",
+      "title": "Container Restarts (1h)",
+      "description": "Restarts per container in the last hour. Flapping or crash-looping containers show here; ContainerRestarting alert fires above 3.",
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 26
+      },
+      "id": 20,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "changes(container_start_time_seconds{project=\"$project\", env=\"$env\", host_name=\"$host\", name!=\"\"}[1h])",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 15
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "#EAB839",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 3
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
       "title": "Container CPU",
       "description": "Per container, by name.",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 26
+        "y": 32
       },
       "id": 12,
       "datasource": {
@@ -485,7 +552,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 26
+        "y": 32
       },
       "id": 13,
       "datasource": {
@@ -518,7 +585,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 34
+        "y": 40
       },
       "datasource": {
         "type": "prometheus",
@@ -552,7 +619,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 34
+        "y": 40
       },
       "datasource": {
         "type": "prometheus",
@@ -586,7 +653,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 34
+        "y": 40
       },
       "datasource": {
         "type": "prometheus",
@@ -620,7 +687,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 42
+        "y": 48
       },
       "datasource": {
         "type": "prometheus",
@@ -654,7 +721,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 42
+        "y": 48
       },
       "datasource": {
         "type": "prometheus",
@@ -692,7 +759,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 42
+        "y": 48
       },
       "datasource": {
         "type": "prometheus",
@@ -721,39 +788,6 @@
         "overrides": []
       },
       "id": 19
-    },
-    {
-      "type": "timeseries",
-      "title": "Container Restarts (1h)",
-      "description": "ContainerRestarting fires above 3.",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 50
-      },
-      "id": 20,
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "targets": [
-        {
-          "expr": "changes(container_start_time_seconds{project=\"$project\", env=\"$env\", host_name=\"$host\", name!=\"\"}[1h])",
-          "legendFormat": "{{name}}",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 10
-          }
-        },
-        "overrides": []
-      }
     }
   ]
 }
