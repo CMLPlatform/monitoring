@@ -56,6 +56,29 @@ Memory is bounded per service: every service has a `mem_limit` in
 `compose.yml`, sized from observed usage. Raise it there if a component
 legitimately grows into its ceiling.
 
+## Alert reference
+
+All alerts evaluate in Grafana (`config/grafana/alerting/`) and deliver to
+`ALERT_WEBHOOK_URL` (with `Watchdog` pinging `HEARTBEAT_URL`):
+
+| Alert | Severity | Trigger condition | Triage action |
+| --- | --- | --- | --- |
+| `Watchdog` | none | Fires permanently | Dead-man's switch heartbeat. If external pings stop, the host or Grafana is down. |
+| `AlertDeliveryFailing` | critical | Grafana cannot deliver alerts for 10m | Check webhook URL connectivity and webhook receiver logs. |
+| `TargetDown` | critical | Prometheus cannot scrape an internal service for 2m | Run `docker compose ps` and `docker compose logs <service>`. |
+| `OtelExportFailures` | warning | Collector dropping/failing exports for 5m | Check downstream receiver logs (Loki, Tempo, Prometheus); check disk/memory. |
+| `ProjectTelemetrySilent` | critical | Onboarded spoke stopped sending telemetry for 15m | Inspect spoke agent/host; check Cloudflare tunnel or network connectivity. |
+| `ProjectsUncovered` | warning | A project is sending telemetry but missing from `projects.yaml` | Add the project/environment to `config/grafana/alerting/projects.yaml`. |
+| `ContainerRestarting` | warning | Spoke or hub container restarted > 3 times in 1h | Check container crashloop logs (`docker logs --tail 100 <container>`). |
+| `ContainerOOMKilled` | warning | Container killed by Linux kernel OOM killer | Check container memory ceiling in compose file or spoke allocation. |
+| `HighErrorRate` | warning | Application HTTP 5xx error rate > 5% for 5m | Inspect service RED dashboard, drill into error logs and Tempo traces. |
+| `HighLatencyP99` | warning | Application p99 latency > 2s for 5m | Check DB connection pool usage, slow routes on RED dashboard, and trace spans. |
+| `HostDiskSpaceLow` | warning | Host disk usage > 80% for 15m | Free space, prune docker images, or shorten retention in Loki/Tempo. |
+| `HostDiskFilling` | warning | Linear forecast predicts disk full within 3 days | Check for runaway log generation or Prometheus metric cardinality explosion. |
+| `HostMemoryHigh` | warning | Host RAM usage > 90% for 15m | Check container working sets on Host & Containers dashboard. |
+| `PrometheusCardinalityHigh` | warning | Active timeseries > 30,000 for 30m | Inspect label explosion using Prometheus TSDB status API. |
+| `PrometheusCardinalitySpike` | warning | > 5,000 new timeseries within 30m | High churn in metric labels; identify which service introduced non-cardinal labels. |
+
 ## Backup and restore
 
 ```sh

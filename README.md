@@ -75,6 +75,17 @@ The stack runs on a single host. [ADR 0001](docs/adr/0001-observability-stack.md
 records why, and the alternatives. [ADR 0002](docs/adr/0002-hub-and-spoke-observability.md)
 describes the hub-and-spoke design that serves multiple projects.
 
+### Who reports here
+
+| Project | Environment | Telemetry | Host | Spoke overlay |
+| --- | --- | --- | --- | --- |
+| [R9lab](https://github.com/CMLPlatform/relab) | `r9lab/prod` | Logs, Traces, Metrics | CML VM | `templates/compose.telemetry.yml` |
+| [R9lab](https://github.com/CMLPlatform/relab) | `r9lab/staging` | Logs, Traces, Metrics | CML VM | `templates/compose.telemetry.yml` |
+| [CML Gallery](https://github.com/CMLPlatform/cml-gallery) | Planned | Logs, Metrics | CML Host | `templates/compose.telemetry.yml` |
+
+The public alert marker in `config/grafana/alerting/projects.yaml` guards active
+reporting; `ProjectsUncovered` trips if an unlisted spoke begins transmitting.
+
 ## Run it for real
 
 ```sh

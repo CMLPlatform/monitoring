@@ -157,7 +157,7 @@
     {
       "type": "logs",
       "title": "Errors & Warnings",
-      "description": "Level is detected by Loki at ingest, not parsed here.",
+      "description": "Level is detected by Loki at ingest. Expand any log line with a trace_id to jump directly to the trace in Tempo.",
       "gridPos": {
         "h": 10,
         "w": 24,
@@ -178,13 +178,14 @@
       "options": {
         "showTime": true,
         "wrapLogMessage": true,
+        "enableLogDetails": true,
         "sortOrder": "Descending"
       }
     },
     {
       "type": "logs",
       "title": "All Logs",
-      "description": "Everything, newest first.",
+      "description": "Everything, newest first. Expand any line to follow trace_id into Tempo.",
       "gridPos": {
         "h": 10,
         "w": 24,
@@ -205,6 +206,7 @@
       "options": {
         "showTime": true,
         "wrapLogMessage": true,
+        "enableLogDetails": true,
         "sortOrder": "Descending"
       }
     }
