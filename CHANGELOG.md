@@ -8,6 +8,16 @@ Notable changes to this stack. Format follows
 
 ### Added
 
+- Prometheus Blackbox Exporter service for outside-in uptime probing of HTTP/S
+  endpoints (`prom/blackbox-exporter:v0.26.0`), reporting `probe_success` and latency
+  telemetry for research applications.
+- Multi-window SLO burn rate alerting (`ErrorBudgetBurnFast` and `ErrorBudgetBurnSlow`)
+  in `config/grafana/alerting/rules.yaml`, tracking 99.5% availability error budgets
+  across dual short and long evaluation windows.
+- `BlackboxProbeFailed` critical alert firing when an outside-in HTTP probe fails.
+- Self-hosted notification channel via `ntfy` (`binwiederhier/ntfy:v2.11.0`) with
+  zero-trust ACLs (`deny-all`), message caching, Prometheus metrics, and Cloudflare
+  Tunnel ingress to replace public push topics.
 - `CITATION.cff`, so GitHub offers a citation and a Zenodo archive of a release
   has the metadata it needs.
 - `SECURITY.md` says how to report a vulnerability and what is in scope;

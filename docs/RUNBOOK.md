@@ -128,6 +128,7 @@ backups and treat all three the same way.
 | `ALERT_WEBHOOK_URL`, `HEARTBEAT_URL` | `.env` | the notification provider |
 | `HEALTHCHECKS_API_KEY` | `.env` | healthchecks.io project settings |
 | `CLOUDFLARE_TUNNEL_TOKEN` | `.env` | `tofu output -raw tunnel_token` |
+| `NTFY_BASE_URL` | `.env` (optional) | public ntfy hostname, e.g. `https://ntfy.example.com` |
 | `CF_ACCESS_AUD` | `.env` (not secret, but paired) | `tofu output -raw grafana_access_aud` |
 | Tunnel secret, API responses | `infra/terraform.tfstate` | written by every `tofu apply` |
 | `CLOUDFLARE_API_TOKEN` | your shell, per session | Cloudflare dashboard |
@@ -135,6 +136,33 @@ backups and treat all three the same way.
 `infra/terraform.tfvars` holds identifiers only (account, zone, domain, the
 Access email list). It is gitignored for privacy, not because it holds a
 credential.
+
+## Alert catalog
+
+Eighteen alert rules guard the stack and reporting spokes across six folders.
+The PromQL threshold evaluates instant expressions; a rule fires when its
+comparison stays true for the duration of `for`:
+
+| Rule | Group | Severity | For | Trigger & Intent |
+| --- | --- | --- | --- | --- |
+| `Watchdog` | meta | none | 0m | Heartbeat pinging dead man's switch (`vector(1)`); always firing. |
+| `AlertDeliveryFailing` | meta | critical | 10m | Grafana failing to deliver webhook notifications. |
+| `TargetDown` | stack-health | critical | 2m | Prometheus cannot scrape an internal job target (`up == 0`). |
+| `OtelExportFailures` | stack-health | warning | 5m | OTel Collector failing to export spans, metrics, or logs. |
+| `BlackboxProbeFailed` | service-red | critical | 2m | Outside-in HTTP probe failed for an endpoint (`probe_success == 0`). |
+| `ErrorBudgetBurnFast` | service-red | critical | 2m | 14.4x burn rate (2% of 30d 99.5% SLO consumed in 1h; short 5m + long 1h). |
+| `ErrorBudgetBurnSlow` | service-red | warning | 15m | 6x burn rate (5% of 30d 99.5% SLO consumed in 6h; short 30m + long 6h). |
+| `HighErrorRate` | service-red | warning | 5m | Over 5% 5xx HTTP response codes on a service over 5 minutes. |
+| `HighLatencyP99` | service-red | warning | 5m | Slowest 1% of requests exceed 2 seconds over 5 minutes. |
+| `HostDiskSpaceLow` | capacity | warning | 15m | Storage volume under 20% free space. |
+| `HostDiskFilling` | capacity | warning | 30m | Linear fit predicts volume exhaust within 3 days. |
+| `HostMemoryHigh` | capacity | warning | 15m | Host RAM over 90% utilized for 15 minutes. |
+| `PrometheusCardinalityHigh` | capacity | warning | 30m | Active series exceed 30,000 threshold (~18 spokes baseline). |
+| `PrometheusCardinalitySpike` | capacity | warning | 15m | Head series spike by >5,000 in 30 minutes. |
+| `ContainerRestarting` | container-lifecycle | warning | 10m | Container restarts >3 times within 1 hour. |
+| `ContainerOOMKilled` | container-lifecycle | warning | 0m | Container terminated by host kernel OOM killer. |
+| `ProjectTelemetrySilent` | spoke | warning | 15m | Spoke service stopped shipping OTel telemetry. |
+| `ProjectUnscheduledRestart` | spoke | warning | 5m | Spoke container restarted unexpectedly. |
 
 ## Alert delivery
 
@@ -154,6 +182,73 @@ With the tunnel overlay active, `just up` refuses to start without
 After changing either variable, run `docker compose up -d grafana`. A plain
 `restart` keeps the old environment. Compose rebuilds a container's
 environment only on `up`.
+
+### Self-hosted alert delivery with ntfy
+
+Alert bodies carry infrastructure detail — hostnames, mount points, job names,
+and environment tags. A public hosted push service where topic names are the
+only protection allows anyone who discovers the topic to eavesdrop or forge
+alerts.
+
+The monitoring stack includes a self-hosted `ntfy` service running behind
+Cloudflare Tunnel with strict zero-trust authentication (`auth-default-access: "deny-all"`):
+
+```text
++------------------------------------------------------------------+
+| Monitoring Host                                                  |
+|                                                                  |
+|   Grafana ------(http://ntfy:80/alerts?tpl=1...)------> ntfy     |
+|   (publisher)                                            |       |
+|                                                     [auth.db]    |
+|                                                          ^       |
+|                                                          |       |
+|   cloudflared <---(https://ntfy.example.com)-------------+       |
+|   (tunnel)                                                       |
++-------^----------------------------------------------------------+
+        |
+   Mobile / Web client (authenticated subscriber)
+```
+
+#### 1. Create the Grafana publisher user
+
+Generate a password and add the user inside the container:
+
+```sh
+docker compose exec -e NTFY_PASSWORD="<grafana-secret>" ntfy ntfy user add grafana
+docker compose exec ntfy ntfy access grafana alerts write-only
+```
+
+#### 2. Configure Grafana contact point
+
+Point `ALERT_WEBHOOK_URL` in `.env` to the local ntfy instance using native
+message templating (`?tpl=1`):
+
+```sh
+ALERT_WEBHOOK_URL=http://grafana:<grafana-secret>@ntfy:80/alerts?tpl=1&title={{.CommonAnnotations.summary}}&message={{.CommonAnnotations.description}}
+```
+
+Apply the change to Grafana:
+
+```sh
+docker compose up -d grafana
+```
+
+#### 3. Create subscriber users for operators
+
+Each team member gets their own account with read-only access to the alerts topic:
+
+```sh
+docker compose exec -e NTFY_PASSWORD="<user-secret>" ntfy ntfy user add simon
+docker compose exec ntfy ntfy access simon alerts read-only
+```
+
+#### 4. Subscribe from phone or desktop
+
+Operators subscribe to `https://ntfy.<domain>/alerts` using the ntfy mobile app
+(iOS / Android) or web UI, authenticating with their username and password.
+Do NOT put the ntfy domain behind Cloudflare Access SSO: mobile push clients
+cannot complete the browser-based OAuth flow, breaking notifications silently.
+ntfy's internal credentials over TLS provide the access boundary.
 
 ## Changing the Cloudflare edge
 
