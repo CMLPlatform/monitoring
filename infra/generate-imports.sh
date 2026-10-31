@@ -79,6 +79,8 @@ otel_record="$(lookup_dns_record "otel.$domain")" || {
     die "no CNAME found for otel.$domain"
 }
 
+ntfy_record="$(lookup_dns_record "ntfy.$domain" || true)"
+
 # The Access app may legitimately not exist; then the apply should create it.
 access_apps="$(api "accounts/$account/access/apps?per_page=100")"
 access_app_id="$(jq -r --arg d "grafana.$domain" '.result[] | select(.domain == $d) | .id' <<<"$access_apps" | head -1)"
@@ -117,6 +119,16 @@ import {
   id = "$zone/$otel_record"
 }
 EOF
+
+if [[ -n "$ntfy_record" ]]; then
+    cat <<EOF
+
+import {
+  to = cloudflare_dns_record.ntfy
+  id = "$zone/$ntfy_record"
+}
+EOF
+fi
 
 if [[ -n "$access_app_id" ]]; then
     cat <<EOF

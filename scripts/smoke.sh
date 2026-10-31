@@ -60,7 +60,10 @@ code="$(curl -s -o /dev/null -w '%{http_code}' -H 'Cf-Access-Jwt-Assertion: not-
 # A renamed service leaves its scrape job silently empty, and TargetDown then
 # matches nothing. Every job in prometheus.yaml must have scraped its target.
 n_jobs="$(grep -c '^ *- job_name:' config/prometheus.yaml)"
-all_up() { [[ "$(promq 'count(up == 1)' | jq -r '.data.result[0].value[1] // 0')" == "$n_jobs" ]]; }
+all_up() {
+    [[ "$(promq 'count(count by (job) (up == 1))' | jq -r '.data.result[0].value[1] // 0')" == "$n_jobs" ]] \
+        && [[ "$(promq 'count(up == 0)' | jq -r '.data.result[0].value[1] // 0')" == "0" ]]
+}
 poll all_up || die "not all $n_jobs scrape targets are up: $(promq up | jq -r '.data.result[] | "\(.metric.job)=\(.value[1])"' | tr '\n' ' ')"
 
 # The alert-pipeline check below waits out TargetDown's `for`. Stopping its target
@@ -99,6 +102,19 @@ poll smoke_log || die "the smoke log never reached Loki with its department labe
 # silence both without any other assertion noticing.
 counted() { promq "count by (project, env) ({__name__=~\"telemetry_.+_total\", project=\"smoke\", env=\"ci\"})" | jq -e '.data.result | length > 0' >/dev/null; }
 poll counted || die "the count connector never produced telemetry_*_total{project=smoke,env=ci}; the alert rules that key on it would never fire"
+
+# ------------------------------------------------------------- ntfy & blackbox
+# Verify ntfy health endpoint answers over the docker network.
+ntfy_healthy() {
+    docker compose -p "$project" exec -T grafana curl -sf "http://ntfy:80/v1/health" >/dev/null
+}
+poll ntfy_healthy || die "ntfy health endpoint did not respond on internal port 80"
+
+# Verify blackbox prober recorded at least one probe duration metric.
+blackbox_probed() {
+    promq 'probe_duration_seconds{job="blackbox"}' | jq -e '.data.result | length > 0' >/dev/null
+}
+poll blackbox_probed || die "blackbox probe metrics never reached Prometheus; check blackbox-exporter"
 
 # ------------------------------------------------------------- alert pipeline
 # Opt-in (SMOKE_ALERTS=1): node-exporter was stopped after the scrape-target

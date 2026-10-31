@@ -1,0 +1,18 @@
+# ntfy configuration for CML monitoring alert delivery (Issue #19)
+listen-http: ":80"
+behind-proxy: true
+
+# Zero-trust auth: anonymous access is completely disabled
+auth-file: "/var/lib/ntfy/auth.db"
+auth-default-access: "deny-all"
+
+# Message cache for subscriber catch-up
+cache-file: "/var/lib/ntfy/cache.db"
+cache-duration: "12h"
+
+# Disable public registration; logins allowed via web app / API
+enable-signup: false
+enable-login: true
+
+# Prometheus metrics exposed on internal port 9090 (isolated from public ingress on port 80)
+metrics-listen-http: ":9090"
