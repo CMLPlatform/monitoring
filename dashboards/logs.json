@@ -2,8 +2,25 @@
   "uid": "logs",
   "title": "Logs",
   "tags": [
+    "cml",
     "logs",
     "project"
+  ],
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "cml"
+      ],
+      "targetBlank": false,
+      "title": "CML Dashboards",
+      "tooltip": "Switch to another dashboard in the CML monitoring stack",
+      "type": "dashboards",
+      "url": ""
+    }
   ],
   "time": {
     "from": "now-1h",

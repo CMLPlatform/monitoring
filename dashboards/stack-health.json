@@ -10,7 +10,24 @@
   },
   "graphTooltip": 1,
   "tags": [
+    "cml",
     "infra"
+  ],
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "cml"
+      ],
+      "targetBlank": false,
+      "title": "CML Dashboards",
+      "tooltip": "Switch to another dashboard in the CML monitoring stack",
+      "type": "dashboards",
+      "url": ""
+    }
   ],
   "panels": [
     {
