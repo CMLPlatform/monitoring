@@ -67,6 +67,7 @@ _expose-guards:
     @[ -n "${HEARTBEAT_URL:-}" ] || echo "WARNING: HEARTBEAT_URL is empty; the stack goes live without a dead-man's switch" >&2
     @for f in .env infra/terraform.tfvars infra/terraform.tfstate infra/terraform.tfstate.backup; do [ ! -e "$f" ] || case "$(stat -c %a "$f")" in *00) ;; *) echo "error: $f is readable by other users (mode $(stat -c %a "$f")); it holds live secrets, run: chmod 600 $f" >&2; exit 1;; esac; done
     @[ -n "${ALERT_WEBHOOK_URL:-}" ] || { echo "error: ALERT_WEBHOOK_URL is empty; every alert would fire into an empty webhook URL and be dropped. The heartbeat keeps pinging either way, so this failure looks healthy from the outside. Set it, or comment out this guard" >&2; exit 1; }
+    @case "${NTFY_BASE_URL:-}" in ""|https://*) ;; *) echo "error: NTFY_BASE_URL must be an https:// URL when exposing via tunnel (got '${NTFY_BASE_URL:-}')" >&2; exit 1;; esac
 
 # Core stack plus a demo telemetry source, isolated from any running stack (:3002).
 demo:
@@ -107,7 +108,7 @@ lint:
     # documented default is refused on its own.
     @good="OTLP_AUTH_TOKEN=t GRAFANA_ADMIN_PASSWORD=p GRAFANA_ROOT_URL=https://g.example GRAFANA_COOKIE_SECURE=true GRAFANA_JWT_AUTH=true CF_ACCESS_TEAM_DOMAIN=d CF_ACCESS_AUD=a HEARTBEAT_URL=https://h ALERT_WEBHOOK_URL=https://w"; \
       env $good just _expose-guards || { echo "error: exposure guards rejected a fully set environment" >&2; exit 1; }; \
-      for bad in OTLP_AUTH_TOKEN=local-dev-token GRAFANA_ADMIN_PASSWORD=change-me GRAFANA_ROOT_URL=http://g.example GRAFANA_COOKIE_SECURE=false CF_ACCESS_AUD= ALERT_WEBHOOK_URL=; do \
+      for bad in OTLP_AUTH_TOKEN=local-dev-token GRAFANA_ADMIN_PASSWORD=change-me GRAFANA_ROOT_URL=http://g.example GRAFANA_COOKIE_SECURE=false CF_ACCESS_AUD= ALERT_WEBHOOK_URL= NTFY_BASE_URL=http://insecure; do \
         ! env $good $bad just _expose-guards 2>/dev/null || { echo "error: exposure guards accepted $bad" >&2; exit 1; }; \
       done
     # run_scheduled.sh, interrupted mid-job, must take the job down with it,
@@ -158,6 +159,7 @@ _image file service:
 # Each config goes through the binary that will load it.
 validate:
     docker run --rm --network none -v ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro --entrypoint promtool $(just _image compose.yml prometheus) check config /etc/prometheus/prometheus.yaml
+    docker run --rm --network none -v ./config/blackbox.yaml:/etc/blackbox_exporter/config.yml:ro $(just _image compose.yml blackbox-exporter) --config.check --config.file=/etc/blackbox_exporter/config.yml
     docker run --rm --network none -e OTLP_AUTH_TOKEN=dummy -v ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro $(just _image compose.yml otel-collector) validate --config=/etc/otelcol/config.yaml
     docker run --rm --network none -v ./config/loki.yaml:/etc/loki/loki.yaml:ro $(just _image compose.yml loki) -config.file=/etc/loki/loki.yaml -verify-config
     docker run --rm --network none -v ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro $(just _image compose.yml tempo) -config.file=/etc/tempo/tempo.yaml -config.verify=true

@@ -103,6 +103,19 @@ poll smoke_log || die "the smoke log never reached Loki with its department labe
 counted() { promq "count by (project, env) ({__name__=~\"telemetry_.+_total\", project=\"smoke\", env=\"ci\"})" | jq -e '.data.result | length > 0' >/dev/null; }
 poll counted || die "the count connector never produced telemetry_*_total{project=smoke,env=ci}; the alert rules that key on it would never fire"
 
+# ------------------------------------------------------------- ntfy & blackbox
+# Verify ntfy health endpoint answers over the docker network.
+ntfy_healthy() {
+    docker compose -p "$project" exec -T grafana curl -sf "http://ntfy:80/v1/health" >/dev/null
+}
+poll ntfy_healthy || die "ntfy health endpoint did not respond on internal port 80"
+
+# Verify blackbox prober recorded at least one probe duration metric.
+blackbox_probed() {
+    promq 'probe_duration_seconds{job="blackbox"}' | jq -e '.data.result | length > 0' >/dev/null
+}
+poll blackbox_probed || die "blackbox probe metrics never reached Prometheus; check blackbox-exporter"
+
 # ------------------------------------------------------------- alert pipeline
 # Opt-in (SMOKE_ALERTS=1): node-exporter was stopped after the scrape-target
 # check; wait for TargetDown to reach firing. Costs the rule's `for` (2m) plus an

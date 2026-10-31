@@ -7,7 +7,7 @@ modules:
       valid_status_codes: [] # Defaults to 2xx
       valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
       method: GET
-      no_follow_redirects: false
+      follow_redirects: true
       fail_if_ssl: false
       fail_if_not_ssl: false
       tls_config:

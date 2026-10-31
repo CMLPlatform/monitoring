@@ -8,7 +8,7 @@ services:
   cloudflared:
     image: cloudflare/cloudflared:2026.10.3@sha256:faa8e0a1475f137c910be6025f43c8e4092fdd35461b31e19fd1390657a1ff39
     restart: unless-stopped
-    depends_on: [grafana, otel-collector]
+    depends_on: [grafana, otel-collector, ntfy]
     # Token via env, not --token: argv is readable from the host and from any
     # container with pid:host (node-exporter has it).
     command: tunnel --no-autoupdate run
