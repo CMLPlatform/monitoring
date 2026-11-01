@@ -8,6 +8,14 @@ Notable changes to this stack. Format follows
 
 ### Added
 
+- Dynamic file-based service discovery for blackbox uptime probing (`config/targets/probes.yaml`
+  via `file_sd_configs`), enabling outside-in monitoring of edge and static websites (such as
+  `cml-gallery`) without restarting Prometheus.
+- `just probe-add` recipe for registering probe targets with project and environment labels.
+- Browser Real User Monitoring (RUM) spoke template (`templates/web/rum.html`) capturing Core Web
+  Vitals (LCP, CLS) and unhandled JavaScript errors into standard OTLP logs.
+- Cross-origin resource sharing (CORS) support on the OpenTelemetry Collector HTTP receiver
+  for browser telemetry from `*.github.io` and `*.leidenuniv.nl`.
 - Prometheus Blackbox Exporter service for outside-in uptime probing of HTTP/S
   endpoints (`prom/blackbox-exporter:v0.26.0`), reporting `probe_success` and latency
   telemetry for research applications.

@@ -1,0 +1,126 @@
+<!--
+  CML Platform Observability: Real User Monitoring (RUM) & Web Vitals
+  Add this script to your site's <head> or before </body>.
+  Zero dependencies. Captures Core Web Vitals and unhandled errors,
+  sending standard OTLP/HTTP logs to the central OpenTelemetry collector.
+-->
+<script>
+(function() {
+  const ENDPOINT = window.__OTEL_ENDPOINT__ || "https://otel.example.com";
+  const PROJECT = window.__OTEL_PROJECT__ || "my-web-app";
+  const SERVICE = window.__OTEL_SERVICE__ || PROJECT;
+  const ENV = window.__OTEL_ENV__ || "prod";
+  const TOKEN = window.__OTEL_TOKEN__ || "";
+
+  function sendLog(body, severityText, attributes) {
+    if (!ENDPOINT || ENDPOINT.includes("example.com")) return;
+    const timeUnixNano = String(Date.now()) + "000000";
+    const logRecord = {
+      timeUnixNano: timeUnixNano,
+      observedTimeUnixNano: timeUnixNano,
+      severityNumber: severityText === "ERROR" ? 17 : 9,
+      severityText: severityText,
+      body: { stringValue: body },
+      attributes: Object.entries(attributes || {}).map(([key, val]) => ({
+        key: key,
+        value: typeof val === "number" ? { doubleValue: val } : { stringValue: String(val) }
+      }))
+    };
+
+    const payload = {
+      resourceLogs: [{
+        resource: {
+          attributes: [
+            { key: "service.name", value: { stringValue: SERVICE } },
+            { key: "project", value: { stringValue: PROJECT } },
+            { key: "env", value: { stringValue: ENV } },
+            { key: "telemetry.sdk.name", value: { stringValue: "cml-rum" } },
+            { key: "telemetry.sdk.language", value: { stringValue: "web-js" } },
+            { key: "user_agent", value: { stringValue: navigator.userAgent } },
+            { key: "page.url", value: { stringValue: window.location.href } }
+          ]
+        },
+        scopeLogs: [{
+          scope: { name: "cml-rum", version: "1.0.0" },
+          logRecords: [logRecord]
+        }]
+      }]
+    };
+
+    const headers = { "Content-Type": "application/json" };
+    if (TOKEN) headers["Authorization"] = "Bearer " + TOKEN;
+
+    const data = JSON.stringify(payload);
+    if (typeof fetch === "function") {
+      fetch(ENDPOINT.replace(/\/+$/, "") + "/v1/logs", {
+        method: "POST",
+        headers: headers,
+        body: data,
+        keepalive: true,
+        mode: "cors"
+      }).catch(function() {});
+    } else if (navigator.sendBeacon) {
+      navigator.sendBeacon(ENDPOINT.replace(/\/+$/, "") + "/v1/logs", data);
+    }
+  }
+
+  // --- Core Web Vitals ---
+  if ("PerformanceObserver" in window) {
+    // LCP
+    try {
+      new PerformanceObserver(function(list) {
+        const entries = list.getEntries();
+        const lastEntry = entries[entries.length - 1];
+        if (lastEntry) {
+          sendLog("WebVital: LCP", "INFO", {
+            vital_name: "LCP",
+            duration_ms: Math.round(lastEntry.startTime),
+            element: lastEntry.element ? (lastEntry.element.tagName || "element") : "unknown"
+          });
+        }
+      }).observe({ type: "largest-contentful-paint", buffered: true });
+    } catch (e) {}
+
+    // CLS
+    try {
+      let clsValue = 0;
+      new PerformanceObserver(function(list) {
+        for (const entry of list.getEntries()) {
+          if (!entry.hadRecentInput) {
+            clsValue += entry.value;
+          }
+        }
+      }).observe({ type: "layout-shift", buffered: true });
+
+      window.addEventListener("visibilitychange", function() {
+        if (document.visibilityState === "hidden" && clsValue > 0) {
+          sendLog("WebVital: CLS", "INFO", {
+            vital_name: "CLS",
+            cls_score: Math.round(clsValue * 1000) / 1000
+          });
+          clsValue = 0;
+        }
+      });
+    } catch (e) {}
+  }
+
+  // --- Uncaught Errors ---
+  window.addEventListener("error", function(evt) {
+    sendLog(evt.message || "Unhandled JavaScript Error", "ERROR", {
+      error_type: "uncaught_exception",
+      filename: evt.filename || "unknown",
+      lineno: evt.lineno || 0,
+      colno: evt.colno || 0,
+      stack: evt.error ? evt.error.stack || "" : ""
+    });
+  });
+
+  window.addEventListener("unhandledrejection", function(evt) {
+    const reason = evt.reason;
+    sendLog(reason && reason.message ? reason.message : String(reason), "ERROR", {
+      error_type: "unhandled_promise_rejection",
+      stack: reason && reason.stack ? reason.stack : ""
+    });
+  });
+})();
+</script>

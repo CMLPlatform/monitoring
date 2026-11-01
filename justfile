@@ -158,11 +158,23 @@ _image file service:
 
 # Each config goes through the binary that will load it.
 validate:
-    docker run --rm --network none -v ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro --entrypoint promtool $(just _image compose.yml prometheus) check config /etc/prometheus/prometheus.yaml
+    docker run --rm --network none -v ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro -v ./config/targets:/etc/prometheus/targets:ro --entrypoint promtool $(just _image compose.yml prometheus) check config /etc/prometheus/prometheus.yaml
     docker run --rm --network none -v ./config/blackbox.yaml:/etc/blackbox_exporter/config.yml:ro $(just _image compose.yml blackbox-exporter) --config.check --config.file=/etc/blackbox_exporter/config.yml
     docker run --rm --network none -e OTLP_AUTH_TOKEN=dummy -v ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro $(just _image compose.yml otel-collector) validate --config=/etc/otelcol/config.yaml
     docker run --rm --network none -v ./config/loki.yaml:/etc/loki/loki.yaml:ro $(just _image compose.yml loki) -config.file=/etc/loki/loki.yaml -verify-config
     docker run --rm --network none -v ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro $(just _image compose.yml tempo) -config.file=/etc/tempo/tempo.yaml -config.verify=true
+
+# Register an outside-in HTTP/S probe target for Prometheus file discovery.
+probe-add project env url tier="edge":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{url}}" in http://*|https://*) ;; *) echo "error: url must start with http:// or https:// (got '{{url}}')" >&2; exit 1;; esac
+    if grep -qF "{{url}}" config/targets/probes.yaml 2>/dev/null; then
+        echo "target {{url}} already present in config/targets/probes.yaml"
+        exit 0
+    fi
+    printf '\n- targets:\n    - %s\n  labels:\n    project: %s\n    env: %s\n    tier: %s\n' "{{url}}" "{{project}}" "{{env}}" "{{tier}}" >> config/targets/probes.yaml
+    echo "added probe target {{url}} (project: {{project}}, env: {{env}}, tier: {{tier}})"
 
 # Runs against a copy of the sources: state and tfvars never enter the
 # container, which has network access to fetch the provider.

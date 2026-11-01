@@ -110,11 +110,11 @@ ntfy_healthy() {
 }
 poll ntfy_healthy || die "ntfy health endpoint did not respond on internal port 80"
 
-# Verify blackbox prober recorded at least one probe duration metric.
+# Verify blackbox prober recorded probe duration metrics from file discovery.
 blackbox_probed() {
-    promq 'probe_duration_seconds{job="blackbox"}' | jq -e '.data.result | length > 0' >/dev/null
+    promq 'probe_duration_seconds{job="blackbox", project="cml-gallery"}' | jq -e '.data.result | length > 0' >/dev/null
 }
-poll blackbox_probed || die "blackbox probe metrics never reached Prometheus; check blackbox-exporter"
+poll blackbox_probed || die "blackbox probe metrics for cml-gallery never reached Prometheus; check blackbox-exporter and file_sd_configs"
 
 # ------------------------------------------------------------- alert pipeline
 # Opt-in (SMOKE_ALERTS=1): node-exporter was stopped after the scrape-target

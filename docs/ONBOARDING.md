@@ -71,6 +71,43 @@ OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <token>"
 OTEL_RESOURCE_ATTRIBUTES=project=my-project,env=prod
 ```
 
+## Template 3: Static & Edge Websites (Zero Code)
+
+For static sites (GitHub Pages, Cloudflare Pages, documentation portals), add outside-in
+uptime probing via Prometheus Blackbox Exporter:
+
+```sh
+just probe-add <project> <env> <url> [tier]
+```
+
+Example for a public gallery:
+
+```sh
+just probe-add cml-gallery prod https://cmlplatform.github.io/cml-gallery/ edge
+```
+
+Prometheus re-reads `config/targets/probes.yaml` automatically without a restart,
+tracking HTTP 2xx availability, response latency, and TLS certificate expiration.
+Outages trigger the `BlackboxProbeFailed` alert without false `ProjectTelemetrySilent` alarms.
+
+## Template 4: Browser Real User Monitoring (RUM)
+
+For browser-side performance (Core Web Vitals) and error tracking on static or single-page sites,
+include the zero-dependency snippet from [`templates/web/rum.html`](../templates/web/rum.html):
+
+```html
+<script>
+  window.__OTEL_ENDPOINT__ = "https://otel.example.org";
+  window.__OTEL_PROJECT__ = "cml-gallery";
+  window.__OTEL_SERVICE__ = "cml-gallery";
+  window.__OTEL_ENV__ = "prod";
+</script>
+<!-- Paste contents of templates/web/rum.html here -->
+```
+
+The OTel Collector's HTTP receiver includes preconfigured CORS headers allowing cross-origin
+vitals and error logs from `*.github.io` and `*.leidenuniv.nl`.
+
 ## Container logs and host metrics
 
 An application cannot report other containers' stdout, host resources, or its
