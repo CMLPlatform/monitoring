@@ -6,61 +6,71 @@
 -->
 <script>
 (function() {
-  const ENDPOINT = window.__OTEL_ENDPOINT__ || "https://otel.example.com";
+  const ENDPOINT = window.__OTEL_ENDPOINT__ || "";
   const PROJECT = window.__OTEL_PROJECT__ || "my-web-app";
   const SERVICE = window.__OTEL_SERVICE__ || PROJECT;
   const ENV = window.__OTEL_ENV__ || "prod";
   const TOKEN = window.__OTEL_TOKEN__ || "";
 
+  let isSending = false;
+
   function sendLog(body, severityText, attributes) {
-    if (!ENDPOINT || ENDPOINT.includes("example.com")) return;
-    const timeUnixNano = String(Date.now()) + "000000";
-    const logRecord = {
-      timeUnixNano: timeUnixNano,
-      observedTimeUnixNano: timeUnixNano,
-      severityNumber: severityText === "ERROR" ? 17 : 9,
-      severityText: severityText,
-      body: { stringValue: body },
-      attributes: Object.entries(attributes || {}).map(([key, val]) => ({
-        key: key,
-        value: typeof val === "number" ? { doubleValue: val } : { stringValue: String(val) }
-      }))
-    };
+    if (!ENDPOINT || isSending) return;
+    isSending = true;
 
-    const payload = {
-      resourceLogs: [{
-        resource: {
-          attributes: [
-            { key: "service.name", value: { stringValue: SERVICE } },
-            { key: "project", value: { stringValue: PROJECT } },
-            { key: "env", value: { stringValue: ENV } },
-            { key: "telemetry.sdk.name", value: { stringValue: "cml-rum" } },
-            { key: "telemetry.sdk.language", value: { stringValue: "web-js" } },
-            { key: "user_agent", value: { stringValue: navigator.userAgent } },
-            { key: "page.url", value: { stringValue: window.location.href } }
-          ]
-        },
-        scopeLogs: [{
-          scope: { name: "cml-rum", version: "1.0.0" },
-          logRecords: [logRecord]
+    try {
+      const timeUnixNano = String(Date.now()) + "000000";
+      const attrs = attributes || {};
+      const logRecord = {
+        timeUnixNano: timeUnixNano,
+        observedTimeUnixNano: timeUnixNano,
+        severityNumber: severityText === "ERROR" ? 17 : 9,
+        severityText: severityText,
+        body: { stringValue: body },
+        attributes: Object.keys(attrs).map(function(key) {
+          const val = attrs[key];
+          return {
+            key: key,
+            value: typeof val === "number" ? { doubleValue: val } : { stringValue: String(val) }
+          };
+        })
+      };
+
+      const pagePath = window.location.origin + window.location.pathname;
+      const payload = {
+        resourceLogs: [{
+          resource: {
+            attributes: [
+              { key: "service.name", value: { stringValue: SERVICE } },
+              { key: "project", value: { stringValue: PROJECT } },
+              { key: "env", value: { stringValue: ENV } },
+              { key: "telemetry.sdk.name", value: { stringValue: "cml-rum" } },
+              { key: "telemetry.sdk.language", value: { stringValue: "web-js" } },
+              { key: "user_agent", value: { stringValue: navigator.userAgent } },
+              { key: "page.url", value: { stringValue: pagePath } }
+            ]
+          },
+          scopeLogs: [{
+            scope: { name: "cml-rum", version: "1.0.0" },
+            logRecords: [logRecord]
+          }]
         }]
-      }]
-    };
+      };
 
-    const headers = { "Content-Type": "application/json" };
-    if (TOKEN) headers["Authorization"] = "Bearer " + TOKEN;
+      const headers = { "Content-Type": "application/json" };
+      if (TOKEN) headers["Authorization"] = "Bearer " + TOKEN;
 
-    const data = JSON.stringify(payload);
-    if (typeof fetch === "function") {
       fetch(ENDPOINT.replace(/\/+$/, "") + "/v1/logs", {
         method: "POST",
         headers: headers,
-        body: data,
+        body: JSON.stringify(payload),
         keepalive: true,
         mode: "cors"
       }).catch(function() {});
-    } else if (navigator.sendBeacon) {
-      navigator.sendBeacon(ENDPOINT.replace(/\/+$/, "") + "/v1/logs", data);
+    } catch (e) {
+      // Never let telemetry errors escape to window.onerror
+    } finally {
+      isSending = false;
     }
   }
 

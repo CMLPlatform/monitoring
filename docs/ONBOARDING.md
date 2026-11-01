@@ -101,12 +101,18 @@ include the zero-dependency snippet from [`templates/web/rum.html`](../templates
   window.__OTEL_PROJECT__ = "cml-gallery";
   window.__OTEL_SERVICE__ = "cml-gallery";
   window.__OTEL_ENV__ = "prod";
+  window.__OTEL_TOKEN__ = "<otlp-auth-token>"; // Required if collector enforces bearer auth
 </script>
 <!-- Paste contents of templates/web/rum.html here -->
 ```
 
 The OTel Collector's HTTP receiver includes preconfigured CORS headers allowing cross-origin
-vitals and error logs from `*.github.io` and `*.leidenuniv.nl`.
+vitals and error logs from `https://cmlplatform.github.io` and `https://*.leidenuniv.nl`.
+
+> [!NOTE]
+> For public client sites, avoid embedding shared administrative secrets in client-side HTML.
+> Route browser telemetry through a reverse proxy or edge function that injects the Authorization
+> header, or configure a dedicated ingestion token.
 
 ## Container logs and host metrics
 

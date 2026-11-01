@@ -166,14 +166,14 @@ validate:
 
 # Register an outside-in HTTP/S probe target for Prometheus file discovery.
 probe-add project env url tier="edge":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    case "{{url}}" in http://*|https://*) ;; *) echo "error: url must start with http:// or https:// (got '{{url}}')" >&2; exit 1;; esac
-    if grep -qF "{{url}}" config/targets/probes.yaml 2>/dev/null; then
-        echo "target {{url}} already present in config/targets/probes.yaml"
-        exit 0
-    fi
-    printf '\n- targets:\n    - %s\n  labels:\n    project: %s\n    env: %s\n    tier: %s\n' "{{url}}" "{{project}}" "{{env}}" "{{tier}}" >> config/targets/probes.yaml
+    @case "{{url}}" in http://*|https://*) ;; *) echo "error: url must start with http:// or https:// (got '{{url}}')" >&2; exit 1;; esac
+    @case "{{project}}" in [a-z0-9]*) ;; *) echo "error: project must start with [a-z0-9] (got '{{project}}')" >&2; exit 1;; esac
+    @case "{{env}}" in [a-z0-9]*) ;; *) echo "error: env must start with [a-z0-9] (got '{{env}}')" >&2; exit 1;; esac
+    @if grep -qFx "    - {{url}}" config/targets/probes.yaml 2>/dev/null; then \
+        echo "target {{url}} already present in config/targets/probes.yaml"; \
+        exit 0; \
+    fi; \
+    printf '\n- targets:\n    - %s\n  labels:\n    project: %s\n    env: %s\n    tier: %s\n' "{{url}}" "{{project}}" "{{env}}" "{{tier}}" >> config/targets/probes.yaml; \
     echo "added probe target {{url}} (project: {{project}}, env: {{env}}, tier: {{tier}})"
 
 # Runs against a copy of the sources: state and tfvars never enter the

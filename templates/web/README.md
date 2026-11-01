@@ -21,15 +21,18 @@ Cloudflare Pages).
   window.__OTEL_PROJECT__ = "cml-gallery";
   window.__OTEL_SERVICE__ = "cml-gallery";
   window.__OTEL_ENV__ = "prod";
-  window.__OTEL_TOKEN__ = "<optional-otlp-token>";
+  window.__OTEL_TOKEN__ = "<otlp-auth-token>"; // Required when collector enforces bearer auth
 </script>
 ```
 
 2. Copy the contents of [`rum.html`](rum.html) into your layout `<head>` or before `</body>`.
 
-## Ingestion in OpenTelemetry Collector
+## Ingestion & Security
 
-The collector's HTTP receiver (`0.0.0.0:4318`) is preconfigured with CORS headers allowing
-cross-origin POST requests from `https://*.github.io` and `https://*.leidenuniv.nl`.
-Logs are indexed in Loki by `service_name`, `project`, and `env`, viewable on the
-**Logs** dashboard.
+- **CORS Allowed Origins:** The collector's HTTP receiver (`0.0.0.0:4318`) allows cross-origin
+  POST requests from `https://cmlplatform.github.io` and `https://*.leidenuniv.nl`.
+- **Credential Hygiene:** For public client apps, avoid embedding shared cluster-wide secrets.
+  Route telemetry through an edge proxy that injects the auth header, or supply a dedicated
+  scoped ingest token.
+- **Log Indexing:** Logs are indexed in Loki by `service_name`, `project`, and `env`, viewable
+  on the **Logs** dashboard.
