@@ -1,0 +1,23 @@
+# Outside-in HTTP/S probes for services, edge sites, and research apps.
+# Prometheus re-reads this file automatically on change without a restart.
+- targets:
+    - https://app.r9lab.io
+    - https://docs.r9lab.io
+  labels:
+    project: r9lab
+    env: prod
+    tier: app
+
+- targets:
+    - https://api.r9lab.io/health
+  labels:
+    project: r9lab
+    env: prod
+    tier: api
+
+- targets:
+    - https://cmlplatform.github.io/cml-gallery/
+  labels:
+    project: cml-gallery
+    env: prod
+    tier: edge

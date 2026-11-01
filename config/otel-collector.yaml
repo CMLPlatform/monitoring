@@ -22,6 +22,14 @@ receivers:
         endpoint: 0.0.0.0:4318
         auth:
           authenticator: bearertokenauth
+        cors:
+          allowed_origins:
+            - "https://cmlplatform.github.io"
+            - "https://*.leidenuniv.nl"
+            - "http://localhost:*"
+          allowed_headers:
+            - "Authorization"
+            - "Content-Type"
 
 connectors:
   # A per-(project, env) ingest counter for every signal. The coverage and silence

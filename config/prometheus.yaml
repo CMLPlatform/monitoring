@@ -56,13 +56,13 @@ scrape_configs:
 
   - job_name: blackbox
     metrics_path: /probe
+    scrape_timeout: 15s
     params:
       module: [http_2xx]
-    static_configs:
-      - targets:
-          - https://app.r9lab.io
-          - https://docs.r9lab.io
-          - https://api.r9lab.io/health
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/probes.yaml
+        refresh_interval: 1m
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target

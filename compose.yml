@@ -115,6 +115,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - ./config/targets:/etc/prometheus/targets:ro
       - prometheus_data:/prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yaml
