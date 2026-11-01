@@ -64,14 +64,20 @@ ping_status() {
 # shellcheck disable=SC2329  # invoked via the TERM/INT traps below
 on_terminate() {
     local sig="$1"
+    local exit_code=143
+    local reason="job killed (likely a systemd timeout)"
+    if [[ "$sig" == "INT" ]]; then
+        exit_code=130
+        reason="job cancelled"
+    fi
     [[ -z "${job_pid:-}" ]] || kill -TERM -- "-$job_pid" 2>/dev/null
-    echo "run_scheduled: received SIG${sig}; job killed (likely a systemd timeout)" >>"$output_file"
+    echo "run_scheduled: received SIG${sig}; ${reason}" >>"$output_file"
     cat "$output_file"
     if [[ -n "$ping_url" ]]; then
-        ping_status 143
+        ping_status "$exit_code"
     fi
     rm -f "$output_file"
-    exit 143
+    exit "$exit_code"
 }
 trap 'on_terminate TERM' TERM
 trap 'on_terminate INT' INT

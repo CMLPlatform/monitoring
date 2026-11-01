@@ -20,7 +20,7 @@ Add your endpoint and project details before loading the snippet:
   window.__OTEL_PROJECT__ = "cml-gallery";
   window.__OTEL_SERVICE__ = "cml-gallery";
   window.__OTEL_ENV__ = "prod";
-  window.__OTEL_TOKEN__ = "<otlp-auth-token>"; // Required when collector enforces bearer auth
+  window.__OTEL_TOKEN__ = ""; // Leave blank when using an edge proxy or unauthenticated endpoint
 </script>
 ```
 
@@ -31,5 +31,5 @@ Paste the contents of [`rum.html`](rum.html) into your layout `<head>` or before
 ## Ingestion and Security
 
 - **CORS origins:** The collector HTTP receiver permits cross-origin requests from `https://cmlplatform.github.io` and Leiden University domains (`https://*.leidenuniv.nl`).
-- **Credential safety:** Do not embed cluster-wide admin secrets in client HTML. Route telemetry through an edge proxy that injects the Authorization header, or provision a dedicated ingestion token.
+- **Credential safety:** Do not embed collector bearer secrets in public client HTML. For public apps, either omit `window.__OTEL_TOKEN__` and let an edge proxy (such as Cloudflare Workers or Nginx) inject `Authorization: Bearer ...`, or provision a scoped low-privilege token.
 - **Log queries:** Logs are indexed in Loki by `service_name`, `project`, and `env`, viewable on the Grafana **Logs** dashboard.

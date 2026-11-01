@@ -118,7 +118,7 @@
   window.addEventListener("error", function(evt) {
     sendLog(evt.message || "Unhandled JavaScript Error", "ERROR", {
       error_type: "uncaught_exception",
-      filename: evt.filename || "unknown",
+      filename: evt.filename ? evt.filename.split("?")[0] : "unknown",
       lineno: evt.lineno || 0,
       colno: evt.colno || 0,
       stack: evt.error ? evt.error.stack || "" : ""
