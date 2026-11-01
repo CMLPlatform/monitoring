@@ -6,6 +6,17 @@ Notable changes to this stack. Format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-01
+
+### Upgrade
+
+- Re-vendor `templates/run_scheduled.sh` on spokes for accurate cancellation and SIGINT reporting (exit code 130).
+- Re-vendor `templates/alloy/compose.telemetry.yml` on spokes for Alloy `v1.21.2`.
+- Hub operators:
+  - If using Cloudflare Tunnel, run `tofu apply` in `infra/` to provision the new tunnel ingress route and CNAME for `ntfy`.
+  - Run `just up` to create the `ntfy_data` persistent volume and launch the Blackbox exporter and `ntfy` containers.
+  - In `.env`, ensure `ALERT_WEBHOOK_URL` uses `.commonAnnotations` rather than `.CommonAnnotations` so alert titles and messages render correctly in webhook payloads.
+
 ### Added
 
 - Dynamic file-based service discovery for blackbox uptime probing (`config/targets/probes.yaml`
@@ -46,6 +57,7 @@ Notable changes to this stack. Format follows
 ### Changed
 
 - Streamlined repository documentation and onboarding guides around researcher workflows, extracting host deployment guards and S3 storage migration into `docs/RUNBOOK.md` and refreshing dashboard screenshots.
+- Renamed covered research project identifier from `relab` to `r9lab` across `projects.yaml` and dashboard filters.
 - `bootstrap.sh` creates only a `watchdog` healthchecks.io check per
   project/environment, since that check reports the other scheduled jobs.
   The `backup` and `restore-check` checks it used to create were never
@@ -53,6 +65,8 @@ Notable changes to this stack. Format follows
 
 ### Fixed
 
+- Stat panels in Service Health dashboard explicitly request instant metrics to prevent Prometheus query timeouts on 30-day time ranges.
+- Webhook alert templates use lowercase `.commonAnnotations` to prevent template render errors and ntfy HTTP 400 Bad Request delivery drops.
 - Replaced the dead upstream `nvidia_gpu_exporter` tag link in the GPU dashboard
   with unified stack navigation.
 - Moved `Container Restarts (1h)` to the top of the Containers section in Host &
@@ -405,3 +419,11 @@ First tagged release: the stack is runnable, demoable, and validated in CI.
 Initial stack: OTel Collector → Loki / Tempo / Prometheus → Grafana wired
 for cross-signal correlation, exposed via Cloudflare Tunnel, with RELab
 dashboards.
+
+[Unreleased]: https://github.com/CMLPlatform/monitoring/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/CMLPlatform/monitoring/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/CMLPlatform/monitoring/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/CMLPlatform/monitoring/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/CMLPlatform/monitoring/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/CMLPlatform/monitoring/compare/v0.0.1...v0.1.0
+[0.0.1]: https://github.com/CMLPlatform/monitoring/releases/tag/v0.0.1

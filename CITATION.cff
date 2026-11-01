@@ -11,3 +11,14 @@ authors:
     orcid: "https://orcid.org/0009-0006-6953-909X"
 repository-code: "https://github.com/CMLPlatform/monitoring"
 license: MIT
+version: 0.5.0
+date-released: "2026-11-01"
+keywords:
+  - "observability"
+  - "opentelemetry"
+  - "grafana"
+  - "loki"
+  - "tempo"
+  - "prometheus"
+  - "research-infrastructure"
+  - "docker-compose"

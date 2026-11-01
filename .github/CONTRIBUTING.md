@@ -28,7 +28,7 @@ Python environment for the citation hooks itself). `just check` runs the static 
 validates every config, `just smoke` starts a throwaway copy of the stack and sends it
 telemetry, and `just fmt` formats the YAML. CI runs `just lint`, `just validate` and
 `just smoke`, plus `just infra-validate` when `infra/` changes. The
-[Checks](../README.md#checks) table in the README lists every recipe.
+[Verification commands](../docs/RUNBOOK.md#verification-commands) table in the runbook lists every recipe.
 
 ## Write commits and pull requests
 

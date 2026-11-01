@@ -59,25 +59,8 @@ legitimately grows into its ceiling.
 ## Alert reference
 
 All alerts evaluate in Grafana (`config/grafana/alerting/`) and deliver to
-`ALERT_WEBHOOK_URL` (with `Watchdog` pinging `HEARTBEAT_URL`):
-
-| Alert | Severity | Trigger condition | Triage action |
-| --- | --- | --- | --- |
-| `Watchdog` | none | Fires permanently | Dead-man's switch heartbeat. If external pings stop, the host or Grafana is down. |
-| `AlertDeliveryFailing` | critical | Grafana cannot deliver alerts for 10m | Check webhook URL connectivity and webhook receiver logs. |
-| `TargetDown` | critical | Prometheus cannot scrape an internal service for 2m | Run `docker compose ps` and `docker compose logs <service>`. |
-| `OtelExportFailures` | warning | Collector dropping/failing exports for 5m | Check downstream receiver logs (Loki, Tempo, Prometheus); check disk/memory. |
-| `ProjectTelemetrySilent` | critical | Onboarded spoke stopped sending telemetry for 15m | Inspect spoke agent/host; check Cloudflare tunnel or network connectivity. |
-| `ProjectsUncovered` | warning | A project is sending telemetry but missing from `projects.yaml` | Add the project/environment to `config/grafana/alerting/projects.yaml`. |
-| `ContainerRestarting` | warning | Spoke or hub container restarted > 3 times in 1h | Check container crashloop logs (`docker logs --tail 100 <container>`). |
-| `ContainerOOMKilled` | warning | Container killed by Linux kernel OOM killer | Check container memory ceiling in compose file or spoke allocation. |
-| `HighErrorRate` | warning | Application HTTP 5xx error rate > 5% for 5m | Inspect service RED dashboard, drill into error logs and Tempo traces. |
-| `HighLatencyP99` | warning | Application p99 latency > 2s for 5m | Check DB connection pool usage, slow routes on RED dashboard, and trace spans. |
-| `HostDiskSpaceLow` | warning | Host disk usage > 80% for 15m | Free space, prune docker images, or shorten retention in Loki/Tempo. |
-| `HostDiskFilling` | warning | Linear forecast predicts disk full within 3 days | Check for runaway log generation or Prometheus metric cardinality explosion. |
-| `HostMemoryHigh` | warning | Host RAM usage > 90% for 15m | Check container working sets on Host & Containers dashboard. |
-| `PrometheusCardinalityHigh` | warning | Active timeseries > 30,000 for 30m | Inspect label explosion using Prometheus TSDB status API. |
-| `PrometheusCardinalitySpike` | warning | > 5,000 new timeseries within 30m | High churn in metric labels; identify which service introduced non-cardinal labels. |
+`ALERT_WEBHOOK_URL` (with `Watchdog` pinging `HEARTBEAT_URL`). See the complete
+[Alert catalog](#alert-catalog) below for all 18 provisioned rules and triage procedures.
 
 ## Backup and restore
 
@@ -120,7 +103,7 @@ on the host.
   run `cd infra && tofu apply` to refresh the token data source, then read
   the new value with `tofu output -raw tunnel_token`. To rotate from code
   instead, run `tofu apply -replace=cloudflare_zero_trust_tunnel_cloudflared.monitoring`.
-  That builds a new tunnel and repoints both CNAMEs at it, and ingestion and
+  That builds a new tunnel and repoints all three CNAMEs (grafana, otel, ntfy) at it, and ingestion and
   Grafana are unreachable for about a minute. Either way, put the new token
   in `CLOUDFLARE_TUNNEL_TOKEN` in `.env`, then `just up`.
 - **Grafana admin password:** change `GRAFANA_ADMIN_PASSWORD` in `.env`,
@@ -162,7 +145,7 @@ credential.
 
 ## Alert catalog
 
-Eighteen alert rules guard the stack and reporting spokes across six folders.
+Eighteen alert rules guard the stack and reporting spokes across seven alert groups in the Stack alerts folder.
 The PromQL threshold evaluates instant expressions; a rule fires when its
 comparison stays true for the duration of `for`:
 
@@ -184,8 +167,8 @@ comparison stays true for the duration of `for`:
 | `PrometheusCardinalitySpike` | capacity | warning | 15m | Head series spike by >5,000 in 30 minutes. |
 | `ContainerRestarting` | container-lifecycle | warning | 10m | Container restarts >3 times within 1 hour. |
 | `ContainerOOMKilled` | container-lifecycle | warning | 0m | Container terminated by host kernel OOM killer. |
-| `ProjectTelemetrySilent` | spoke | warning | 15m | Spoke service stopped shipping OTel telemetry. |
-| `ProjectUnscheduledRestart` | spoke | warning | 5m | Spoke container restarted unexpectedly. |
+| `ProjectTelemetrySilent` | spoke | critical | 15m | Spoke service stopped shipping OTel telemetry. |
+| `ProjectsUncovered` | _coverage | warning | 5m | Telemetry received from unlisted project; register in projects.yaml. |
 
 ## Alert delivery
 
@@ -247,7 +230,7 @@ Point `ALERT_WEBHOOK_URL` in `.env` to the local ntfy instance using native
 message templating (`?tpl=1`):
 
 ```sh
-ALERT_WEBHOOK_URL=http://grafana:<grafana-secret>@ntfy:80/alerts?tpl=1&title={{.CommonAnnotations.summary}}&message={{.CommonAnnotations.description}}
+ALERT_WEBHOOK_URL=http://grafana:<grafana-secret>@ntfy:80/alerts?tpl=1&title={{or .commonAnnotations.summary .groupLabels.alertname}}&message={{or .commonAnnotations.description .commonAnnotations.summary "Alert firing"}}
 ```
 
 Apply the change to Grafana:
@@ -332,6 +315,7 @@ When the tunnel overlay is active, `just up` validates critical security setting
 - **`GRAFANA_ROOT_URL`**: Must match the `https://` tunnel hostname for Grafana.
 - **`GRAFANA_COOKIE_SECURE=true`**: Required when Grafana runs behind an HTTPS tunnel.
 - **`ALERT_WEBHOOK_URL`**: Cannot be empty; empty URLs drop all fired alerts.
+- **`NTFY_BASE_URL`**: Must be an https:// URL when exposing ntfy via tunnel.
 - **`GRAFANA_JWT_AUTH=true`**: Requires both `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` set.
 - **File permissions**: Refuses to start if `.env`, `infra/terraform.tfvars`, or Terraform state files are readable by other users (mode must be `0600`).
 - **`HEARTBEAT_URL`**: Emits a warning if unset (the stack runs without a dead-man's switch).
@@ -345,6 +329,7 @@ When the tunnel overlay is active, `just up` validates critical security setting
 | `just check` | Runs `just lint` and `just validate`. |
 | `just smoke` | Boots an isolated copy of the stack and asserts ingestion, storage, and query APIs end-to-end. |
 | `just restore-check` | Verifies backup snapshot creation and restoration against the smoke stack. |
+| `just probe-add` | Registers an outside-in HTTP/S probe target in `config/targets/probes.yaml`. |
 | `just hooks` | Installs git pre-commit and pre-push hooks (gitleaks, citation checks, check). |
 
 ## Storage architecture and S3 migration
@@ -355,6 +340,7 @@ Telemetry persists to local Docker volumes managed by `docker compose`:
 - `tempo_data`: Tempo trace blocks.
 - `prometheus_data`: Prometheus time-series metrics.
 - `grafana_data`: Dashboard definitions and alert state.
+- `ntfy_data`: SQLite user database and message cache for ntfy.
 - `otel_queue`: Ephemeral collector export buffer (skipped during backups).
 
 Create volume snapshots using `just backup`, which creates a timestamped archive in `backups/`.
