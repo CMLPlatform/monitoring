@@ -45,6 +45,7 @@ Notable changes to this stack. Format follows
 
 ### Changed
 
+- Streamlined repository documentation and onboarding guides around researcher workflows, extracting host deployment guards and S3 storage migration into `docs/RUNBOOK.md` and refreshing dashboard screenshots.
 - `bootstrap.sh` creates only a `watchdog` healthchecks.io check per
   project/environment, since that check reports the other scheduled jobs.
   The `backup` and `restore-check` checks it used to create were never

@@ -1,19 +1,18 @@
 # Frontend Real User Monitoring (RUM) Spoke Template
 
-This template provides lightweight, zero-dependency browser observability for
-static websites, documentation portals, and edge-served web apps (e.g., GitHub Pages,
-Cloudflare Pages).
+Lightweight, zero-dependency browser telemetry for static websites, documentation portals, and edge web applications (GitHub Pages, Cloudflare Pages).
 
 ## What it captures
 
-1. **Core Web Vitals**: Largest Contentful Paint (LCP) and Cumulative Layout Shift (CLS).
-2. **Unhandled JavaScript Errors**: `window.onerror` exceptions and unhandled promise rejections.
-3. **Traceable Logs**: Shipped as standard OTLP/HTTP JSON (`/v1/logs`) directly to the central
-   OpenTelemetry Collector.
+1. **Core Web Vitals:** Largest Contentful Paint (LCP) and Cumulative Layout Shift (CLS).
+2. **Unhandled errors:** `window.onerror` exceptions and unhandled promise rejections.
+3. **Structured logs:** Shipped as standard OTLP/HTTP JSON (`/v1/logs`) to the central collector.
 
-## Usage in Astro / HTML
+## Integration
 
-1. Define your endpoint and project configuration before the snippet:
+### 1. Set configuration variables
+
+Add your endpoint and project details before loading the snippet:
 
 ```html
 <script>
@@ -25,14 +24,12 @@ Cloudflare Pages).
 </script>
 ```
 
-2. Copy the contents of [`rum.html`](rum.html) into your layout `<head>` or before `</body>`.
+### 2. Include the script
 
-## Ingestion & Security
+Paste the contents of [`rum.html`](rum.html) into your layout `<head>` or before `</body>`.
 
-- **CORS Allowed Origins:** The collector's HTTP receiver (`0.0.0.0:4318`) allows cross-origin
-  POST requests from `https://cmlplatform.github.io` and `https://*.leidenuniv.nl`.
-- **Credential Hygiene:** For public client apps, avoid embedding shared cluster-wide secrets.
-  Route telemetry through an edge proxy that injects the auth header, or supply a dedicated
-  scoped ingest token.
-- **Log Indexing:** Logs are indexed in Loki by `service_name`, `project`, and `env`, viewable
-  on the **Logs** dashboard.
+## Ingestion and Security
+
+- **CORS origins:** The collector HTTP receiver permits cross-origin requests from `https://cmlplatform.github.io` and Leiden University domains (`https://*.leidenuniv.nl`).
+- **Credential safety:** Do not embed cluster-wide admin secrets in client HTML. Route telemetry through an edge proxy that injects the Authorization header, or provision a dedicated ingestion token.
+- **Log queries:** Logs are indexed in Loki by `service_name`, `project`, and `env`, viewable on the Grafana **Logs** dashboard.
