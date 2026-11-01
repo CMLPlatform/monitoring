@@ -314,6 +314,61 @@ cd infra && tofu apply
   `infra/generate-imports.sh > infra/imports.tf`, which reads the live objects
   back out of the Cloudflare API and adopts them into a fresh state.
 
+## Production host deployment and pre-flight guards
+
+In production, run the tunnel overlay alongside the core compose file:
+
+```sh
+cp .env.example .env
+# Edit .env and set COMPOSE_FILE=compose.yml:compose.tunnel.yml
+just up
+just check
+```
+
+When the tunnel overlay is active, `just up` validates critical security settings before starting:
+
+- **`OTLP_AUTH_TOKEN`**: Refuses the default `local-dev-token`. Generate one with `openssl rand -hex 32`.
+- **`GRAFANA_ADMIN_PASSWORD`**: Refuses `change-me`. Set a strong password.
+- **`GRAFANA_ROOT_URL`**: Must match the `https://` tunnel hostname for Grafana.
+- **`GRAFANA_COOKIE_SECURE=true`**: Required when Grafana runs behind an HTTPS tunnel.
+- **`ALERT_WEBHOOK_URL`**: Cannot be empty; empty URLs drop all fired alerts.
+- **`GRAFANA_JWT_AUTH=true`**: Requires both `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` set.
+- **File permissions**: Refuses to start if `.env`, `infra/terraform.tfvars`, or Terraform state files are readable by other users (mode must be `0600`).
+- **`HEARTBEAT_URL`**: Emits a warning if unset (the stack runs without a dead-man's switch).
+
+### Verification commands
+
+| Command | Action |
+| --- | --- |
+| `just lint` | Runs static checks (compose, alert templates, YAML, workflows, shell, Python, JSON). |
+| `just validate` | Validates each service config with its respective tool container. |
+| `just check` | Runs `just lint` and `just validate`. |
+| `just smoke` | Boots an isolated copy of the stack and asserts ingestion, storage, and query APIs end-to-end. |
+| `just restore-check` | Verifies backup snapshot creation and restoration against the smoke stack. |
+| `just hooks` | Installs git pre-commit and pre-push hooks (gitleaks, citation checks, check). |
+
+## Storage architecture and S3 migration
+
+Telemetry persists to local Docker volumes managed by `docker compose`:
+
+- `loki_data`: Loki log chunks.
+- `tempo_data`: Tempo trace blocks.
+- `prometheus_data`: Prometheus time-series metrics.
+- `grafana_data`: Dashboard definitions and alert state.
+- `otel_queue`: Ephemeral collector export buffer (skipped during backups).
+
+Create volume snapshots using `just backup`, which creates a timestamped archive in `backups/`.
+
+### Migrating to S3 object storage
+
+When local disk space no longer accommodates Loki or Tempo retention:
+
+1. Provision S3-compatible buckets for logs and traces (e.g. AWS S3, Cloudflare R2, MinIO).
+2. Update `config/loki.yaml` storage schema to use `s3` object storage.
+3. Update `config/tempo.yaml` storage block with bucket and endpoint configuration.
+4. Restart services with `just restart loki` and `just restart tempo`.
+See the appendix of [ADR 0001](adr/0001-observability-stack.md) for detailed configuration snippets.
+
 ## Cutting a release
 
 A tag is the deployable unit: `bootstrap.sh` pins every spoke's vendored

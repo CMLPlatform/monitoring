@@ -1,48 +1,55 @@
-# Sending telemetry from your application
+# Connecting a Project
 
-You need an endpoint, a token, and a few naming conventions. Then pick the
-template that matches how your application runs. A Python/FastAPI service
-needs no code changes.
+Choose your project type to find the right onboarding recipe:
 
-## The endpoint
+| Project Type | What it monitors | Setup Time | Recipe |
+| --- | --- | --- | --- |
+| **Python / FastAPI Web App** | Traces, RED metrics, error logs | 5 minutes | [Template 1: Web Services](#template-1-python--fastapi-services) |
+| **CLI / Batch Script / Other Lang** | Custom traces, metrics, logs | 5 minutes | [Template 2: General Applications](#template-2-general-applications-any-language) |
+| **Static Website / Portal** | Availability, HTTP 2xx latency, TLS expiry | 1 minute | [Template 3: Static & Edge Sites](#template-3-static--edge-websites-outside-in) |
+| **Browser Frontend / Web App** | Core Web Vitals (LCP, CLS), client errors | 2 minutes | [Template 4: Browser RUM](#template-4-browser-real-user-monitoring-rum) |
+| **Entire VM or Server Host** | Host CPU/RAM/Disk, container lifecycle, stdout | 10 minutes | [Host Agent: Grafana Alloy](#host-agent-container-logs-and-host-metrics) |
 
-| | |
-| --- | --- |
-| Production (via tunnel) | `https://otel.<domain>`, OTLP **HTTP** (`http/protobuf`) only |
-| Private network / same host | `<host>:4317` (gRPC) or `<host>:4318` (HTTP) |
-| Auth | `Authorization: Bearer <OTLP_AUTH_TOKEN>` (ask the stack operator) |
+---
 
-The tunnel routes HTTPS to the collector's HTTP receiver only. Set
-`OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf` when you send through it. gRPC
-works on private paths only (VPN, WireGuard, or the same Docker network).
-Never expose 4317/4318 directly.
+## Endpoint and Credentials
 
-## The conventions
+Request the active endpoint URL and ingest token from the monitoring administrator:
 
-- **`service.name`** is required: one stable name per deployable unit
-  (`r9lab-api`, not `r9lab-api-prod-2`). Dashboards key on it.
-- **`project`** and **`env`** are both required resource attributes: `project`
-  is the name `bootstrap.sh` was run with, `env` is `prod`, `staging`, or
-  `dev`. Together they are what every alert and dashboard filters on, and a
-  sender that omits them is counted as `unknown` and alerts as an uncovered
-  project.
-- **Keep labels low-cardinality.** Prometheus turns every distinct label
-  value into a series. User IDs, request IDs, and timestamps belong in the
-  log line or in span attributes, not in resource attributes or metric labels.
-- **Loki indexes only the identity labels**: `service.name`, `department`,
-  `project`, `env`, `host.name` (the list is in `config/loki.yaml`). Every
-  other attribute is structured metadata. Select the stream first, then
-  filter: `{service_name="my-service", env="prod"} | service_instance_id="..."`.
+| Path | Ingestion Target | Protocol | Notes |
+| --- | --- | --- | --- |
+| **Production (via tunnel)** | `https://otel.<domain>` | OTLP HTTP (`http/protobuf`) | Uses Cloudflare Tunnel |
+| **Private network / same host** | `<host>:4317` (gRPC) or `<host>:4318` (HTTP) | OTLP gRPC or HTTP | Direct internal networking |
+| **Authentication** | `Authorization: Bearer <token>` | Header | Enforced at gateway |
 
-The Service Health dashboard and the error-rate alert read the standard HTTP
-server metrics (`http_server_request_duration_seconds`). The
-auto-instrumentation below emits them.
+> [!WARNING]
+> Never expose ports 4317 or 4318 directly to the public internet. The compose stack binds them to `127.0.0.1`.
 
-## Template 1: Python/FastAPI, zero code changes
+---
+
+## Required Naming Conventions
+
+Every signal requires three identity labels to route correctly and avoid alerting rules tripping:
+
+1. **`service.name`**: One stable identifier per deployable unit (e.g. `r9lab-api`). Dashboards filter on this name.
+2. **`project`**: The project identifier registered with the hub (e.g. `r9lab`).
+3. **`env`**: Environment tier: `prod`, `staging`, or `dev`.
+
+Keep metric labels low-cardinality. Put user identifiers, request IDs, and query parameters inside log messages or span attributes, never in resource attributes or metric labels.
+
+---
+
+## Template 1: Python / FastAPI Services
+
+Auto-instrument a Python application with zero code changes.
+
+### 1. Install dependencies
 
 ```sh
 pip install opentelemetry-distro opentelemetry-exporter-otlp opentelemetry-instrumentation-fastapi
 ```
+
+### 2. Export environment variables
 
 ```sh
 export OTEL_SERVICE_NAME=my-service
@@ -52,29 +59,36 @@ export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <token>"
 export OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true
 export OTEL_SEMCONV_STABILITY_OPT_IN=http
+```
 
+### 3. Run the service
+
+```sh
 opentelemetry-instrument uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
-That gives traces, RED metrics, and logs with trace context, with no OTel
-code in the app. A working example is this repo's [`demo/`](../demo/) service
-plus [`compose.demo.yml`](../compose.demo.yml).
+This exports traces, RED metrics, and correlated logs to the hub. A working reference is available in [`demo/`](../demo/) and [`compose.demo.yml`](../compose.demo.yml).
 
-## Template 2: any language, plain OTLP
+---
 
-Every OpenTelemetry SDK reads the same four environment variables:
+## Template 2: General Applications (Any Language)
+
+Any standard OpenTelemetry SDK reads these four environment variables:
 
 ```sh
 OTEL_SERVICE_NAME=my-service
+OTEL_RESOURCE_ATTRIBUTES=project=my-project,env=prod
 OTEL_EXPORTER_OTLP_ENDPOINT=https://otel.example.org
 OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <token>"
-OTEL_RESOURCE_ATTRIBUTES=project=my-project,env=prod
 ```
 
-## Template 3: Static & Edge Websites (Zero Code)
+Configure your application SDK to use standard OTLP/HTTP export.
 
-For static sites (GitHub Pages, Cloudflare Pages, documentation portals), add outside-in
-uptime probing via Prometheus Blackbox Exporter:
+---
+
+## Template 3: Static & Edge Websites (Outside-In)
+
+For documentation portals, static pages (GitHub Pages, Cloudflare Pages), or edge sites without a backend server, register an external probe:
 
 ```sh
 just probe-add <project> <env> <url> [tier]
@@ -86,38 +100,39 @@ Example for a public gallery:
 just probe-add cml-gallery prod https://cmlplatform.github.io/cml-gallery/ edge
 ```
 
-Prometheus re-reads `config/targets/probes.yaml` automatically without a restart,
-tracking HTTP 2xx availability, response latency, and TLS certificate expiration.
-Outages trigger the `BlackboxProbeFailed` alert without false `ProjectTelemetrySilent` alarms.
+Prometheus reloads `config/targets/probes.yaml` automatically without a restart. The blackbox exporter probes HTTP 2xx availability, response latency, and TLS certificate expiration. Downtime trips the `BlackboxProbeFailed` alert without false telemetry warnings.
+
+---
 
 ## Template 4: Browser Real User Monitoring (RUM)
 
-For browser-side performance (Core Web Vitals) and error tracking on static or single-page sites,
-include the zero-dependency snippet from [`templates/web/rum.html`](../templates/web/rum.html):
+For client-side performance and error tracking on web applications or static portals, include the lightweight snippet from [`templates/web/rum.html`](../templates/web/rum.html):
 
 ```html
 <script>
   window.__OTEL_ENDPOINT__ = "https://otel.example.org";
-  window.__OTEL_PROJECT__ = "cml-gallery";
-  window.__OTEL_SERVICE__ = "cml-gallery";
+  window.__OTEL_PROJECT__ = "my-project";
+  window.__OTEL_SERVICE__ = "my-web";
   window.__OTEL_ENV__ = "prod";
   window.__OTEL_TOKEN__ = "<otlp-auth-token>"; // Required if collector enforces bearer auth
 </script>
 <!-- Paste contents of templates/web/rum.html here -->
 ```
 
-The OTel Collector's HTTP receiver includes preconfigured CORS headers allowing cross-origin
-vitals and error logs from `https://cmlplatform.github.io` and `https://*.leidenuniv.nl`.
+What it captures:
 
-> [!NOTE]
-> For public client sites, avoid embedding shared administrative secrets in client-side HTML.
-> Route browser telemetry through a reverse proxy or edge function that injects the Authorization
-> header, or configure a dedicated ingestion token.
+- **Core Web Vitals:** Largest Contentful Paint (LCP) and Cumulative Layout Shift (CLS).
+- **Client Exceptions:** Unhandled `window.onerror` exceptions and unhandled promise rejections.
+- **Log Streams:** Emits structured OTLP/HTTP JSON (`/v1/logs`) indexed into Loki.
 
-## Container logs and host metrics
+The collector permits cross-origin requests from `https://cmlplatform.github.io` and Leiden University domains (`*.leidenuniv.nl`). See [`templates/web/README.md`](../templates/web/README.md) for details.
 
-An application cannot report other containers' stdout, host resources, or its
-own crash loops. One Grafana Alloy agent per host ships those, over the same
-endpoint and token. Run `./bootstrap.sh <project> <env>` on the monitoring
-host and follow what it prints. Details are in
-[templates/README.md](../templates/README.md).
+---
+
+## Host Agent: Container Logs and Host Metrics
+
+Applications cannot monitor host CPU, memory, disk saturation, or container crash loops.
+
+A shared Grafana Alloy agent runs on each project host to collect system metrics and Docker logs. Run `./bootstrap.sh <project> <env>` on the monitoring host to generate the project configuration and alerts.
+
+Complete host agent deployment steps are documented in [templates/README.md](../templates/README.md).
