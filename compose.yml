@@ -58,7 +58,7 @@ services:
     logging: *default-logging
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.163.2@sha256:7f22d2a6748110ffb6a59bc0df448bccbf501cdb667d610ede4c61d3863d5849
+    image: otel/opentelemetry-collector-contrib:0.164.0@sha256:340c9ca6a36617084c6661bdc4f0fe92b7cda5a805d61673ec8db375fddc522b
     restart: unless-stopped
     depends_on:
       otel-queue-init:
@@ -164,7 +164,7 @@ services:
     networks: [backend]
 
   grafana:
-    image: grafana/grafana:13.2.4@sha256:dbbc38ea21103cefb50396340cd88afec779c7e070b0a7bf5a75b4ce46651d3f
+    image: grafana/grafana:13.3.0@sha256:488984b716c0862639f91a698adbe2862677a5a07bad42da5f03f3030883b205
     restart: unless-stopped
     depends_on:
       loki:
@@ -212,7 +212,7 @@ services:
     networks: [default, backend]
 
   blackbox-exporter:
-    image: prom/blackbox-exporter:v0.26.0@sha256:92e05d5fe0df01d3980518dc42f07b778a8997048b57392ebc7f7391ebd7bb06
+    image: prom/blackbox-exporter:v0.29.1@sha256:ea1c7aa3ef3f307cd03e85f34abb604478ccb90b567fc690da0cd9776da76b13
     restart: unless-stopped
     volumes:
       - ./config/blackbox.yaml:/etc/blackbox_exporter/config.yml:ro
@@ -227,7 +227,7 @@ services:
     networks: [default, backend]
 
   ntfy:
-    image: binwiederhier/ntfy:v2.11.0@sha256:4a7d0f0adc6d5d9fc36e64ab55ef676e76e124a2bdd50ce115b6d9c1c7430294
+    image: binwiederhier/ntfy:v2.36.0@sha256:fb48c413eb11d50339962b5d62cddce0f800e7f77c626d638a7c20cb7e9c4465
     restart: unless-stopped
     volumes:
       - ./config/ntfy/server.yml:/etc/ntfy/server.yml:ro
