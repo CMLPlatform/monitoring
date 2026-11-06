@@ -17,7 +17,7 @@ Notable changes to this stack. Format follows
 
 - The CML overlay: a Copier template (`copier.yml`) that vendors the spoke files into a project's
   repo, with `project`, `env`, `gpu`, OTLP endpoint and contact questions, its own
-  `.copier-answers.cml.yml`, and the non-secret `.env` variables in `.env.telemetry.example`.
+  `.copier-answers.cml.yml`, and the non-secret `.env` variables in `telemetry.env.example`.
   See [ADR 0003](docs/adr/0003-spoke-files-as-copier-overlay.md).
 - `just overlay-check`, run in CI, renders the overlay with and without GPU and checks that every
   vendored file matches its source byte for byte.

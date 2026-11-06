@@ -31,7 +31,8 @@ project's base template.
 - **The answers are what differs per project:** `project` and `env` (with
   `bootstrap.sh`'s validation), `gpu` (renders `compose.telemetry.gpu.yml`
   only when true), the hub's OTLP endpoint, and an optional contact address.
-  They render into `.env.telemetry.example`. No secret is asked for or written.
+  They render into `telemetry.env.example` (not `.env.*`, which project
+  `.gitignore` files hide). No secret is asked for or written.
 - **A tag is still the deployable unit.** `bootstrap.sh` prints `copier copy`
   pinned at the latest tag, and a later tag reaches a spoke as
   `copier update --answers-file .copier-answers.cml.yml`: a diff in a PR,
