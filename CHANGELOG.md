@@ -8,26 +8,38 @@ Notable changes to this stack. Format follows
 
 ### Upgrade
 
-- Spokes that vendored the templates by `curl`: apply the CML overlay once in the project's repo
-  (`copier copy --vcs-ref=<tag> --data project=<project> --data env=<env> gh:CMLPlatform/monitoring .`)
-  and commit what it writes. Later tags arrive with
-  `copier update --answers-file .copier-answers.cml.yml`.
+- Spokes that vendored the templates by `curl` move to the CML overlay, one layer at a time:
+  - In each project repo, the project layer:
+    `copier copy --vcs-ref=<tag> --data project=<project> --data env=<env> gh:CMLPlatform/monitoring .`
+  - Once per machine, in the repo that owns it, the host layer, listing every Compose project on
+    the machine in `stacks`:
+    `copier copy --vcs-ref=<tag> --data layer=host --answers-file .copier-answers.cml-host.yml --data project=<owner> --data env=<env> --data stacks='<compose-project>=<project>/<env> ...' gh:CMLPlatform/monitoring .`
+  - Stop the per-project agents the host layer replaces. Later tags arrive with `copier update`
+    and each layer's answers file.
 
 ### Added
 
-- The CML overlay: a Copier template (`copier.yml`) that vendors the spoke files into a project's
-  repo, with `project`, `env`, `gpu`, OTLP endpoint and contact questions, its own
-  `.copier-answers.cml.yml`, and the non-secret `.env` variables in `telemetry.env.example`.
-  See [ADR 0003](docs/adr/0003-spoke-files-as-copier-overlay.md).
-- `just overlay-check`, run in CI, renders the overlay with and without GPU and checks that every
-  vendored file matches its source byte for byte.
+- The CML overlay: two Copier templates in `copier.yml`, picked by `layer`, each with its own
+  answers file. The project layer (`.copier-answers.cml.yml`) vendors `run_scheduled.sh` and
+  renders the project's non-secret `.env` variables into `telemetry.env.example`. The host layer
+  (`.copier-answers.cml-host.yml`), once per machine, vendors the Alloy agent and the GPU overlay
+  and renders `telemetry-host.env.example`. See
+  [ADR 0003](docs/adr/0003-spoke-files-as-copier-overlay.md).
+- `just overlay-check`, run in CI, renders both layers (the host one with and without GPU),
+  checks that every vendored file matches its source byte for byte, refuses bad answers, and
+  validates each rendered agent config with the pinned Alloy.
 
 ### Changed
 
-- **Breaking:** the spoke files moved to `templates/spoke/`, at the paths they take in a project
-  (`deploy/alloy/config.alloy`, `scripts/run_scheduled.sh`), so their raw URLs at new tags differ.
-- `bootstrap.sh` prints the `copier copy` command pinned at the latest tag instead of `curl`
-  commands and checksums, and refuses a tag without `copier.yml`.
+- **Breaking:** one agent per machine. `config.alloy` ships the containers of every Compose project
+  the host layer's `stacks` answer names, each with its own project and env, from the
+  `projects.alloy` the host layer renders next to it. The agent loads the `deploy/alloy/`
+  directory, so a hand-vendored `config.alloy` no longer runs alone. Host-level series carry the
+  machine owner's project and env.
+- **Breaking:** the spoke files moved to `templates/spoke/project/` and `templates/spoke/host/`,
+  at the paths they take in a repo, so their raw URLs at new tags differ.
+- `bootstrap.sh` prints the `copier copy` commands for both layers, pinned at the latest tag,
+  instead of `curl` commands and checksums, and refuses a tag without `copier.yml`.
 
 ## [0.5.0] - 2026-11-01
 

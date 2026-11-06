@@ -15,8 +15,8 @@ displays them side by side.
 
 | Project | Environment | Telemetry | Host | Spoke overlay |
 | --- | --- | --- | --- | --- |
-| [R9lab](https://github.com/CMLPlatform/relab) | `r9lab/prod` | Logs, Traces, Metrics | CML VM | `templates/spoke/compose.telemetry.yml` |
-| [R9lab](https://github.com/CMLPlatform/relab) | `r9lab/staging` | Logs, Traces, Metrics | CML VM | `templates/spoke/compose.telemetry.yml` |
+| [R9lab](https://github.com/CMLPlatform/relab) | `r9lab/prod` | Logs, Traces, Metrics | CML VM | `templates/spoke/host/compose.telemetry.yml` |
+| [R9lab](https://github.com/CMLPlatform/relab) | `r9lab/staging` | Logs, Traces, Metrics | CML VM | `templates/spoke/host/compose.telemetry.yml` |
 | [CML Gallery](https://github.com/CMLPlatform/cml-gallery) | Planned | Probes, RUM | GitHub Pages | `templates/web/rum.html` |
 
 The alert marker in `config/grafana/alerting/projects.yaml` guards active reporting.

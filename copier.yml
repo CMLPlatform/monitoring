@@ -1,18 +1,35 @@
-# The CML overlay: a Copier template that vendors the spoke files onto a project repo,
-# applied after the project's own template. It renders templates/spoke/ only; nothing
-# else in this repo reaches a project. templates/README.md has the onboarding steps.
+# The CML overlay: two Copier templates that vendor the spoke files into a repo, applied
+# after its own template. `layer` picks one, and each keeps its own answers file:
+#   project  run_scheduled.sh and the app's telemetry settings, in every project repo
+#            (.copier-answers.cml.yml)
+#   host     the Alloy agent and the GPU exporter, once per machine, in the repo that
+#            owns the machine (.copier-answers.cml-host.yml, so pass --answers-file)
+# Each renders templates/spoke/<layer>/ only. templates/README.md has the steps.
 _min_copier_version: "9.4"
-_subdirectory: templates/spoke
-# Its own answers file, so `copier update` on the project's base template never touches it.
+_subdirectory: "templates/spoke/{{ layer }}"
 _answers_file: .copier-answers.cml.yml
 # Only *.jinja files render; the vendored files are copied byte for byte.
 _templates_suffix: .jinja
 _exclude:
-  - "{% if not gpu %}compose.telemetry.gpu.yml{% endif %}"
+  - "{% if not (gpu | default(false)) %}compose.telemetry.gpu.yml{% endif %}"
+
+layer:
+  type: str
+  help: Which layer to render (project, or host with --answers-file .copier-answers.cml-host.yml)
+  choices: [project, host]
+  default: project
+  # Two layers sharing one answers file would overwrite each other's answers.
+  validator: >-
+    {%- set want = '.copier-answers.cml' ~ ('' if layer == 'project' else '-host') ~ '.yml' -%}
+    {%- if (_copier_conf.answers_file | string) != want -%}
+    the {{ layer }} layer needs --answers-file {{ want }}
+    {%- endif %}
 
 project:
   type: str
-  help: Project name, the `project` label on every signal (as passed to bootstrap.sh)
+  help: >-
+    Project name, the `project` label (as passed to bootstrap.sh). For a host, the project
+    that owns the machine, whose labels the host-level series carry.
   validator: >-
     {% if not (project | regex_search('^[a-z0-9][a-z0-9-]*$')) %}must match [a-z0-9][a-z0-9-]*{% endif %}
 
@@ -23,11 +40,6 @@ env:
   validator: >-
     {% if not (env | regex_search('^[a-z0-9][a-z0-9-]*$')) %}must match [a-z0-9][a-z0-9-]*{% endif %}
 
-gpu:
-  type: bool
-  help: Does the host have an NVIDIA GPU? Adds compose.telemetry.gpu.yml.
-  default: false
-
 otlp_endpoint:
   type: str
   help: The hub's OTLP/HTTP endpoint
@@ -37,5 +49,25 @@ otlp_endpoint:
 
 contact:
   type: str
-  help: Who to ask about this spoke's telemetry (an email address; empty for none)
+  help: Who to ask about this project's telemetry (an email address; empty for none)
   default: ""
+  when: "{{ layer == 'project' }}"
+
+gpu:
+  type: bool
+  help: Does the machine have an NVIDIA GPU? Adds compose.telemetry.gpu.yml.
+  default: false
+  when: "{{ layer == 'host' }}"
+
+stacks:
+  type: str
+  help: >-
+    The Compose projects on the machine to ship, as compose-project=project/env, space
+    separated (`cmlops=cmlops/prod r9lab_staging=r9lab/staging`). Other containers are not shipped.
+  default: "{{ project }}={{ project }}/{{ env }}"
+  when: "{{ layer == 'host' }}"
+  validator: >-
+    {%- set pair = '[a-z0-9][a-z0-9_-]*=[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*' -%}
+    {%- if not (stacks | regex_search('^' ~ pair ~ '( ' ~ pair ~ ')*$')) -%}
+    must be compose-project=project/env pairs separated by spaces
+    {%- endif %}

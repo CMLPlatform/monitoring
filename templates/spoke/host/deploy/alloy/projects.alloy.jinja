@@ -1,0 +1,40 @@
+// The Compose projects on this host and the project/env each reports as, rendered by
+// the CML host overlay from `stacks` in .copier-answers.cml-host.yml. Change the
+// answer with `copier update`, not this file. A container of any other Compose project
+// is not shipped. config.alloy, in the same directory, uses both components.
+{%- macro mapping(compose_label) %}
+{%- for stack in stacks.split() %}
+{%- set compose, labels = stack.split('=') %}
+{%- set project, env = labels.split('/') %}
+
+	rule {
+		source_labels = ["{{ compose_label }}"]
+		regex         = "{{ compose }}"
+		target_label  = "project"
+		replacement   = "{{ project }}"
+	}
+
+	rule {
+		source_labels = ["{{ compose_label }}"]
+		regex         = "{{ compose }}"
+		target_label  = "env"
+		replacement   = "{{ env }}"
+	}
+{%- endfor %}
+
+	rule {
+		source_labels = ["project"]
+		regex         = ""
+		action        = "drop"
+	}
+{%- endmacro %}
+
+discovery.relabel "projects" {
+	targets = discovery.relabel.containers.output
+{{- mapping("__meta_docker_container_label_com_docker_compose_project") }}
+}
+
+prometheus.relabel "cadvisor_projects" {
+	forward_to = [prometheus.relabel.host.receiver]
+{{- mapping("container_label_com_docker_compose_project") }}
+}

@@ -7,8 +7,9 @@
 #   2. renders the coverage rule that catches projects never bootstrapped, and
 #      reloads Grafana;
 #   3. creates the project's healthchecks.io watchdog check (if an API key is present);
-#   4. prints the copier command that applies the CML overlay (copier.yml) to the
-#      project's repo at a pinned tag, and the secrets its .env still needs.
+#   4. prints the copier commands that apply the CML overlay's two layers (copier.yml)
+#      at a pinned tag: the project layer in the project's repo, and the host layer
+#      once per machine.
 #
 # Idempotent.
 set -euo pipefail
@@ -142,21 +143,30 @@ fi
 cat <<SUMMARY
 
 ────────────────────────────────────────────────────────────────────────────
-Apply the CML overlay in the project's repo (pinned at ${tag})
+Apply the CML overlay (pinned at ${tag})
 ────────────────────────────────────────────────────────────────────────────
-copier copy --vcs-ref=${tag} --data project=${project} --data env=${env_name} \\
-    gh:CMLPlatform/monitoring .
+In the project's repo, the project layer (run_scheduled.sh, telemetry.env.example):
+  copier copy --vcs-ref=${tag} --data project=${project} --data env=${env_name} \\
+      gh:CMLPlatform/monitoring .
 
-It asks whether the host has a GPU, writes .copier-answers.cml.yml and the
-spoke files, and telemetry.env.example with the variables for the host's
-.env. Commit those; a later tag reaches the project as:
-  copier update --answers-file .copier-answers.cml.yml
+Once per machine, in the repo that owns it, the host layer (the Alloy agent).
+STACKS names every Compose project on the machine as compose-project=project/env:
+  copier copy --vcs-ref=${tag} --data layer=host \\
+      --answers-file .copier-answers.cml-host.yml \\
+      --data project=<owner> --data env=<owner env> --data stacks='<STACKS>' \\
+      gh:CMLPlatform/monitoring .
+On a machine that already has the host layer, add this project to its stacks:
+  copier update --answers-file .copier-answers.cml-host.yml \\
+      --data stacks='<STACKS> <compose-project>=${project}/${env_name}'
 
-On the project host, add the telemetry.env.example lines to .env, with:
+Commit what each writes. A later tag reaches either layer as
+  copier update --answers-file <its answers file>
+
+Add the lines of telemetry.env.example (project) and telemetry-host.env.example
+(host) to that repo's .env, with:
 OTLP_AUTH_TOKEN=<the stack's shared ingest token>
-TELEMETRY_EDGE_KEY=<only if the project's egress crosses a WAF>
 
-Then include the overlay and bring it up:
+Then, where the host layer lives, include the overlay and bring it up:
   docker compose -f compose.yml -f compose.telemetry.yml up -d
 
 Verify from the monitoring host, within ~2 minutes:
