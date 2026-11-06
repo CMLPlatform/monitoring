@@ -26,8 +26,8 @@ You need Docker with the Compose plugin and [`just`](https://github.com/casey/ju
 `just hooks` installs the git hooks (with [prek](https://prek.j178.dev), which sets up the
 Python environment for the citation hooks itself). `just check` runs the static checks and
 validates every config, `just smoke` starts a throwaway copy of the stack and sends it
-telemetry, and `just fmt` formats the YAML. CI runs `just lint`, `just validate` and
-`just smoke`, plus `just infra-validate` when `infra/` changes. The
+telemetry, and `just fmt` formats the YAML. CI runs `just lint`, `just overlay-check`,
+`just validate` and `just smoke`, plus `just infra-validate` when `infra/` changes. The
 [Verification commands](../docs/RUNBOOK.md#verification-commands) table in the runbook lists every recipe.
 
 ## Write commits and pull requests

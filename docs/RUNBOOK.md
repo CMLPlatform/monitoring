@@ -329,6 +329,7 @@ When the tunnel overlay is active, `just up` validates critical security setting
 | `just check` | Runs `just lint` and `just validate`. |
 | `just smoke` | Boots an isolated copy of the stack and asserts ingestion, storage, and query APIs end-to-end. |
 | `just restore-check` | Verifies backup snapshot creation and restoration against the smoke stack. |
+| `just overlay-check` | Renders the CML overlay with and without GPU and compares the vendored files with `templates/spoke/`. |
 | `just probe-add` | Registers an outside-in HTTP/S probe target in `config/targets/probes.yaml`. |
 | `just hooks` | Installs git pre-commit and pre-push hooks (gitleaks, citation checks, check). |
 
@@ -357,11 +358,11 @@ See the appendix of [ADR 0001](adr/0001-observability-stack.md) for detailed con
 
 ## Cutting a release
 
-A tag is the deployable unit: `bootstrap.sh` pins every spoke's vendored
-templates to the latest tag, and refuses to run without one.
+A tag is the deployable unit: `bootstrap.sh` pins a new spoke's CML overlay
+(`copier.yml`) to the latest tag, and refuses to run without one.
 
 1. Add a `## [x.y.z] - date` section to `CHANGELOG.md` and merge it. Put
-   anything a spoke must do (re-vendor templates, change a variable) under
+   anything a spoke must do beyond `copier update` (change a variable) under
    an `Upgrade` heading.
 2. Tag and push:
 
@@ -372,9 +373,10 @@ templates to the latest tag, and refuses to run without one.
    The release workflow runs `just check` and publishes the GitHub release
    with that changelog section as its body. No section, no release: the tag
    stays, so fix the changelog on `main` and re-tag.
-3. Deploy the hub (below), then run `./bootstrap.sh <project> <env>` for each
-   spoke and follow what it prints. The checksums it emits are for the new
-   tag.
+3. Deploy the hub (below). Each spoke's repo then takes the tag with
+   `copier update --answers-file .copier-answers.cml.yml --vcs-ref=vx.y.z`;
+   [templates/README.md](../templates/README.md#upgrading-a-spoke) has the
+   steps.
 
 ## Upgrading images
 

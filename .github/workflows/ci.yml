@@ -30,6 +30,8 @@ jobs:
       # 600, or the exposure guards refuse it as world-readable.
       - run: install -m 600 .env.example .env
       - run: just lint
+      # The CML overlay a spoke receives; fetches copier from PyPI.
+      - run: just overlay-check
 
   smoke:
     runs-on: ubuntu-latest

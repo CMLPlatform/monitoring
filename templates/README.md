@@ -1,33 +1,60 @@
 # Onboarding a project host
 
-Four files get vendored onto a project host at a pinned tag. **No project
-edits them.** Everything that differs between projects arrives as an
-environment variable, so the agent config on every host is byte-identical and
-a fix here reaches all of them.
+A project repo receives the spoke files through the CML overlay: the Copier
+template in [`copier.yml`](../copier.yml), which renders `spoke/` and nothing
+else in this repo. It is applied after the project's own template, with its own
+answers file. **No project edits the files it vendors.** Everything that differs
+between projects arrives as an environment variable, so the agent config on
+every host is byte-identical and a fix here reaches all of them.
 
-| File | What it is |
+| File in the project | What it is |
 | --- | --- |
-| `alloy/config.alloy` | The agent config: container logs, host metrics, cAdvisor, optional GPU |
+| `deploy/alloy/config.alloy` | The agent config: container logs, host metrics, cAdvisor, optional GPU |
 | `compose.telemetry.yml` | The Alloy agent and its Docker socket proxy |
-| `compose.telemetry.gpu.yml` | Opt-in overlay: `nvidia_gpu_exporter`, discovered automatically |
-| `run_scheduled.sh` | Dead man's switch wrapper for scheduled jobs |
+| `compose.telemetry.gpu.yml` | Opt-in overlay: `nvidia_gpu_exporter`, discovered automatically (only with `gpu=true`) |
+| `scripts/run_scheduled.sh` | Dead man's switch wrapper for scheduled jobs |
+| `.env.telemetry.example` | The non-secret `.env` variables, from the answers |
+| `.copier-answers.cml.yml` | The answers, for `copier update` |
+
+The overlay asks for `project` and `env` (the labels `bootstrap.sh` takes, so
+the same `[a-z0-9][a-z0-9-]*`), `gpu`, the hub's OTLP endpoint, and an
+optional contact address. `just overlay-check` renders it both ways and
+compares each vendored file with its source here.
 
 `alerting/*.tmpl` are not vendored. `bootstrap.sh` renders them into this
-stack's own alert rules.
+stack's own alert rules. `web/` is a snippet pasted into a page, not vendored.
 
 ## The checklist
 
-1. On the monitoring host, run `./bootstrap.sh <project> <env>`. It prints
-   the `.env` variables for the project host and the `curl` commands that
-   vendor the files at a pinned tag.
-2. On the project host, paste the variables, run the curls, and bring the
-   overlay up:
+1. On the monitoring host, run `./bootstrap.sh <project> <env>`. It provisions
+   the alert rules and prints the `copier copy` command pinned at the latest
+   tag.
+2. In the project's repo, run that command and commit what it writes:
+
+   ```sh
+   copier copy --vcs-ref=<tag> --data project=<project> --data env=<env> \
+       gh:CMLPlatform/monitoring .
+   ```
+
+3. On the project host, add the lines from `.env.telemetry.example` to `.env`,
+   fill in `OTLP_AUTH_TOKEN`, and bring the overlay up:
 
    ```sh
    docker compose -f compose.yml -f compose.telemetry.yml up -d
    ```
 
-3. Verify from the monitoring host (see below).
+4. Verify from the monitoring host (see below).
+
+## Upgrading a spoke
+
+A new monitoring tag reaches each project as a diff to review:
+
+```sh
+copier update --answers-file .copier-answers.cml.yml --vcs-ref=<tag>
+```
+
+Without `--vcs-ref` it takes the latest tag. The diff touches only the files
+above; `CHANGELOG.md` says under `Upgrade` what a spoke must do beyond that.
 
 Skipping `bootstrap.sh` leaves a project unmonitored with no error anywhere.
 The rule that notices a host's *silence* lives on this stack, not on the
@@ -49,8 +76,10 @@ covered in `projects.yaml`, whichever signal that project sends.
 
 ## GPU hosts
 
-Include `compose.telemetry.gpu.yml` as well. The agent config discovers the
-exporter by its Compose service label, so nothing else changes.
+Answer `gpu=true` (or `--data gpu=true`), which adds `compose.telemetry.gpu.yml`
+and sets `GPU_METRICS=1` in `.env.telemetry.example`, and include that file as
+well. The agent config discovers the exporter by its Compose service label, so
+nothing else changes.
 
 A host without the NVIDIA container runtime cannot include the overlay at all
 (`up` aborts with "could not select device driver"), so deploy tooling that

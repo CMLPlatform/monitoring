@@ -1,0 +1,41 @@
+# The CML overlay: a Copier template that vendors the spoke files onto a project repo,
+# applied after the project's own template. It renders templates/spoke/ only; nothing
+# else in this repo reaches a project. templates/README.md has the onboarding steps.
+_min_copier_version: "9.4"
+_subdirectory: templates/spoke
+# Its own answers file, so `copier update` on the project's base template never touches it.
+_answers_file: .copier-answers.cml.yml
+# Only *.jinja files render; the vendored files are copied byte for byte.
+_templates_suffix: .jinja
+_exclude:
+  - "{% if not gpu %}compose.telemetry.gpu.yml{% endif %}"
+
+project:
+  type: str
+  help: Project name, the `project` label on every signal (as passed to bootstrap.sh)
+  validator: >-
+    {% if not (project | regex_search('^[a-z0-9][a-z0-9-]*$')) %}must match [a-z0-9][a-z0-9-]*{% endif %}
+
+env:
+  type: str
+  help: Environment, the `env` label (as passed to bootstrap.sh)
+  default: prod
+  validator: >-
+    {% if not (env | regex_search('^[a-z0-9][a-z0-9-]*$')) %}must match [a-z0-9][a-z0-9-]*{% endif %}
+
+gpu:
+  type: bool
+  help: Does the host have an NVIDIA GPU? Adds compose.telemetry.gpu.yml.
+  default: false
+
+otlp_endpoint:
+  type: str
+  help: The hub's OTLP/HTTP endpoint
+  default: https://otel.cml-relab.org
+  validator: >-
+    {% if not otlp_endpoint.startswith('https://') %}must be an https:// URL{% endif %}
+
+contact:
+  type: str
+  help: Who to ask about this spoke's telemetry (an email address; empty for none)
+  default: ""
