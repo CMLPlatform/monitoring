@@ -136,7 +136,7 @@ services:
   node-exporter:
     image: prom/node-exporter:v1.12.1@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0
     restart: unless-stopped
-    # Same collector allowlist as the spokes' Alloy (templates/alloy/config.alloy).
+    # Same collector allowlist as the spokes' Alloy (templates/spoke/deploy/alloy/config.alloy).
     # The defaults add ~1000 series on this host (cpufreq, thermal, cooling,
     # per-collector scrape stats) that no dashboard, alert or runbook reads.
     command:

@@ -65,7 +65,9 @@ Contracts that make it scale:
   overlay (`nvidia_gpu_exporter` scraped by Alloy, not dcgm-exporter, whose
   profiling fields are datacentre-only) and the GPU dashboard. (Corrected
   2026-10-02: this said "three GPU alert rules", which were never added. GPU
-  state is diagnosed from the dashboard; nothing pages on it.)
+  state is diagnosed from the dashboard; nothing pages on it.) Amended
+  2026-11-06 by [ADR 0003](0003-spoke-files-as-copier-overlay.md): the files
+  and the `.env` variables now arrive as a Copier overlay at a pinned tag.
 
 ## Alternatives considered
 

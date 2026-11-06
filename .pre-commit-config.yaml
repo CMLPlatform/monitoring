@@ -2,7 +2,8 @@
 #   pre-commit  gitleaks on the staged diff; CITATION.cff against its schema
 #               and citesync
 #   commit-msg  Conventional Commits shape on the first line
-#   pre-push    `just check`, plus `just infra-validate` when infra/ changed
+#   pre-push    `just check`, plus `just infra-validate` when infra/ changed and
+#               `just overlay-check` when the CML overlay changed
 # `prek run` runs the pre-commit stage on demand; `--hook-stage pre-push` the rest.
 repos:
   - repo: local
@@ -36,6 +37,13 @@ repos:
         language: system
         pass_filenames: false
         files: ^infra/
+        stages: [pre-push]
+      - id: overlay-check
+        name: just overlay-check
+        entry: just overlay-check
+        language: system
+        pass_filenames: false
+        files: ^(copier\.yml|templates/spoke/|scripts/check-overlay\.sh)
         stages: [pre-push]
 
   # GitHub's "Cite this repository" silently drops a CITATION.cff that fails its schema.

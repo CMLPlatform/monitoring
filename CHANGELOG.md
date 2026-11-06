@@ -6,6 +6,29 @@ Notable changes to this stack. Format follows
 
 ## [Unreleased]
 
+### Upgrade
+
+- Spokes that vendored the templates by `curl`: apply the CML overlay once in the project's repo
+  (`copier copy --vcs-ref=<tag> --data project=<project> --data env=<env> gh:CMLPlatform/monitoring .`)
+  and commit what it writes. Later tags arrive with
+  `copier update --answers-file .copier-answers.cml.yml`.
+
+### Added
+
+- The CML overlay: a Copier template (`copier.yml`) that vendors the spoke files into a project's
+  repo, with `project`, `env`, `gpu`, OTLP endpoint and contact questions, its own
+  `.copier-answers.cml.yml`, and the non-secret `.env` variables in `.env.telemetry.example`.
+  See [ADR 0003](docs/adr/0003-spoke-files-as-copier-overlay.md).
+- `just overlay-check`, run in CI, renders the overlay with and without GPU and checks that every
+  vendored file matches its source byte for byte.
+
+### Changed
+
+- **Breaking:** the spoke files moved to `templates/spoke/`, at the paths they take in a project
+  (`deploy/alloy/config.alloy`, `scripts/run_scheduled.sh`), so their raw URLs at new tags differ.
+- `bootstrap.sh` prints the `copier copy` command pinned at the latest tag instead of `curl`
+  commands and checksums, and refuses a tag without `copier.yml`.
+
 ## [0.5.0] - 2026-11-01
 
 ### Upgrade
