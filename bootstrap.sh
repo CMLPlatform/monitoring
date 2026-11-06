@@ -148,11 +148,11 @@ copier copy --vcs-ref=${tag} --data project=${project} --data env=${env_name} \\
     gh:CMLPlatform/monitoring .
 
 It asks whether the host has a GPU, writes .copier-answers.cml.yml and the
-spoke files, and .env.telemetry.example with the variables for the host's
+spoke files, and telemetry.env.example with the variables for the host's
 .env. Commit those; a later tag reaches the project as:
   copier update --answers-file .copier-answers.cml.yml
 
-On the project host, add the .env.telemetry.example lines to .env, with:
+On the project host, add the telemetry.env.example lines to .env, with:
 OTLP_AUTH_TOKEN=<the stack's shared ingest token>
 TELEMETRY_EDGE_KEY=<only if the project's egress crosses a WAF>
 

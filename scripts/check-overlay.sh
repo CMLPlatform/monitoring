@@ -26,7 +26,7 @@ for gpu in true false; do
     expected=("${vendored[@]}")
     [[ "$gpu" == false ]] || expected+=(compose.telemetry.gpu.yml)
     got="$(cd "$out" && find . -type f | sed 's|^\./||' | sort)"
-    want="$(printf '%s\n' "${expected[@]}" .env.telemetry.example .copier-answers.cml.yml | sort)"
+    want="$(printf '%s\n' "${expected[@]}" telemetry.env.example .copier-answers.cml.yml | sort)"
     [[ "$got" == "$want" ]] || fail "gpu=$gpu rendered:"$'\n'"$got"$'\n'"expected:"$'\n'"$want"
     for f in "${expected[@]}"; do
         cmp -s "$root/templates/spoke/$f" "$out/$f" || fail "gpu=$gpu: $f differs from templates/spoke/$f"
@@ -35,7 +35,7 @@ for gpu in true false; do
     gpu_metrics=""
     [[ "$gpu" == false ]] || gpu_metrics=1
     for line in PROJECT=demo-app ENVIRONMENT=staging "GPU_METRICS=$gpu_metrics" OTLP_AUTH_TOKEN=; do
-        grep -qx "$line" "$out/.env.telemetry.example" || fail "gpu=$gpu: .env.telemetry.example lacks '$line'"
+        grep -qx "$line" "$out/telemetry.env.example" || fail "gpu=$gpu: telemetry.env.example lacks '$line'"
     done
     grep -qx "_src_path: $work/src" "$out/.copier-answers.cml.yml" || fail "gpu=$gpu: the answers file does not record its template"
 done

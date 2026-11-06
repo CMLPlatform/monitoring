@@ -13,7 +13,7 @@ every host is byte-identical and a fix here reaches all of them.
 | `compose.telemetry.yml` | The Alloy agent and its Docker socket proxy |
 | `compose.telemetry.gpu.yml` | Opt-in overlay: `nvidia_gpu_exporter`, discovered automatically (only with `gpu=true`) |
 | `scripts/run_scheduled.sh` | Dead man's switch wrapper for scheduled jobs |
-| `.env.telemetry.example` | The non-secret `.env` variables, from the answers |
+| `telemetry.env.example` | The non-secret `.env` variables, from the answers |
 | `.copier-answers.cml.yml` | The answers, for `copier update` |
 
 The overlay asks for `project` and `env` (the labels `bootstrap.sh` takes, so
@@ -36,7 +36,7 @@ stack's own alert rules. `web/` is a snippet pasted into a page, not vendored.
        gh:CMLPlatform/monitoring .
    ```
 
-3. On the project host, add the lines from `.env.telemetry.example` to `.env`,
+3. On the project host, add the lines from `telemetry.env.example` to `.env`,
    fill in `OTLP_AUTH_TOKEN`, and bring the overlay up:
 
    ```sh
@@ -77,7 +77,7 @@ covered in `projects.yaml`, whichever signal that project sends.
 ## GPU hosts
 
 Answer `gpu=true` (or `--data gpu=true`), which adds `compose.telemetry.gpu.yml`
-and sets `GPU_METRICS=1` in `.env.telemetry.example`, and include that file as
+and sets `GPU_METRICS=1` in `telemetry.env.example`, and include that file as
 well. The agent config discovers the exporter by its Compose service label, so
 nothing else changes.
 
