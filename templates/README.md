@@ -1,25 +1,43 @@
-# Onboarding a project host
+# Onboarding a project and its machine
 
-A project repo receives the spoke files through the CML overlay: the Copier
-template in [`copier.yml`](../copier.yml), which renders `spoke/` and nothing
-else in this repo. It is applied after the project's own template, with its own
-answers file. **No project edits the files it vendors.** Everything that differs
-between projects arrives as an environment variable, so the agent config on
-every host is byte-identical and a fix here reaches all of them.
+Repos receive the spoke files through the CML overlay: two Copier templates in
+[`copier.yml`](../copier.yml), picked by `layer`, each rendering only its own
+folder under `spoke/`, each with its own answers file. They are applied after a
+repo's own template. **No repo edits the files they vendor.** Everything that
+differs between projects arrives as an answer or an environment variable, so
+the agent config on every machine is byte-identical and a fix here reaches all
+of them.
 
-| File in the project | What it is |
-| --- | --- |
-| `deploy/alloy/config.alloy` | The agent config: container logs, host metrics, cAdvisor, optional GPU |
-| `compose.telemetry.yml` | The Alloy agent and its Docker socket proxy |
-| `compose.telemetry.gpu.yml` | Opt-in overlay: `nvidia_gpu_exporter`, discovered automatically (only with `gpu=true`) |
-| `scripts/run_scheduled.sh` | Dead man's switch wrapper for scheduled jobs |
-| `telemetry.env.example` | The non-secret `.env` variables, from the answers |
-| `.copier-answers.cml.yml` | The answers, for `copier update` |
+- **The project layer** (`spoke/project/`), in every project repo, answers in
+  `.copier-answers.cml.yml`:
 
-The overlay asks for `project` and `env` (the labels `bootstrap.sh` takes, so
-the same `[a-z0-9][a-z0-9-]*`), `gpu`, the hub's OTLP endpoint, and an
-optional contact address. `just overlay-check` renders it both ways and
-compares each vendored file with its source here.
+  | File | What it is |
+  | --- | --- |
+  | `scripts/run_scheduled.sh` | Dead man's switch wrapper for scheduled jobs |
+  | `telemetry.env.example` | The project's non-secret `.env` variables, including the app SDK's |
+
+- **The host layer** (`spoke/host/`), once per machine, in the repo that owns
+  the machine, answers in `.copier-answers.cml-host.yml`:
+
+  | File | What it is |
+  | --- | --- |
+  | `deploy/alloy/config.alloy` | The agent config: container logs, host metrics, cAdvisor, optional GPU |
+  | `deploy/alloy/projects.alloy` | Rendered from `stacks`: which Compose project reports as which project/env |
+  | `compose.telemetry.yml` | The Alloy agent and its Docker socket proxy |
+  | `compose.telemetry.gpu.yml` | Opt-in overlay: `nvidia_gpu_exporter`, discovered automatically (only with `gpu=true`) |
+  | `telemetry-host.env.example` | The agent's non-secret `.env` variables |
+
+Both layers ask for `project` and `env` (the labels `bootstrap.sh` takes, so
+the same `[a-z0-9][a-z0-9-]*`) and the hub's OTLP endpoint. The project layer
+adds an optional contact address. For the host layer, `project` and `env` name
+the machine's owner, whose labels host-level series carry, and it adds `gpu`
+and `stacks`: every Compose project on the machine as
+`compose-project=project/env`, space separated. The agent ships no container of
+a Compose project `stacks` does not name. `just overlay-check` renders both
+layers and compares each vendored file with its source here.
+
+[ADR 0003](../docs/adr/0003-spoke-files-as-copier-overlay.md) says why there
+are two layers and why an app's own telemetry goes straight to the hub.
 
 `alerting/*.tmpl` are not vendored. `bootstrap.sh` renders them into this
 stack's own alert rules. `web/` is a snippet pasted into a page, not vendored.
@@ -27,30 +45,41 @@ stack's own alert rules. `web/` is a snippet pasted into a page, not vendored.
 ## The checklist
 
 1. On the monitoring host, run `./bootstrap.sh <project> <env>`. It provisions
-   the alert rules and prints the `copier copy` command pinned at the latest
-   tag.
-2. In the project's repo, run that command and commit what it writes:
+   the alert rules and prints the `copier` commands pinned at the latest tag.
+2. In the project's repo, apply the project layer and commit what it writes:
 
    ```sh
    copier copy --vcs-ref=<tag> --data project=<project> --data env=<env> \
        gh:CMLPlatform/monitoring .
    ```
 
-3. On the project host, add the lines from `telemetry.env.example` to `.env`,
-   fill in `OTLP_AUTH_TOKEN`, and bring the overlay up:
+3. In the repo that owns the machine, apply the host layer, or add the
+   project's Compose project to its `stacks` if it is there already:
+
+   ```sh
+   copier copy --vcs-ref=<tag> --data layer=host \
+       --answers-file .copier-answers.cml-host.yml \
+       --data project=<owner> --data env=<owner env> \
+       --data stacks='<compose-project>=<project>/<env> ...' \
+       gh:CMLPlatform/monitoring .
+   ```
+
+4. On the machine, add the lines of each `*.env.example` to its repo's `.env`,
+   fill in `OTLP_AUTH_TOKEN`, and bring the agent up where the host layer lives:
 
    ```sh
    docker compose -f compose.yml -f compose.telemetry.yml up -d
    ```
 
-4. Verify from the monitoring host (see below).
+5. Verify from the monitoring host (see below).
 
 ## Upgrading a spoke
 
-A new monitoring tag reaches each project as a diff to review:
+A new monitoring tag reaches each layer as a diff to review:
 
 ```sh
 copier update --answers-file .copier-answers.cml.yml --vcs-ref=<tag>
+copier update --answers-file .copier-answers.cml-host.yml --vcs-ref=<tag>
 ```
 
 Without `--vcs-ref` it takes the latest tag. The diff touches only the files
@@ -76,8 +105,8 @@ covered in `projects.yaml`, whichever signal that project sends.
 
 ## GPU hosts
 
-Answer `gpu=true` (or `--data gpu=true`), which adds `compose.telemetry.gpu.yml`
-and sets `GPU_METRICS=1` in `telemetry.env.example`, and include that file as
+In the host layer, answer `gpu=true`, which adds `compose.telemetry.gpu.yml`
+and sets `GPU_METRICS=1` in `telemetry-host.env.example`, and include that file as
 well. The agent config discovers the exporter by its Compose service label, so
 nothing else changes.
 
@@ -116,6 +145,9 @@ Delete its pair from the `# COVERS:` line in
 `config/grafana/alerting/projects.yaml`, re-run `bootstrap.sh` for any project
 that remains, and commit the result. The one ProjectTelemetrySilent rule then
 no longer checks it, and the coverage rule no longer counts it as covered.
+On its machine, drop its entry from the host layer's `stacks` with
+`copier update --answers-file .copier-answers.cml-host.yml --data stacks='...'`,
+or the agent keeps shipping its containers.
 
 ## Limits
 
