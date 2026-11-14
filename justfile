@@ -140,6 +140,10 @@ lint:
     sh scripts/test_backup.sh
     # Exercise the provisioned expression, including counters first seen after a failure.
     @d=$(mktemp -d) && expr=$(awk '/uid: watchdog-heartbeat/{watchdog=1} watchdog && /expr: >/{expr=1;next} expr && /^                /{sub(/^                /, "");printf "%s ",$0;next} expr{exit}' config/grafana/alerting/rules.yaml) && test -n "$expr" && jq --arg expr "$expr" '.tests[].promql_expr_test[].expr = $expr' tests/watchdog.json >"$d/watchdog.json" && chmod 755 "$d" && chmod 644 "$d/watchdog.json" && docker run --rm --network none --entrypoint /bin/promtool -v "$d":/tests:ro $(just _image compose.yml prometheus) test rules /tests/watchdog.json; rc=$?; rm -rf "$d"; exit $rc
+    # Generate query cases from the actual dashboard JSON so tests cannot drift.
+    @d=$(mktemp -d) && docker run --rm --network none -v .:/repo:ro -w /repo $(just _image compose.yml notification-relay) python -B scripts/test_dashboards.py >"$d/dashboard.yml" && chmod 755 "$d" && chmod 644 "$d/dashboard.yml" && docker run --rm --network none --entrypoint /bin/promtool -v "$d":/tests:ro $(just _image compose.yml prometheus) test rules /tests/dashboard.yml; rc=$?; rm -rf "$d"; exit $rc
+    docker run --rm --network none -v ./scripts/test_dashboards.py:/tests/test_dashboards.py:ro {{ruff}} check --no-cache /tests/test_dashboards.py
+    docker run --rm --network none -v ./scripts/test_dashboards.py:/tests/test_dashboards.py:ro {{ruff}} format --check --no-cache /tests/test_dashboards.py
     docker run --rm --network none -v ./demo:/demo:ro {{ruff}} check --no-cache /demo
     docker run --rm --network none -v ./demo:/demo:ro {{ruff}} format --check --no-cache /demo
     docker run --rm --network none -v ./notification-relay:/relay:ro {{ruff}} check --no-cache /relay

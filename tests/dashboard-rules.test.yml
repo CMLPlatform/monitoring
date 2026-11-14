@@ -1,0 +1,92 @@
+fuzzy_compare: true
+evaluation_interval: 30s
+tests:
+  - name: traffic-without-5xx-is-zero-error
+    interval: 30s
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{project="review",env="test",job="api",http_response_status_code="200"}'
+        values: '0+10x10'
+    promql_expr_test:
+      - expr: ERROR_RATE
+        eval_time: 5m
+        exp_samples:
+          - labels: '{}'
+            value: 0
+      - expr: ERROR_TIMESERIES
+        eval_time: 5m
+        exp_samples:
+          - labels: '{}'
+            value: 0
+      - expr: METRIC_AGE
+        eval_time: 5m
+        exp_samples:
+          - labels: '{}'
+            value: 0
+  - name: failures-and-recovery
+    interval: 30s
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{project="review",env="test",job="api",http_response_status_code="200"}'
+        values: '0+9x10 100+10x10'
+      - series: 'http_server_request_duration_seconds_count{project="review",env="test",job="api",http_response_status_code="500"}'
+        values: '0+1x10 10+0x10'
+    promql_expr_test:
+      - expr: ERROR_RATE
+        eval_time: 5m
+        exp_samples:
+          - labels: '{}'
+            value: 10
+      - expr: ERROR_RATE
+        eval_time: 10m
+        exp_samples:
+          - labels: '{}'
+            value: 0
+      - expr: ERROR_TIMESERIES
+        eval_time: 5m
+        exp_samples:
+          - labels: '{}'
+            value: 10
+      - expr: ERROR_TIMESERIES
+        eval_time: 10m
+        exp_samples:
+          - labels: '{}'
+            value: 0
+  - name: no-traffic-is-unknown
+    interval: 30s
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{project="review",env="test",job="api",http_response_status_code="200"}'
+        values: '0+0x10'
+    promql_expr_test:
+      - expr: ERROR_RATE
+        eval_time: 5m
+        exp_samples: []
+      - expr: ERROR_TIMESERIES
+        eval_time: 5m
+        exp_samples: []
+  - name: missing-data-is-unknown
+    promql_expr_test:
+      - expr: ERROR_RATE
+        eval_time: 5m
+        exp_samples: []
+      - expr: ERROR_TIMESERIES
+        eval_time: 5m
+        exp_samples: []
+      - expr: METRIC_AGE
+        eval_time: 5m
+        exp_samples: []
+  - name: delayed-then-stale-is-not-healthy-zero
+    interval: 30s
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{project="review",env="test",job="api",http_response_status_code="200"}'
+        values: '0+10x4 _ _ _ _ _ _ _ _ _ _ _ _ _ _'
+    promql_expr_test:
+      - expr: METRIC_AGE
+        eval_time: 4m
+        exp_samples:
+          - labels: '{}'
+            value: 120
+      - expr: METRIC_AGE
+        eval_time: 10m
+        exp_samples: []
+      - expr: ERROR_RATE
+        eval_time: 10m
+        exp_samples: []

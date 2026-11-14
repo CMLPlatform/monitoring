@@ -16,6 +16,15 @@
   ],
   "links": [
     {
+      "title": "Service logs",
+      "type": "link",
+      "icon": "dashboard",
+      "url": "/d/logs/logs",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
       "asDropdown": false,
       "icon": "dashboard",
       "includeVars": true,
@@ -28,6 +37,13 @@
       "tooltip": "Switch to another dashboard in the CML monitoring stack",
       "type": "dashboards",
       "url": ""
+    },
+    {
+      "title": "Incident runbook",
+      "type": "link",
+      "icon": "book",
+      "url": "https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#incident-workflow",
+      "targetBlank": true
     }
   ],
   "templating": {
@@ -46,7 +62,7 @@
           "query": "label_values(http_server_request_duration_seconds_count, project)",
           "refId": "var"
         },
-        "refresh": 1,
+        "refresh": 2,
         "sort": 1,
         "current": {},
         "options": [],
@@ -66,7 +82,7 @@
           "query": "label_values(http_server_request_duration_seconds_count{project=\"$project\"}, env)",
           "refId": "var"
         },
-        "refresh": 1,
+        "refresh": 2,
         "sort": 1,
         "current": {},
         "options": [],
@@ -86,15 +102,111 @@
           "query": "label_values(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\"}, job)",
           "refId": "var"
         },
-        "refresh": 1,
+        "refresh": 2,
         "sort": 1,
-        "current": {},
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
         "options": [],
-        "hide": 0
+        "hide": 0,
+        "includeAll": true,
+        "allValue": ".+"
       }
     ]
   },
   "panels": [
+    {
+      "id": 100,
+      "type": "text",
+      "title": "Incident workflow",
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Check data age, errors and latency. Open Service logs; follow a trace ID or exemplar into Tempo. Confirm fresh traffic before recovery."
+      }
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "Newest Metric Age",
+      "description": "Age of the newest request-counter sample at the selected end time. More than two minutes indicates delayed data; Unknown means no current sample. A fresh sample does not prove requests succeeded.",
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "time() - max(timestamp(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=~\"${service:regex}\"}))",
+          "instant": true,
+          "legendFormat": "Newest sample",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "noValue": "Unknown",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 120
+              },
+              {
+                "color": "red",
+                "value": 300
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "null",
+                "result": {
+                  "text": "Unknown",
+                  "color": "text"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
     {
       "type": "stat",
       "title": "Request Rate",
@@ -103,7 +215,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 0
+        "y": 8
       },
       "id": 7,
       "datasource": {
@@ -112,7 +224,7 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\"}[$__rate_interval]))",
+          "expr": "sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=~\"${service:regex}\"}[$__rate_interval]))",
           "instant": true,
           "legendFormat": "Requests",
           "refId": "A"
@@ -132,7 +244,20 @@
                 "value": null
               }
             ]
-          }
+          },
+          "noValue": "Unknown",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "null",
+                "result": {
+                  "text": "Unknown",
+                  "color": "text"
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -143,7 +268,7 @@
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "last"
           ],
           "fields": "",
           "values": false
@@ -154,12 +279,12 @@
     {
       "type": "stat",
       "title": "Error Rate",
-      "description": "Percentage of requests resulting in 5xx HTTP server errors.",
+      "description": "HTTP 5xx responses as a percentage of observed requests. No traffic or missing telemetry is unknown, not 0% errors.",
       "gridPos": {
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 0
+        "y": 8
       },
       "id": 8,
       "datasource": {
@@ -168,7 +293,7 @@
       },
       "targets": [
         {
-          "expr": "(100 * sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\", http_response_status_code=~\"5..\"}[$__rate_interval])) / sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\"}[$__rate_interval]))) or vector(0)",
+          "expr": "100 * ((sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=~\"${service:regex}\", http_response_status_code=~\"5..\"}[$__rate_interval])) or (sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=~\"${service:regex}\"}[$__rate_interval])) * 0)) / (sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=~\"${service:regex}\"}[$__rate_interval])) > 0))",
           "instant": true,
           "legendFormat": "Error Rate",
           "refId": "A"
@@ -197,7 +322,20 @@
                 "value": 1.0
               }
             ]
-          }
+          },
+          "noValue": "Unknown",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "null",
+                "result": {
+                  "text": "Unknown",
+                  "color": "text"
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -208,7 +346,7 @@
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "last"
           ],
           "fields": "",
           "values": false
@@ -224,7 +362,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 0
+        "y": 8
       },
       "id": 9,
       "datasource": {
@@ -233,7 +371,7 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{project=\"$project\", env=\"$env\", job=\"$service\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{project=\"$project\", env=\"$env\", job=~\"${service:regex}\"}[$__rate_interval])))",
           "instant": true,
           "legendFormat": "p95",
           "refId": "A"
@@ -261,7 +399,20 @@
                 "value": 1.5
               }
             ]
-          }
+          },
+          "noValue": "Unknown",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "null",
+                "result": {
+                  "text": "Unknown",
+                  "color": "text"
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -272,7 +423,7 @@
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "last"
           ],
           "fields": "",
           "values": false
@@ -288,7 +439,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 0
+        "y": 8
       },
       "id": 10,
       "datasource": {
@@ -297,7 +448,7 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum by (le) (rate(http_server_request_duration_seconds_bucket{project=\"$project\", env=\"$env\", job=\"$service\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(http_server_request_duration_seconds_bucket{project=\"$project\", env=\"$env\", job=~\"${service:regex}\"}[$__rate_interval])))",
           "instant": true,
           "legendFormat": "p50",
           "refId": "A"
@@ -325,7 +476,20 @@
                 "value": 0.8
               }
             ]
-          }
+          },
+          "noValue": "Unknown",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "null",
+                "result": {
+                  "text": "Unknown",
+                  "color": "text"
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -336,7 +500,7 @@
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "last"
           ],
           "fields": "",
           "values": false
@@ -347,12 +511,12 @@
     {
       "type": "stat",
       "title": "Availability (SLI)",
-      "description": "Success rate over the active time range. Target: >= 99.5%.",
+      "description": "Success rate over the active time range. Target: >= 99.5%. Request-based only; missing telemetry is not proof of uptime.",
       "gridPos": {
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 0
+        "y": 8
       },
       "id": 11,
       "datasource": {
@@ -361,7 +525,7 @@
       },
       "targets": [
         {
-          "expr": "100 * (1 - ((sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\", http_response_status_code=~\"5..\"}[$__range])) or vector(0)) / (sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\"}[$__range])) > 0)))",
+          "expr": "100 * (1 - ((sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=~\"${service:regex}\", http_response_status_code=~\"5..\"}[$__range])) or vector(0)) / (sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=~\"${service:regex}\"}[$__range])) > 0)))",
           "instant": true,
           "legendFormat": "Availability",
           "refId": "A"
@@ -391,7 +555,20 @@
                 "value": 99.5
               }
             ]
-          }
+          },
+          "noValue": "Unknown",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "null",
+                "result": {
+                  "text": "Unknown",
+                  "color": "text"
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -402,7 +579,7 @@
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "last"
           ],
           "fields": "",
           "values": false
@@ -413,12 +590,12 @@
     {
       "type": "stat",
       "title": "Error Budget Remaining",
-      "description": "Remaining 99.5% SLO error budget in current window. Exhausted at 0%.",
+      "description": "Remaining 99.5% SLO error budget in current window. Exhausted at 0%. Request-based only; missing telemetry is not proof of uptime.",
       "gridPos": {
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 0
+        "y": 8
       },
       "id": 12,
       "datasource": {
@@ -427,7 +604,7 @@
       },
       "targets": [
         {
-          "expr": "100 * (1 - (((sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\", http_response_status_code=~\"5..\"}[$__range])) or vector(0)) / (sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\"}[$__range])) > 0)) / 0.005))",
+          "expr": "100 * (1 - (((sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=~\"${service:regex}\", http_response_status_code=~\"5..\"}[$__range])) or vector(0)) / (sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=~\"${service:regex}\"}[$__range])) > 0)) / 0.005))",
           "instant": true,
           "legendFormat": "Budget Remaining",
           "refId": "A"
@@ -455,7 +632,20 @@
                 "value": 50.0
               }
             ]
-          }
+          },
+          "noValue": "Unknown",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "null",
+                "result": {
+                  "text": "Unknown",
+                  "color": "text"
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -466,7 +656,7 @@
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "last"
           ],
           "fields": "",
           "values": false
@@ -482,7 +672,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 4
+        "y": 12
       },
       "id": 1,
       "datasource": {
@@ -491,7 +681,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (http_route) (rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\"}[$__rate_interval]))",
+          "expr": "sum by (http_route) (rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=~\"${service:regex}\"}[$__rate_interval]))",
           "legendFormat": "{{http_route}}",
           "refId": "A"
         }
@@ -510,12 +700,12 @@
     {
       "type": "timeseries",
       "title": "Error Rate over Time",
-      "description": "Share of server spans with STATUS_CODE_ERROR.",
+      "description": "HTTP 5xx responses as a percentage of observed requests. No traffic or missing telemetry is unknown, not 0% errors.",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 4
+        "y": 12
       },
       "id": 2,
       "datasource": {
@@ -524,7 +714,7 @@
       },
       "targets": [
         {
-          "expr": "100 * sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\", http_response_status_code=~\"5..\"}[$__rate_interval])) / sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=\"$service\"}[$__rate_interval]))",
+          "expr": "100 * ((sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=~\"${service:regex}\", http_response_status_code=~\"5..\"}[$__rate_interval])) or (sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=~\"${service:regex}\"}[$__rate_interval])) * 0)) / (sum(rate(http_server_request_duration_seconds_count{project=\"$project\", env=\"$env\", job=~\"${service:regex}\"}[$__rate_interval])) > 0))",
           "legendFormat": "errors",
           "refId": "A"
         }
@@ -557,12 +747,12 @@
     {
       "type": "timeseries",
       "title": "Latency percentiles",
-      "description": "Quantiles over the applications' own request-duration histograms. Dots are exemplars — click one to open the exact trace in Tempo.",
+      "description": "Quantiles over the applications' own request-duration histograms. Dots are exemplars \u2014 click one to open the exact trace in Tempo.",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 12
+        "y": 20
       },
       "id": 3,
       "datasource": {
@@ -571,19 +761,19 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum by (le) (rate(http_server_request_duration_seconds_bucket{project=\"$project\", env=\"$env\", job=\"$service\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(http_server_request_duration_seconds_bucket{project=\"$project\", env=\"$env\", job=~\"${service:regex}\"}[$__rate_interval])))",
           "legendFormat": "p50",
           "refId": "A",
           "exemplar": true
         },
         {
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{project=\"$project\", env=\"$env\", job=\"$service\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{project=\"$project\", env=\"$env\", job=~\"${service:regex}\"}[$__rate_interval])))",
           "legendFormat": "p95",
           "refId": "B",
           "exemplar": true
         },
         {
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{project=\"$project\", env=\"$env\", job=\"$service\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{project=\"$project\", env=\"$env\", job=~\"${service:regex}\"}[$__rate_interval])))",
           "legendFormat": "p99",
           "refId": "C",
           "exemplar": true
@@ -603,12 +793,12 @@
     {
       "type": "timeseries",
       "title": "Latency p95 by route",
-      "description": "From the service's own OTLP metrics (OTel SDK), i.e. the collector → Prometheus OTLP path.",
+      "description": "From the service's own OTLP metrics (OTel SDK), i.e. the collector \u2192 Prometheus OTLP path.",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 12
+        "y": 20
       },
       "id": 4,
       "datasource": {
@@ -617,7 +807,7 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{project=\"$project\", env=\"$env\", job=\"$service\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{project=\"$project\", env=\"$env\", job=~\"${service:regex}\"}[$__rate_interval])))",
           "legendFormat": "{{http_route}}",
           "refId": "A"
         }
@@ -641,7 +831,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 20
+        "y": 28
       },
       "id": 6,
       "datasource": {
@@ -650,7 +840,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (state) ({__name__=~\"db_client_connections_usage(_connections)?\", project=\"$project\", env=\"$env\", job=\"$service\"})",
+          "expr": "sum by (state) ({__name__=~\"db_client_connections_usage(_connections)?\", project=\"$project\", env=\"$env\", job=~\"${service:regex}\"})",
           "legendFormat": "{{state}}",
           "refId": "A"
         }
@@ -678,7 +868,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 28
+        "y": 36
       },
       "id": 5,
       "datasource": {
@@ -687,7 +877,7 @@
       },
       "targets": [
         {
-          "expr": "{project=\"$project\", env=\"$env\", service_name=~\"$service\"}",
+          "expr": "{project=\"$project\", env=\"$env\", service_name=~\"${service:regex}\"}",
           "refId": "A"
         }
       ],

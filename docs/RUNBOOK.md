@@ -9,6 +9,31 @@ All commands run from the repo root on the monitoring host. Start with
 In that capture, the red export-failure spike is a Tempo outage and the gap in
 the ingest panel is a backup/restore drill.
 
+## Incident workflow
+
+1. Open **Stack Health** at the incident time. Check **Scrape Status**
+   and **Collector Export Failures** before trusting application charts.
+   A failed scrape or missing backend can hide the application's condition.
+2. Find the affected project and environment in **Ingest by Project**.
+   Open **Service Health**, then select the service. Keep the incident time
+   range while comparing request rate, errors and latency.
+3. Open **Logs** with the same project, environment and service. Expand an
+   error or warning. Follow its `trace_id` link into Tempo when one exists.
+   A log without a trace ID cannot open a correlated trace.
+4. After a repair, check fresh telemetry and current scrape status. Confirm
+   the error rate falls with observed traffic and the alert resolves.
+   An old healthy chart or an empty error panel does not prove recovery.
+
+**Unknown** or **No data** means the query has no usable observations.
+Check the selected filters, time range, telemetry age and backend status.
+An idle service can have a zero request rate without a measurable error rate.
+Availability measures successful requests among observed requests; it does
+not measure wall-clock uptime.
+
+A panel error means its query failed. Open the panel's inspection menu for
+the error, then check that backend's container logs. Widening the time range
+can find historical data, but does not establish current health.
+
 ## A service is down or misbehaving
 
 ```sh
