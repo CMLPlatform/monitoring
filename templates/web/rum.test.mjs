@@ -5,7 +5,7 @@ import { runInNewContext } from 'node:vm';
 
 const source = readFileSync(new URL('./rum.html', import.meta.url), 'utf8').split('<script>')[1].split('</script>')[0];
 
-function browser(initialVisibility = 'visible', unsupportedCls = false, endpoint = 'https://rum.example.org/') {
+function browser(initialVisibility = 'visible', unsupportedCls = false, endpoint = 'https://rum.example.org/', initialEntries = {}) {
   const logs = [];
   const requests = [];
   const listeners = {};
@@ -22,10 +22,11 @@ function browser(initialVisibility = 'visible', unsupportedCls = false, endpoint
     pending = [];
     disconnected = false;
     constructor(callback) { this.callback = callback; }
-    observe({ type }) {
+    observe({ type, buffered }) {
       if (unsupportedCls === 'silent' && type === 'layout-shift') return;
       if (unsupportedCls === true && type === 'layout-shift') throw new Error('unsupported');
       observers[type] = this;
+      if (buffered) this.pending.push(...(initialEntries[type] ?? []));
     }
     takeRecords() { return this.pending.splice(0); }
     disconnect() { this.disconnected = true; }
@@ -46,6 +47,16 @@ function browser(initialVisibility = 'visible', unsupportedCls = false, endpoint
   return { logs, requests, document, observers, emit, deliver, hide, values };
 }
 const shift = (value, startTime, hadRecentInput = false) => ({ value, startTime, hadRecentInput });
+
+test('vitals include buffered entries recorded before initialization', () => {
+  const page = browser('visible', false, 'https://rum.example.org/', {
+    'largest-contentful-paint': [{ startTime: 1200 }],
+    'layout-shift': [shift(0.25, 400)],
+  });
+  page.hide(2000);
+  assert.deepEqual(page.values('LCP', 'duration_ms'), [1200]);
+  assert.deepEqual(page.values('CLS', 'cls_score'), [0.25]);
+});
 
 test('transport normalizes the endpoint and posts JSON with keepalive; no endpoint disables sending', () => {
   const page = browser();
