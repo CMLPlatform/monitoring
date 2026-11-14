@@ -66,6 +66,8 @@ test('transport normalizes the endpoint and posts JSON with keepalive; no endpoi
   assert.equal(url, 'https://rum.example.org/v1/logs');
   assert.equal(options.method, 'POST');
   assert.equal(options.keepalive, true);
+  assert.equal(options.referrerPolicy, 'no-referrer');
+  assert.equal(options.credentials, 'omit');
   assert.deepEqual({ ...options.headers }, { 'Content-Type': 'application/json' });
   assert.equal(JSON.parse(options.body).resourceLogs.length, 1);
   const disabled = browser('visible', false, '');

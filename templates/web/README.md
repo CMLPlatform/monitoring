@@ -42,6 +42,7 @@ Error records contain only the event type and, when available, script origin/pat
 line and column. Messages, stacks and rejection values are excluded. Script URLs
 exclude credentials, queries and fragments; review paths for private values before
 enabling collection.
+Requests omit browser credentials and the Referer header.
 
 - **CORS origins:** The collector HTTP receiver permits cross-origin requests from `https://cmlplatform.github.io` and Leiden University domains (`https://*.leidenuniv.nl`).
 - **Credential safety:** Never embed the collector bearer in public HTML. The collector supports one shared bearer, without per-project scopes. An administrator must provide a restricted proxy that injects that bearer, fixes the project identity, and limits payload size and request rate. Leave RUM disabled until the proxy and collection agreement are ready. CORS alone does not provide this boundary.

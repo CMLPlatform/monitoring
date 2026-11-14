@@ -65,6 +65,8 @@
         headers: headers,
         body: JSON.stringify(payload),
         keepalive: true,
+        referrerPolicy: "no-referrer",
+        credentials: "omit",
         mode: "cors"
       }).catch(function() {});
     } catch (e) {
