@@ -134,8 +134,10 @@
       // Some browsers do not support this performance entry type.
     }
     try {
-      clsObserver = new PerformanceObserver((list) => updateCls(list.getEntries()));
-      clsObserver.observe({ type: "layout-shift", buffered: true });
+      if (PerformanceObserver.supportedEntryTypes?.includes("layout-shift")) {
+        clsObserver = new PerformanceObserver((list) => updateCls(list.getEntries()));
+        clsObserver.observe({ type: "layout-shift", buffered: true });
+      }
     } catch {
       clsObserver = undefined;
       // Some browsers do not support this performance entry type.

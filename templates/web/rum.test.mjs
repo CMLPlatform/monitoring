@@ -17,11 +17,13 @@ function browser(initialVisibility = 'visible', unsupportedCls = false) {
     addEventListener: on,
   };
   class PerformanceObserver {
+    static supportedEntryTypes = unsupportedCls === 'missing' ? undefined : unsupportedCls === 'silent' ? ['mark', 'measure'] : ['largest-contentful-paint', 'layout-shift'];
     pending = [];
     disconnected = false;
     constructor(callback) { this.callback = callback; }
     observe({ type }) {
-      if (unsupportedCls && type === 'layout-shift') throw new Error('unsupported');
+      if (unsupportedCls === 'silent' && type === 'layout-shift') return;
+      if (unsupportedCls === true && type === 'layout-shift') throw new Error('unsupported');
       observers[type] = this;
     }
     takeRecords() { return this.pending.splice(0); }
@@ -131,4 +133,12 @@ test('CLS reports a supported zero once and emits no score for unsupported obser
   const unsupported = browser('visible', true);
   unsupported.hide();
   assert.deepEqual(unsupported.values('CLS', 'cls_score'), []);
+});
+
+test('CLS stays unknown when unsupported observe silently does nothing', () => {
+  for (const support of ['silent', 'missing']) {
+    const page = browser('visible', support);
+    page.hide();
+    assert.deepEqual(page.values('CLS', 'cls_score'), []);
+  }
 });
