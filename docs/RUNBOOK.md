@@ -45,10 +45,12 @@ count, not time, is what grows the TSDB.
 When one fires:
 
 1. Check the Filesystem panel on Stack Health.
-2. Free space, or shorten a retention window and restart the service:
+2. Free space, or shorten a retention window:
    `retention_period` in `config/loki.yaml`, `block_retention` in
    `config/tempo.yaml`, or the `--storage.tsdb.retention.*` flags in
-   `compose.yml`.
+   `compose.yml`. Restart Loki or Tempo after a config change. After changing
+   Prometheus command arguments, run `docker compose up -d prometheus` to
+   recreate its container with the new retention settings.
 3. If disk pressure keeps returning, move Loki and Tempo to object storage.
    The appendix of ADR 0001 describes the change.
 
@@ -106,8 +108,21 @@ on the host.
   That builds a new tunnel and repoints all three CNAMEs (grafana, otel, ntfy) at it, and ingestion and
   Grafana are unreachable for about a minute. Either way, put the new token
   in `CLOUDFLARE_TUNNEL_TOKEN` in `.env`, then `just up`.
-- **Grafana admin password:** change `GRAFANA_ADMIN_PASSWORD` in `.env`,
-  then `docker compose up -d grafana`.
+- **Grafana admin password:** changing `GRAFANA_ADMIN_PASSWORD` only initializes
+  a new database. To rotate an existing password, update its value in `.env`.
+  Enter the same value at the prompt below; it stays out of shell history and
+  process arguments:
+
+  ```bash
+  read -r -s -p 'New Grafana admin password: ' grafana_password
+  printf '\n'
+  printf '%s\n' "$grafana_password" | docker compose exec -T grafana grafana cli \
+    --homepath /usr/share/grafana admin reset-admin-password --password-from-stdin
+  unset grafana_password
+  docker compose up -d grafana
+  ```
+
+  Confirm that a fresh login accepts the new password and rejects the old one.
 - **Alert webhook and heartbeat URLs:** the URL is the credential. Mint a new
   topic or check at the provider, put it in `ALERT_WEBHOOK_URL` or
   `HEARTBEAT_URL`, then `docker compose up -d grafana`. Grafana reads the
@@ -168,7 +183,7 @@ comparison stays true for the duration of `for`:
 | `ContainerRestarting` | container-lifecycle | warning | 10m | Container restarts >3 times within 1 hour. |
 | `ContainerOOMKilled` | container-lifecycle | warning | 0m | Container terminated by host kernel OOM killer. |
 | `ProjectTelemetrySilent` | spoke | critical | 15m | Spoke service stopped shipping OTel telemetry. |
-| `ProjectsUncovered` | _coverage | warning | 5m | Telemetry received from unlisted project; register in projects.yaml. |
+| `ProjectsUncovered` | _coverage | warning | 15m | Telemetry received from unlisted project; register in projects.yaml. |
 
 ## Alert delivery
 
@@ -263,8 +278,9 @@ Zero Trust dashboard. The next apply reverts anything clicked in by hand.
 
 ```sh
 just infra-validate                 # tofu init + validate, in a container
-cd infra && tofu plan               # needs CLOUDFLARE_API_TOKEN exported
-cd infra && tofu apply
+cd infra                           # needs CLOUDFLARE_API_TOKEN exported
+tofu plan
+tofu apply
 ```
 
 - **Granting or revoking Grafana access:** edit `grafana_allowed_emails` in

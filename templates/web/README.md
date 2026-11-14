@@ -25,11 +25,10 @@ Add your endpoint and project details before loading the snippet:
 
 ```html
 <script>
-  window.__OTEL_ENDPOINT__ = "https://otel.example.org";
+  window.__OTEL_ENDPOINT__ = "https://rum.example.org";
   window.__OTEL_PROJECT__ = "cml-gallery";
   window.__OTEL_SERVICE__ = "cml-gallery";
   window.__OTEL_ENV__ = "prod";
-  window.__OTEL_TOKEN__ = ""; // Leave blank when using an edge proxy or unauthenticated endpoint
 </script>
 ```
 
@@ -39,6 +38,11 @@ Paste the contents of [`rum.html`](rum.html) into your layout `<head>` or before
 
 ## Ingestion and Security
 
+Error records contain only the event type and, when available, script origin/path,
+line and column. Messages, stacks and rejection values are excluded. Script URLs
+exclude credentials, queries and fragments; review paths for private values before
+enabling collection.
+
 - **CORS origins:** The collector HTTP receiver permits cross-origin requests from `https://cmlplatform.github.io` and Leiden University domains (`https://*.leidenuniv.nl`).
-- **Credential safety:** Do not embed collector bearer secrets in public client HTML. For public apps, either omit `window.__OTEL_TOKEN__` and let an edge proxy (such as Cloudflare Workers or Nginx) inject `Authorization: Bearer ...`, or provision a scoped low-privilege token.
+- **Credential safety:** Never embed the collector bearer in public HTML. The collector supports one shared bearer, without per-project scopes. An administrator must provide a restricted proxy that injects that bearer, fixes the project identity, and limits payload size and request rate. Leave RUM disabled until the proxy and collection agreement are ready. CORS alone does not provide this boundary.
 - **Log queries:** Logs are indexed in Loki by `service_name`, `project`, and `env`, viewable on the Grafana **Logs** dashboard.
