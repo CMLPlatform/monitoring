@@ -58,7 +58,7 @@ services:
     logging: *default-logging
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.163.2@sha256:7f22d2a6748110ffb6a59bc0df448bccbf501cdb667d610ede4c61d3863d5849
+    image: otel/opentelemetry-collector-contrib:0.165.0@sha256:e40d61f10c9a617cca1ffd1be4d7e2b3a4b0f0001798ff07e58cabe82e618cea
     restart: unless-stopped
     depends_on:
       otel-queue-init:
@@ -111,7 +111,7 @@ services:
     networks: [backend]
 
   prometheus:
-    image: prom/prometheus:v3.15.1@sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2
+    image: prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
     restart: unless-stopped
     volumes:
       - ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
@@ -164,7 +164,7 @@ services:
     networks: [backend]
 
   grafana:
-    image: grafana/grafana:13.2.4@sha256:dbbc38ea21103cefb50396340cd88afec779c7e070b0a7bf5a75b4ce46651d3f
+    image: grafana/grafana:13.3.0@sha256:488984b716c0862639f91a698adbe2862677a5a07bad42da5f03f3030883b205
     restart: unless-stopped
     depends_on:
       loki:
@@ -212,7 +212,7 @@ services:
     networks: [default, backend]
 
   blackbox-exporter:
-    image: prom/blackbox-exporter:v0.26.0@sha256:92e05d5fe0df01d3980518dc42f07b778a8997048b57392ebc7f7391ebd7bb06
+    image: prom/blackbox-exporter:v0.29.1@sha256:ea1c7aa3ef3f307cd03e85f34abb604478ccb90b567fc690da0cd9776da76b13
     restart: unless-stopped
     volumes:
       - ./config/blackbox.yaml:/etc/blackbox_exporter/config.yml:ro
@@ -227,7 +227,7 @@ services:
     networks: [default, backend]
 
   ntfy:
-    image: binwiederhier/ntfy:v2.11.0@sha256:4a7d0f0adc6d5d9fc36e64ab55ef676e76e124a2bdd50ce115b6d9c1c7430294
+    image: binwiederhier/ntfy:v2.37.2@sha256:1875ddcf815c8a3c981d6d78c67a93452d0abba79b1ab9520b1f5f5238902bd7
     restart: unless-stopped
     volumes:
       - ./config/ntfy/server.yml:/etc/ntfy/server.yml:ro
