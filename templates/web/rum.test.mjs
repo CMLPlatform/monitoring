@@ -5,14 +5,15 @@ import { runInNewContext } from 'node:vm';
 
 const source = readFileSync(new URL('./rum.html', import.meta.url), 'utf8').split('<script>')[1].split('</script>')[0];
 
-function browser(initialVisibility = 'visible', unsupportedCls = false) {
+function browser(initialVisibility = 'visible', unsupportedCls = false, endpoint = 'https://rum.example.org/') {
   const logs = [];
+  const requests = [];
   const listeners = {};
   const observers = {};
   const on = (name, handler) => (listeners[name] ??= []).push(handler);
   const document = { visibilityState: initialVisibility, addEventListener: on };
   const window = {
-    __OTEL_ENDPOINT__: 'https://rum.example.org',
+    __OTEL_ENDPOINT__: endpoint,
     location: { origin: 'https://example.org', pathname: '/' },
     addEventListener: on,
   };
@@ -31,19 +32,51 @@ function browser(initialVisibility = 'visible', unsupportedCls = false) {
   }
   window.PerformanceObserver = PerformanceObserver;
   runInNewContext(source, {
-    window, document, PerformanceObserver, navigator: { userAgent: 'test-browser' },
-    fetch: (_url, options) => {
+    window, document, PerformanceObserver, URL, navigator: { userAgent: 'test-browser' },
+    fetch: (url, options) => {
+      requests.push({ url, options });
       logs.push(JSON.parse(options.body).resourceLogs[0].scopeLogs[0].logRecords[0]);
       return Promise.resolve();
     },
   });
-  const emit = (name, timeStamp = 10000) => listeners[name]?.forEach((handler) => handler({ timeStamp }));
+  const emit = (name, timeStamp = 10000) => listeners[name]?.forEach((handler) => handler(typeof timeStamp === 'object' ? timeStamp : { timeStamp }));
   const deliver = (type, entries) => observers[type].callback({ getEntries: () => entries });
   const hide = (time = 10000) => { document.visibilityState = 'hidden'; emit('visibilitychange', time); };
   const values = (vital, key) => logs.filter((log) => log.body.stringValue === `WebVital: ${vital}`).map((log) => log.attributes.find((attr) => attr.key === key).value.doubleValue);
-  return { logs, document, observers, emit, deliver, hide, values };
+  return { logs, requests, document, observers, emit, deliver, hide, values };
 }
 const shift = (value, startTime, hadRecentInput = false) => ({ value, startTime, hadRecentInput });
+
+test('transport normalizes the endpoint and posts JSON with keepalive; no endpoint disables sending', () => {
+  const page = browser();
+  page.emit('error', {});
+  assert.equal(page.requests.length, 1);
+  const { url, options } = page.requests[0];
+  assert.equal(url, 'https://rum.example.org/v1/logs');
+  assert.equal(options.method, 'POST');
+  assert.equal(options.keepalive, true);
+  assert.deepEqual({ ...options.headers }, { 'Content-Type': 'application/json' });
+  assert.equal(JSON.parse(options.body).resourceLogs.length, 1);
+  const disabled = browser('visible', false, '');
+  disabled.emit('error', {});
+  assert.equal(disabled.requests.length, 0);
+});
+
+test('errors collect technical metadata without messages, stacks or URL credentials', () => {
+  const page = browser();
+  const privateValue = 'fixture-private-token';
+  page.emit('error', {
+    message: privateValue, error: { stack: privateValue },
+    filename: `https://user:${privateValue}@example.org/app.js?token=${privateValue}#${privateValue}`,
+    lineno: 4, colno: 2,
+  });
+  page.emit('unhandledrejection', { reason: { message: privateValue, stack: privateValue } });
+  page.emit('error', { filename: `data:text/javascript,${privateValue}` });
+  assert.equal(page.logs.length, 3);
+  assert.equal(JSON.stringify(page.requests).includes(privateValue), false);
+  assert.equal(page.logs[0].attributes.find(({ key }) => key === 'filename').value.stringValue, 'https://example.org/app.js');
+  assert.equal(page.logs[0].attributes.find(({ key }) => key === 'lineno').value.doubleValue, 4);
+});
 
 test('CLS reports the largest session instead of summing separate sessions', () => {
   const page = browser();
