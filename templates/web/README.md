@@ -4,9 +4,17 @@ Lightweight, zero-dependency browser telemetry for static websites, documentatio
 
 ## What it captures
 
-1. **Core Web Vitals:** Largest Contentful Paint (LCP) and Cumulative Layout Shift (CLS).
-2. **Unhandled errors:** `window.onerror` exceptions and unhandled promise rejections.
-3. **Structured logs:** Shipped as standard OTLP/HTTP JSON (`/v1/logs`) to the central collector.
+1. **LCP:** The latest paint candidate, exported once at first interaction or page hide.
+2. **CLS:** The largest session of unexpected shifts, with gaps under one second and a span under five seconds. Exported on hide when the nonzero page maximum increases.
+3. **Unhandled errors:** `window.onerror` exceptions and unhandled promise rejections.
+4. **Structured logs:** Shipped as standard OTLP/HTTP JSON (`/v1/logs`) to the central collector.
+
+The script drains pending performance records before exporting. Showing the page
+again preserves its CLS maximum. It ignores LCP for pages loaded hidden and
+candidates painted after the first hide. These rules follow the
+[LCP](https://web.dev/articles/lcp) and [CLS](https://web.dev/articles/cls) definitions.
+It does not measure visits restored from the back/forward cache, prerendered
+page activation or content inside iframes.
 
 ## Integration
 
