@@ -65,9 +65,9 @@ _expose-guards:
     @case "${GRAFANA_ROOT_URL:-}" in https://*) ;; *) echo "error: GRAFANA_ROOT_URL must be the https:// tunnel hostname (got '${GRAFANA_ROOT_URL:-}'); every absolute URL Grafana generates comes from it" >&2; exit 1;; esac
     @[ "${GRAFANA_COOKIE_SECURE:-false}" = "true" ] || { echo "error: GRAFANA_COOKIE_SECURE must be true when Grafana is served over HTTPS; set it in .env" >&2; exit 1; }
     @[ "${GRAFANA_JWT_AUTH:-false}" != "true" ] || { [ -n "${CF_ACCESS_TEAM_DOMAIN:-}" ] && [ -n "${CF_ACCESS_AUD:-}" ]; } || { echo "error: GRAFANA_JWT_AUTH=true needs CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD in .env (cd infra && tofu output -raw grafana_access_team_domain grafana_access_aud)" >&2; exit 1; }
-    @[ -n "${HEARTBEAT_URL:-}" ] || echo "WARNING: HEARTBEAT_URL is empty; the stack goes live without a dead-man's switch" >&2
+    @[ -n "${HEARTBEAT_URL:-}" ] || { echo "error: HEARTBEAT_URL is empty; Grafana rejects contact point provisioning. Set the dead man's switch URL in .env" >&2; exit 1; }
     @for f in .env infra/terraform.tfvars infra/terraform.tfstate infra/terraform.tfstate.backup; do [ ! -e "$f" ] || case "$(stat -c %a "$f")" in *00) ;; *) echo "error: $f is readable by other users (mode $(stat -c %a "$f")); it holds live secrets, run: chmod 600 $f" >&2; exit 1;; esac; done
-    @[ -n "${ALERT_WEBHOOK_URL:-}" ] || { echo "error: ALERT_WEBHOOK_URL is empty; every alert would fire into an empty webhook URL and be dropped. The heartbeat keeps pinging either way, so this failure looks healthy from the outside. Set it, or comment out this guard" >&2; exit 1; }
+    @[ -n "${ALERT_WEBHOOK_URL:-}" ] || { echo "error: ALERT_WEBHOOK_URL is empty; Grafana rejects contact point provisioning. Set the alert destination in .env" >&2; exit 1; }
     @case "${NTFY_BASE_URL:-}" in ""|https://*) ;; *) echo "error: NTFY_BASE_URL must be an https:// URL when exposing via tunnel (got '${NTFY_BASE_URL:-}')" >&2; exit 1;; esac
 
 # Core stack plus a demo telemetry source, isolated from any running stack (:3002).
@@ -90,7 +90,7 @@ restart service: _guard-if-exposed
 # Validate every config in the repo.
 check: lint validate
 
-# Static checks in tool images (~280 MB cold, seconds warm).
+# Static checks and regression tests in tool images.
 lint:
     # Digest-pinned, so anything already local is current; only fetch what is missing.
     @printf '%s\n' {{lint_images}} | xargs -P 8 -I{} sh -c 'docker image inspect {} >/dev/null 2>&1 || docker pull -q {} >/dev/null'
@@ -109,7 +109,7 @@ lint:
     # documented default is refused on its own.
     @good="OTLP_AUTH_TOKEN=t GRAFANA_ADMIN_PASSWORD=p GRAFANA_ROOT_URL=https://g.example GRAFANA_COOKIE_SECURE=true GRAFANA_JWT_AUTH=true CF_ACCESS_TEAM_DOMAIN=d CF_ACCESS_AUD=a HEARTBEAT_URL=https://h ALERT_WEBHOOK_URL=https://w"; \
       env $good just _expose-guards || { echo "error: exposure guards rejected a fully set environment" >&2; exit 1; }; \
-      for bad in OTLP_AUTH_TOKEN=local-dev-token GRAFANA_ADMIN_PASSWORD=change-me GRAFANA_ROOT_URL=http://g.example GRAFANA_COOKIE_SECURE=false CF_ACCESS_AUD= ALERT_WEBHOOK_URL= NTFY_BASE_URL=http://insecure; do \
+      for bad in OTLP_AUTH_TOKEN=local-dev-token GRAFANA_ADMIN_PASSWORD=change-me GRAFANA_ROOT_URL=http://g.example GRAFANA_COOKIE_SECURE=false CF_ACCESS_AUD= HEARTBEAT_URL= ALERT_WEBHOOK_URL= NTFY_BASE_URL=http://insecure; do \
         ! env $good $bad just _expose-guards 2>/dev/null || { echo "error: exposure guards accepted $bad" >&2; exit 1; }; \
       done
     # run_scheduled.sh, interrupted mid-job, must take the job down with it,

@@ -180,10 +180,9 @@ them read-only. Edit the YAML.
 - `HEARTBEAT_URL` receives the always-firing `Watchdog` every five minutes.
   Point it at a dead man's switch that raises the alarm when pings stop.
 
-Leaving either empty is not safe. Delivery fails silently while the heartbeat
-keeps pinging, so the switch reads healthy and every real alert is dropped.
-With the tunnel overlay active, `just up` refuses to start without
-`ALERT_WEBHOOK_URL`, and `AlertDeliveryFailing` fires on a failing notifier.
+Grafana rejects contact point provisioning if either URL is empty.
+With the tunnel overlay active, `just up` refuses to start without both URLs.
+`AlertDeliveryFailing` fires if a configured notifier fails to deliver alerts.
 
 After changing either variable, run `docker compose up -d grafana`. A plain
 `restart` keeps the old environment. Compose rebuilds a container's
@@ -314,17 +313,17 @@ When the tunnel overlay is active, `just up` validates critical security setting
 - **`GRAFANA_ADMIN_PASSWORD`**: Refuses `change-me`. Set a strong password.
 - **`GRAFANA_ROOT_URL`**: Must match the `https://` tunnel hostname for Grafana.
 - **`GRAFANA_COOKIE_SECURE=true`**: Required when Grafana runs behind an HTTPS tunnel.
-- **`ALERT_WEBHOOK_URL`**: Cannot be empty; empty URLs drop all fired alerts.
+- **`ALERT_WEBHOOK_URL`**: Cannot be empty; Grafana requires an alert destination to provision its contact points.
 - **`NTFY_BASE_URL`**: Must be an https:// URL when exposing ntfy via tunnel.
 - **`GRAFANA_JWT_AUTH=true`**: Requires both `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` set.
 - **File permissions**: Refuses to start if `.env`, `infra/terraform.tfvars`, or Terraform state files are readable by other users (mode must be `0600`).
-- **`HEARTBEAT_URL`**: Emits a warning if unset (the stack runs without a dead-man's switch).
+- **`HEARTBEAT_URL`**: Cannot be empty; Grafana also requires the heartbeat destination to provision its contact points.
 
 ### Verification commands
 
 | Command | Action |
 | --- | --- |
-| `just lint` | Runs static checks (compose, alert templates, YAML, workflows, shell, Python, JSON). |
+| `just lint` | Runs static checks (Compose, alert templates, YAML, workflows, shell, Python, JSON), plus secret-scan and browser RUM regression tests. |
 | `just validate` | Validates each service config with its respective tool container. |
 | `just check` | Runs `just lint` and `just validate`. |
 | `just smoke` | Boots an isolated copy of the stack and asserts ingestion, storage, and query APIs end-to-end. |
@@ -391,8 +390,10 @@ one manual step: it bumps the constraint in `main.tf` but not the hashes in
 account. Only a plan proves the provider still maps the config to the same
 resources.
 
-Nothing watches the tool images pinned in the `justfile` (yamllint,
-actionlint, shellcheck, ruff, gitleaks, OpenTofu, jq). Bump those by hand.
+Nothing watches the tool images pinned in the `justfile` (yamllint, yamlfmt,
+actionlint, shellcheck, ruff, gitleaks, OpenTofu, jq, Node). Bump those by hand.
+Node runs the browser RUM regression tests inside a container; contributors
+do not need a local Node installation.
 The backup recipes reuse the alpine image of `otel-queue-init` in
 `compose.yml`.
 
