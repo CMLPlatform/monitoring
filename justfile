@@ -134,9 +134,10 @@ lint:
     docker run --rm --network none -v .:/code:ro {{yamllint}} yamllint -d '{extends: relaxed, rules: {line-length: {max: 120, allow-non-breakable-inline-mappings: true}}, ignore: [.git/, backups/, infra/.terraform/, config/grafana/alerting/projects.yaml]}' .
     @d=$(mktemp -d) && BOOTSTRAP_OUT_DIR="$d" ./bootstrap.sh dummy dummy >/dev/null && docker run --rm --network none -v "$d":/code:ro {{yamllint}} yamllint -d '{extends: relaxed, rules: {line-length: disable}}' .; rc=$?; rm -rf "$d"; exit $rc
     docker run --rm --network none -v .:/repo:ro -w /repo {{actionlint}} -color
-    docker run --rm --network none -v .:/mnt:ro {{shellcheck}} bootstrap.sh scripts/smoke.sh scripts/test_gitleaks.sh scripts/test_imports.sh templates/run_scheduled.sh infra/generate-imports.sh
+    docker run --rm --network none -v .:/mnt:ro {{shellcheck}} bootstrap.sh scripts/smoke.sh scripts/restore-check.sh scripts/test_backup.sh scripts/test_gitleaks.sh scripts/test_imports.sh templates/run_scheduled.sh infra/generate-imports.sh
     sh scripts/test_gitleaks.sh
     bash scripts/test_imports.sh
+    sh scripts/test_backup.sh
     docker run --rm --network none -v ./demo:/demo:ro {{ruff}} check --no-cache /demo
     docker run --rm --network none -v ./demo:/demo:ro {{ruff}} format --check --no-cache /demo
     docker run --rm --network none -v ./templates/web:/rum:ro {{node}} node --test --test-isolation=none /rum/rum.test.mjs
