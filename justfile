@@ -65,9 +65,9 @@ _expose-guards:
     @case "${GRAFANA_ROOT_URL:-}" in https://*) ;; *) echo "error: GRAFANA_ROOT_URL must be the https:// tunnel hostname (got '${GRAFANA_ROOT_URL:-}'); every absolute URL Grafana generates comes from it" >&2; exit 1;; esac
     @[ "${GRAFANA_COOKIE_SECURE:-false}" = "true" ] || { echo "error: GRAFANA_COOKIE_SECURE must be true when Grafana is served over HTTPS; set it in .env" >&2; exit 1; }
     @[ "${GRAFANA_JWT_AUTH:-false}" != "true" ] || { [ -n "${CF_ACCESS_TEAM_DOMAIN:-}" ] && [ -n "${CF_ACCESS_AUD:-}" ]; } || { echo "error: GRAFANA_JWT_AUTH=true needs CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD in .env (cd infra && tofu output -raw grafana_access_team_domain grafana_access_aud)" >&2; exit 1; }
-    @[ -n "${HEARTBEAT_URL:-}" ] || { echo "error: HEARTBEAT_URL is empty; Grafana rejects contact point provisioning. Set the dead man's switch URL in .env" >&2; exit 1; }
+    @[ -n "${HEARTBEAT_URL:-}" ] || { echo "error: HEARTBEAT_URL is empty; the notification relay needs the dead man's switch URL in .env" >&2; exit 1; }
     @for f in .env infra/terraform.tfvars infra/terraform.tfstate infra/terraform.tfstate.backup; do [ ! -e "$f" ] || case "$(stat -c %a "$f")" in *00) ;; *) echo "error: $f is readable by other users (mode $(stat -c %a "$f")); it holds live secrets, run: chmod 600 $f" >&2; exit 1;; esac; done
-    @[ -n "${ALERT_WEBHOOK_URL:-}" ] || { echo "error: ALERT_WEBHOOK_URL is empty; Grafana rejects contact point provisioning. Set the alert destination in .env" >&2; exit 1; }
+    @[ -n "${ALERT_WEBHOOK_URL:-}" ] || { echo "error: ALERT_WEBHOOK_URL is empty; the notification relay needs the alert destination in .env" >&2; exit 1; }
     @case "${NTFY_BASE_URL:-}" in ""|https://*) ;; *) echo "error: NTFY_BASE_URL must be an https:// URL when exposing via tunnel (got '${NTFY_BASE_URL:-}')" >&2; exit 1;; esac
 
 # Core stack plus a demo telemetry source, isolated from any running stack (:3002).
@@ -138,8 +138,13 @@ lint:
     sh scripts/test_gitleaks.sh
     bash scripts/test_imports.sh
     sh scripts/test_backup.sh
+    # Exercise the provisioned expression, including counters first seen after a failure.
+    @d=$(mktemp -d) && expr=$(awk '/uid: watchdog-heartbeat/{watchdog=1} watchdog && /expr: >/{expr=1;next} expr && /^                /{sub(/^                /, "");printf "%s ",$0;next} expr{exit}' config/grafana/alerting/rules.yaml) && test -n "$expr" && jq --arg expr "$expr" '.tests[].promql_expr_test[].expr = $expr' tests/watchdog.json >"$d/watchdog.json" && chmod 755 "$d" && chmod 644 "$d/watchdog.json" && docker run --rm --network none --entrypoint /bin/promtool -v "$d":/tests:ro $(just _image compose.yml prometheus) test rules /tests/watchdog.json; rc=$?; rm -rf "$d"; exit $rc
     docker run --rm --network none -v ./demo:/demo:ro {{ruff}} check --no-cache /demo
     docker run --rm --network none -v ./demo:/demo:ro {{ruff}} format --check --no-cache /demo
+    docker run --rm --network none -v ./notification-relay:/relay:ro {{ruff}} check --no-cache /relay
+    docker run --rm --network none -v ./notification-relay:/relay:ro {{ruff}} format --check --no-cache /relay
+    docker run --rm --network none -v ./notification-relay:/relay:ro -w /relay $(just _image compose.yml notification-relay) python -B -m unittest discover
     docker run --rm --network none -v ./templates/web:/rum:ro {{node}} node --test --test-isolation=none /rum/rum.test.mjs
     # `just fmt` is the fix.
     docker run --rm --network none -v .:/code:ro -w /code {{yamlfmt}} -lint .

@@ -168,7 +168,7 @@ comparison stays true for the duration of `for`:
 
 | Rule | Group | Severity | For | Trigger & Intent |
 | --- | --- | --- | --- | --- |
-| `Watchdog` | meta | none | 0m | Heartbeat pinging dead man's switch (`vector(1)`); always firing. |
+| `Watchdog` | meta | none | 0m | Heartbeat while Grafana scrapes succeed and recent notification deliveries have not failed. |
 | `AlertDeliveryFailing` | meta | critical | 10m | Grafana failing to deliver webhook notifications. |
 | `TargetDown` | stack-health | critical | 2m | Prometheus cannot scrape an internal job target (`up == 0`). |
 | `OtelExportFailures` | stack-health | warning | 5m | OTel Collector failing to export spans, metrics, or logs. |
@@ -194,7 +194,7 @@ routing tree are provisioned from `config/grafana/alerting/`, so the UI shows
 them read-only. Edit the YAML.
 
 - `ALERT_WEBHOOK_URL` receives all alerts.
-- `HEARTBEAT_URL` receives the always-firing `Watchdog` every five minutes.
+- `HEARTBEAT_URL` receives `Watchdog` every five minutes while delivery is healthy.
   Point it at a dead man's switch that raises the alarm when pings stop.
 
 The internal `notification-relay` owns both destination URLs. Grafana stores
@@ -208,6 +208,13 @@ timeout, refuses redirects, and reports delivery errors to Grafana without
 returning provider bodies or credentials. An empty destination returns 503.
 With the tunnel overlay active, `just up` refuses to start without both URLs.
 `AlertDeliveryFailing` fires if a configured notifier fails to deliver alerts.
+Watchdog stops after a notification failure or a failed Grafana scrape. It resumes
+when scraping is healthy and notification failures leave the ten-minute query
+window. A failed channel can therefore trigger the external check even when
+Grafana itself is running. Resolved Watchdog notifications are disabled so they
+cannot send a misleading recovery ping. Check the failed destination before
+trusting resumed heartbeats; a quiet channel has no new delivery attempts to prove
+its recovery.
 
 When migrating from direct delivery, run
 `docker compose up -d notification-relay grafana` to replace Grafana's old
@@ -232,8 +239,8 @@ Cloudflare Tunnel with strict zero-trust authentication (`auth-default-access: "
 +------------------------------------------------------------------+
 | Monitoring Host                                                  |
 |                                                                  |
-|   Grafana ------(http://ntfy:80/alerts?tpl=1...)------> ntfy     |
-|   (publisher)                                            |       |
+|   Grafana --> notification-relay --> ntfy                         |
+|              (publisher credentials)       |                     |
 |                                                     [auth.db]    |
 |                                                          ^       |
 |                                                          |       |
