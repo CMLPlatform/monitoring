@@ -22,7 +22,8 @@ request outside what the stack sets out to do is closed with a link to this sect
 
 ## Set up and check
 
-You need Docker with the Compose plugin and [`just`](https://github.com/casey/just).
+You need Docker with the Compose plugin, [`just`](https://github.com/casey/just),
+and `jq` for the local regression checks.
 `just hooks` installs the git hooks (with [prek](https://prek.j178.dev), which sets up the
 Python environment for the citation hooks itself). `just check` runs the static checks and
 validates every config, `just smoke` starts a throwaway copy of the stack and sends it

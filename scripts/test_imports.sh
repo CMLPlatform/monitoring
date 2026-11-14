@@ -34,6 +34,7 @@ for fixture in present absent failure; do
         absent) [[ "$rc" == 0 ]] && ! grep 'cloudflare_dns_record.ntfy' "$scratch/out" >/dev/null ;;
         failure) [[ "$rc" != 0 ]] && grep 'DNS lookup for ntfy.fixture.example failed' "$scratch/err" >/dev/null ;;
     esac || {
+        cat "$scratch/err" >&2
         echo "error: ntfy DNS $fixture check failed" >&2
         exit 1
     }
