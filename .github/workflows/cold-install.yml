@@ -1,0 +1,41 @@
+name: cold install
+
+on:
+  pull_request:
+  schedule:
+    - cron: "47 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  readme:
+    name: README demo, fresh runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+      # Docker and Compose are supplied by the fresh runner; no build cache is restored.
+      - name: Run the README quick start
+        run: |
+          cp .env.example .env
+          just demo
+      - name: Check the demo API and Grafana
+        run: |
+          docker compose -p monitoring-demo -f compose.yml -f compose.demo.yml -f compose.sandbox.yml \
+            exec -T demo-load curl --fail --retry 20 --retry-all-errors --retry-delay 2 demo-api:8000/openapi.json
+          curl --fail --retry 20 --retry-all-errors --retry-delay 2 http://localhost:3002/api/health
+      - if: failure()
+        run: >-
+          docker compose -p monitoring-demo -f compose.yml -f compose.demo.yml -f compose.sandbox.yml
+          logs --no-color --tail=200
+      - if: always()
+        run: just demo-destroy

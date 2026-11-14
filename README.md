@@ -72,6 +72,8 @@ This launches the core monitoring stack and a demo FastAPI service under simulat
 - View **Dashboards → Service Health (RED)** for request rates, error rates, and latency traces.
 - Stop and clean up: `just demo-destroy`.
 
+The demo displays sample telemetry but does not deliver alert notifications.
+
 ![Service Health dashboard](docs/img/service-health.png)
 
 ## Operating the stack

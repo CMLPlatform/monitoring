@@ -1,8 +1,8 @@
 # Notification targets. Grafana expands $VAR from the environment.
 #
-# An unset variable leaves the URL empty and every notification fails silently:
-# AlertDeliveryFailing routes to this same webhook, and the heartbeat stays
-# green. The exposure guard in `just up` is the only control.
+# Each receiver needs a URL or Grafana rejects contact point provisioning.
+# The demo and smoke stacks supply isolated placeholders. The exposure guard
+# in `just up` requires a production alert destination.
 
 apiVersion: 1
 
