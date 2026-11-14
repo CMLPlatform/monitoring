@@ -41,12 +41,11 @@ jq -e 'all(.isPaused | not)' <<<"$rules" >/dev/null \
     || die "paused alert rules never fire: $(jq -r '.[] | select(.isPaused) | .uid' <<<"$rules" | tr '\n' ' ')"
 
 # --------------------------------------------------------------- contact points
-# The exact URLs the stack was given must come back: an empty value would
-# pass a "not literally $ALERT_WEBHOOK_URL" test and drop every alert.
+# External notification credentials belong to the relay, outside Grafana.
 gf "$url/api/v1/provisioning/contact-points" \
-    | jq -e --arg a "$ALERT_WEBHOOK_URL" --arg h "$HEARTBEAT_URL" \
+    | jq -e --arg a "http://notification-relay:8080/alerts" --arg h "http://notification-relay:8080/heartbeat" \
         '[.[] | select(.uid | startswith("cp-")) | .settings.url] | sort == ([$a, $h] | sort)' >/dev/null \
-    || die "contact points do not carry ALERT_WEBHOOK_URL and HEARTBEAT_URL; Grafana did not expand the provisioning file, or a receiver is missing"
+    || die "contact points do not target the internal notification relay"
 
 # ------------------------------------------------------------------- JWT auth
 # Grafana ignores an env key it no longer knows, so read the parsed setting
@@ -73,10 +72,23 @@ if [[ "${SMOKE_ALERTS:-}" == 1 ]]; then
 fi
 
 # ------------------------------------------------------------- data paths
-# One metric and one log through the collector's bearer auth, read back with
+# One metric, log and trace through the collector's bearer auth, read back with
 # the identity labels the alert rules key on. Posted from inside the stack's
 # network with Grafana's curl: the sandbox overlay publishes no ingestion ports.
-ts="$(date +%s)000000000"
+run_start="$(date +%s)"
+ts="${run_start}000000000"
+# A fresh value/body distinguishes this run without adding unbounded labels.
+smoke_value="$(od -An -N6 -tu8 /dev/urandom | tr -d ' ')"
+smoke_body="smoke $smoke_value"
+trace_id="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+span_id="$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+# Tempo returns OTLP JSON byte IDs as base64, unlike the hex lookup URL.
+# shellcheck disable=SC2001 # Convert hex byte pairs, rather than literal text.
+trace_b64="$(printf '%b' "$(sed 's/../\\x&/g' <<<"$trace_id")" | base64 | tr -d '\n')"
+# shellcheck disable=SC2001 # Convert hex byte pairs, rather than literal text.
+span_b64="$(printf '%b' "$(sed 's/../\\x&/g' <<<"$span_id")" | base64 | tr -d '\n')"
+counts_query='sum by (__name__) ({__name__=~"telemetry_(datapoints|logs|spans)_total",project="smoke",env="ci"})'
+counts_before="$(promq "$counts_query" | jq '[.data.result[] | {key: .metric.__name__, value: (.value[1] | tonumber)}] | from_entries')"
 res='{"attributes":[{"key":"service.name","value":{"stringValue":"smoke"}},{"key":"project","value":{"stringValue":"smoke"}},{"key":"env","value":{"stringValue":"ci"}}]}'
 # Token through curl's stdin config: argv is world-readable in ps, on the host
 # and inside the container alike.
@@ -85,23 +97,40 @@ otlp() {
         'curl -sf -K - -o /dev/null -H "Content-Type: application/json" --data-binary "$1" "http://otel-collector:4318/v1/$2"' \
         _ "$2" "$1" <<<"header = \"Authorization: Bearer $(cfg_quote "$OTLP_AUTH_TOKEN")\""
 }
-otlp metrics '{"resourceMetrics":[{"resource":'"$res"',"scopeMetrics":[{"metrics":[{"name":"smoke_up","gauge":{"dataPoints":[{"asInt":"1","timeUnixNano":"'"$ts"'"}]}}]}]}]}' \
+otlp metrics '{"resourceMetrics":[{"resource":'"$res"',"scopeMetrics":[{"metrics":[{"name":"smoke_up","gauge":{"dataPoints":[{"asInt":"'"$smoke_value"'","timeUnixNano":"'"$ts"'"}]}}]}]}]}' \
     || die "the collector refused an OTLP metric with the .env token"
-otlp logs '{"resourceLogs":[{"resource":'"$res"',"scopeLogs":[{"logRecords":[{"timeUnixNano":"'"$ts"'","body":{"stringValue":"smoke"}}]}]}]}' \
+otlp logs '{"resourceLogs":[{"resource":'"$res"',"scopeLogs":[{"logRecords":[{"timeUnixNano":"'"$ts"'","body":{"stringValue":"'"$smoke_body"'"}}]}]}]}' \
     || die "the collector refused an OTLP log with the .env token"
-smoke_metric() { promq "smoke_up{job=\"smoke\",project=\"smoke\",env=\"ci\",department=\"cml\"}" | jq -e '.data.result | length > 0' >/dev/null; }
+otlp traces '{"resourceSpans":[{"resource":'"$res"',"scopeSpans":[{"spans":[{"traceId":"'"$trace_id"'","spanId":"'"$span_id"'","name":"smoke","kind":1,"startTimeUnixNano":"'"$ts"'","endTimeUnixNano":"'"$((run_start + 1))000000000"'"}]}]}]}' \
+    || die "the collector refused an OTLP trace with the .env token"
+smoke_metric() { promq "timestamp(smoke_up{job=\"smoke\",project=\"smoke\",env=\"ci\",department=\"cml\"} == $smoke_value) >= $run_start" | jq -e '.data.result | length > 0' >/dev/null; }
 smoke_log() {
     gf -G --data-urlencode "query={project=\"smoke\",env=\"ci\",department=\"cml\"}" \
+        --data-urlencode "start=$ts" --data-urlencode "end=$(date +%s)000000000" \
         "$url/api/datasources/proxy/uid/loki/loki/api/v1/query_range" \
-        | jq -e 'any(.data.result[].values[][1]; . == "smoke")' >/dev/null
+        | jq -e --arg body "$smoke_body" 'any(.data.result[].values[][1]; . == $body)' >/dev/null
+}
+smoke_trace() {
+    gf -H 'Accept: application/json' "$url/api/datasources/proxy/uid/tempo/api/traces/$trace_id" \
+        | jq -e --arg trace "$trace_b64" --arg span "$span_b64" '
+            any(.batches[];
+                (.resource.attributes | map({key: .key, value: .value.stringValue}) | from_entries) as $a
+                | $a.project == "smoke" and $a.env == "ci" and $a.department == "cml"
+                and any(.scopeSpans[].spans[]; .traceId == $trace and .spanId == $span and .name == "smoke"))' >/dev/null
 }
 poll smoke_metric || die "the smoke metric never reached Prometheus with its project/env/department labels; see just smoke-logs"
 poll smoke_log || die "the smoke log never reached Loki with its department label; see just smoke-logs"
+poll smoke_trace || die "the smoke trace never reached Tempo with its trace/span identity and project/env/department attributes; see just smoke-logs"
 # The keystone alert (ProjectTelemetrySilent) and the coverage backstop key on the
 # gateway's ingest counters, so a renamed metric or a dropped attribute would
 # silence both without any other assertion noticing.
-counted() { promq "count by (project, env) ({__name__=~\"telemetry_.+_total\", project=\"smoke\", env=\"ci\"})" | jq -e '.data.result | length > 0' >/dev/null; }
-poll counted || die "the count connector never produced telemetry_*_total{project=smoke,env=ci}; the alert rules that key on it would never fire"
+counted() {
+    promq "$counts_query" | jq -e --argjson before "$counts_before" '
+        [.data.result[] | {key: .metric.__name__, value: (.value[1] | tonumber)}] | from_entries
+        | . as $after | ["telemetry_datapoints_total", "telemetry_logs_total", "telemetry_spans_total"]
+        | all(.[]; . as $name | ($after[$name] // 0) > ($before[$name] // 0))' >/dev/null
+}
+poll counted || die "the count connector never advanced all three telemetry signal counters for this smoke run; the alert rules that key on it would never fire"
 
 # ------------------------------------------------------------- ntfy & blackbox
 # Verify ntfy health endpoint answers over the docker network.
@@ -129,7 +158,16 @@ if [[ "${SMOKE_ALERTS:-}" == 1 ]]; then
     }
     POLL_MAX=60 POLL_SLEEP=5 poll target_down_firing || die "TargetDown did not fire within 5 minutes of stopping node-exporter"
     docker compose -p "$project" start node-exporter >/dev/null
-    echo "TargetDown fired for the stopped node-exporter"
+    node_recovered() {
+        promq 'up{job="node"}' | jq -e '.data.result | length > 0 and all(.[]; .value[1] == "1")' >/dev/null
+    }
+    target_down_normal() {
+        gf "$url/api/prometheus/grafana/api/v1/rules" \
+            | jq -e '.data.groups[].rules[] | select(.name == "TargetDown") | .state == "inactive"' >/dev/null
+    }
+    poll node_recovered || die "node-exporter did not resume scraping within a minute of restart"
+    POLL_MAX=60 POLL_SLEEP=5 poll target_down_normal || die "TargetDown did not return to normal within 5 minutes of restarting node-exporter"
+    echo "TargetDown fired, node-exporter resumed scraping, and TargetDown returned to normal"
 fi
 
 echo "Stack healthy"
