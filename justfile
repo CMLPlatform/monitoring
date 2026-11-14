@@ -12,7 +12,8 @@ shellcheck := "koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f
 ruff := "ghcr.io/astral-sh/ruff:0.14.2@sha256:636e27f3feb43800e44b0ad48c72811b500a2c6309d094b641a9bf2247f4dbff"
 tofu := "ghcr.io/opentofu/opentofu:1.12.3@sha256:a0766d12f07b43e66f2ed40d7a8babe97d581d20339c68ad0ab561737af9a5b3"
 gitleaks := "zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"
-lint_images := jq + " " + yamllint + " " + yamlfmt + " " + actionlint + " " + shellcheck + " " + ruff + " " + tofu + " " + gitleaks
+node := "node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5"
+lint_images := jq + " " + yamllint + " " + yamlfmt + " " + actionlint + " " + shellcheck + " " + ruff + " " + tofu + " " + gitleaks + " " + node
 
 # `demo` and `smoke` each run a throwaway copy of the core stack under their own
 # compose project and Grafana port (compose.sandbox.yml), so neither can touch a
@@ -137,6 +138,7 @@ lint:
     sh scripts/test_gitleaks.sh
     docker run --rm --network none -v ./demo:/demo:ro {{ruff}} check --no-cache /demo
     docker run --rm --network none -v ./demo:/demo:ro {{ruff}} format --check --no-cache /demo
+    docker run --rm --network none -v ./templates/web:/rum:ro {{node}} node --test --test-isolation=none /rum/rum.test.mjs
     # `just fmt` is the fix.
     docker run --rm --network none -v .:/code:ro -w /code {{yamlfmt}} -lint .
     docker run --rm --network none -v ./infra:/infra:ro -w /infra {{tofu}} fmt -check
