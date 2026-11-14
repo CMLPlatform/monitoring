@@ -133,7 +133,8 @@ lint:
     docker run --rm --network none -v .:/code:ro {{yamllint}} yamllint -d '{extends: relaxed, rules: {line-length: {max: 120, allow-non-breakable-inline-mappings: true}}, ignore: [.git/, backups/, infra/.terraform/, config/grafana/alerting/projects.yaml]}' .
     @d=$(mktemp -d) && BOOTSTRAP_OUT_DIR="$d" ./bootstrap.sh dummy dummy >/dev/null && docker run --rm --network none -v "$d":/code:ro {{yamllint}} yamllint -d '{extends: relaxed, rules: {line-length: disable}}' .; rc=$?; rm -rf "$d"; exit $rc
     docker run --rm --network none -v .:/repo:ro -w /repo {{actionlint}} -color
-    docker run --rm --network none -v .:/mnt:ro {{shellcheck}} bootstrap.sh scripts/smoke.sh templates/run_scheduled.sh infra/generate-imports.sh
+    docker run --rm --network none -v .:/mnt:ro {{shellcheck}} bootstrap.sh scripts/smoke.sh scripts/test_gitleaks.sh templates/run_scheduled.sh infra/generate-imports.sh
+    sh scripts/test_gitleaks.sh
     docker run --rm --network none -v ./demo:/demo:ro {{ruff}} check --no-cache /demo
     docker run --rm --network none -v ./demo:/demo:ro {{ruff}} format --check --no-cache /demo
     # `just fmt` is the fix.
@@ -146,7 +147,7 @@ lint:
       [ -z "$bad" ] || { echo "error: dashboards reference datasource uids that are not provisioned:" $bad >&2; exit 1; }
     # Secrets in git history. Scans commits, not the working tree, so the
     # gitignored .env never trips it. Needs full history (see ci.yml).
-    docker run --rm --network none -v .:/repo:ro {{gitleaks}} git --redact --no-banner /repo
+    just _gitleaks
     # The agent config every project host vendors, checked by the Alloy build
     # the template actually pins.
     docker run --rm --network none -v ./templates/alloy/config.alloy:/etc/alloy/config.alloy:ro -e COMPOSE_PROJECT_NAME=dummy -e ENVIRONMENT=dummy -e PROJECT=dummy -e OTEL_EXPORTER_OTLP_ENDPOINT=https://dummy -e OTLP_AUTH_TOKEN=dummy -e TELEMETRY_EDGE_KEY= $({{spoke_env}} just _image templates/compose.telemetry.yml alloy) validate /etc/alloy/config.alloy
@@ -184,7 +185,11 @@ infra-validate:
 
 # gitleaks over the staged diff (the pre-commit hook; see .pre-commit-config.yaml).
 _gitleaks-staged:
-    @docker run --rm --network none -v .:/repo:ro {{gitleaks}} git --pre-commit --staged --redact --no-banner /repo
+    @just _gitleaks --pre-commit --staged
+
+_gitleaks *args:
+    # Linked worktrees point outside /repo at their shared Git metadata.
+    @gitdir=$(git rev-parse --path-format=absolute --git-common-dir) && docker run --rm --network none -v .:/repo:ro -v "$gitdir:$gitdir:ro" -e GIT_WORK_TREE=/repo --entrypoint sh {{gitleaks}} -c 'git -C /repo rev-parse --verify HEAD >/dev/null && exec gitleaks git --redact --no-banner "$@" /repo' -- {{args}}
 
 # Format YAML in place (--user so the rewritten files stay yours).
 fmt:
