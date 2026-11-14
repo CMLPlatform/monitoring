@@ -214,7 +214,7 @@ _mounts project:
 _backup project dir:
     mkdir -p {{dir}}
     @-docker compose -p {{project}} unpause {{stateful}} >/dev/null 2>&1
-    @rc=0; img=$(just _image compose.yml otel-queue-init); m=$(just _mounts {{project}}); docker compose -p {{project}} pause {{stateful}} && docker run --rm --network none $m -v {{absolute_path(dir)}}:/backups "$img" sh -c 'set -o pipefail; umask 077 && tar cf - -C /data . | gzip -1 > /backups/monitoring-$(date +%Y%m%d-%H%M%S).tar.gz' || rc=$?; docker compose -p {{project}} unpause {{stateful}} || { echo "error: unpause failed; the stack is still paused" >&2; rc=1; }; exit $rc
+    @trap 'rc=$?; trap - EXIT INT TERM; docker compose -p {{project}} unpause {{stateful}} || { echo "error: unpause failed; the stack may still be paused" >&2; [ "$rc" -ne 0 ] || rc=1; }; exit "$rc"' EXIT; trap 'exit 130' INT; trap 'exit 143' TERM; img=$(just _image compose.yml otel-queue-init) && m=$(just _mounts {{project}}) && docker compose -p {{project}} pause {{stateful}} && docker run --rm --network none $m -v {{absolute_path(dir)}}:/backups "$img" sh -c 'set -o pipefail; umask 077 && tar cf - -C /data . | gzip -1 > /backups/monitoring-$(date +%Y%m%d-%H%M%S).tar.gz'
     @just _newest-backup {{dir}}
 
 # pre-restore-* snapshots share the dir and sort after monitoring-* by name.
@@ -239,8 +239,8 @@ _restore project file dir:
 # Needs a booted smoke stack (`just smoke`). Run it after touching _backup/_restore.
 # COMPOSE_FILE is pinned so the host's overlay list stays out, as for `smoke`.
 # Round-trip backup and restore on the smoke stack.
-restore-check:
-    @export COMPOSE_FILE=compose.yml:compose.sandbox.yml; d=$(mktemp -d) && just _backup {{smoke_project}} "$d" && f=$(ls "$d"/monitoring-*.tar.gz) && just _restore {{smoke_project}} "$f" "$d" && docker run --rm --network none -v {{smoke_project}}_grafana_data:/g:ro $(just _image compose.yml otel-queue-init) test -s /g/grafana.db && echo "Backup round-trip ok"; rc=$?; rm -rf "$d"; exit $rc
+restore-check project=smoke_project port=smoke_port:
+    @{{smoke_env}} SANDBOX_PORT={{port}} scripts/restore-check.sh {{project}} {{stateful}}
 
 # `--wait` blocks on the healthchecks and fails if any container exits, so a
 # crash-looping service is caught (after the full timeout). scripts/smoke.sh
