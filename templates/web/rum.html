@@ -65,6 +65,8 @@
         headers: headers,
         body: JSON.stringify(payload),
         keepalive: true,
+        referrerPolicy: "no-referrer",
+        credentials: "omit",
         mode: "cors"
       }).catch(function() {});
     } catch (e) {
@@ -76,60 +78,113 @@
 
   // --- Core Web Vitals ---
   if ("PerformanceObserver" in window) {
-    // LCP
-    try {
-      new PerformanceObserver(function(list) {
-        const entries = list.getEntries();
-        const lastEntry = entries[entries.length - 1];
-        if (lastEntry) {
-          sendLog("WebVital: LCP", "INFO", {
-            vital_name: "LCP",
-            duration_ms: Math.round(lastEntry.startTime),
-            element: lastEntry.element ? (lastEntry.element.tagName || "element") : "unknown"
-          });
-        }
-      }).observe({ type: "largest-contentful-paint", buffered: true });
-    } catch (e) {}
+    let lcpObserver;
+    let latestLcp;
+    let lcpFinalized = document.visibilityState === "hidden";
+    let firstHiddenTime = lcpFinalized ? 0 : Infinity;
+    let clsObserver;
+    let sessionStart = 0;
+    let lastShiftTime = 0;
+    let sessionScore = 0;
+    let clsScore = 0;
+    let reportedCls = -1;
 
-    // CLS
-    try {
-      let clsValue = 0;
-      new PerformanceObserver(function(list) {
-        for (const entry of list.getEntries()) {
-          if (!entry.hadRecentInput) {
-            clsValue += entry.value;
-          }
-        }
-      }).observe({ type: "layout-shift", buffered: true });
+    function updateLcp(entries) {
+      if (lcpFinalized) return;
+      for (const entry of entries) {
+        if (entry.startTime < firstHiddenTime) latestLcp = entry;
+      }
+    }
 
-      window.addEventListener("visibilitychange", function() {
-        if (document.visibilityState === "hidden" && clsValue > 0) {
-          sendLog("WebVital: CLS", "INFO", {
-            vital_name: "CLS",
-            cls_score: Math.round(clsValue * 1000) / 1000
-          });
-          clsValue = 0;
+    function finalizeLcp() {
+      if (lcpFinalized) return;
+      if (lcpObserver) {
+        updateLcp(lcpObserver.takeRecords());
+        lcpObserver.disconnect();
+      }
+      lcpFinalized = true;
+      if (latestLcp) {
+        sendLog("WebVital: LCP", "INFO", {
+          vital_name: "LCP",
+          duration_ms: Math.round(latestLcp.startTime),
+          element: latestLcp.element ? latestLcp.element.tagName || "element" : "unknown"
+        });
+      }
+    }
+
+    function updateCls(entries) {
+      for (const entry of entries) {
+        if (entry.hadRecentInput) continue;
+        // A session ends at a one-second gap or a five-second total span.
+        if (sessionScore > 0 && entry.startTime - lastShiftTime < 1000 && entry.startTime - sessionStart < 5000) {
+          sessionScore += entry.value;
+        } else {
+          sessionStart = entry.startTime;
+          sessionScore = entry.value;
         }
-      });
-    } catch (e) {}
+        lastShiftTime = entry.startTime;
+        clsScore = Math.max(clsScore, sessionScore);
+      }
+    }
+
+    try {
+      if (!lcpFinalized) {
+        lcpObserver = new PerformanceObserver((list) => updateLcp(list.getEntries()));
+        lcpObserver.observe({ type: "largest-contentful-paint", buffered: true });
+      }
+    } catch {
+      // Some browsers do not support this performance entry type.
+    }
+    try {
+      if (PerformanceObserver.supportedEntryTypes?.includes("layout-shift")) {
+        clsObserver = new PerformanceObserver((list) => updateCls(list.getEntries()));
+        clsObserver.observe({ type: "layout-shift", buffered: true });
+      }
+    } catch {
+      clsObserver = undefined;
+      // Some browsers do not support this performance entry type.
+    }
+
+    for (const event of ["pointerdown", "touchstart", "keydown", "scroll"]) {
+      window.addEventListener(event, finalizeLcp, { once: true, capture: true, passive: true });
+    }
+    document.addEventListener("visibilitychange", (event) => {
+      if (document.visibilityState !== "hidden") return;
+      firstHiddenTime = Math.min(firstHiddenTime, event.timeStamp);
+      finalizeLcp();
+      if (clsObserver) updateCls(clsObserver.takeRecords());
+      if (clsObserver && clsScore > reportedCls) {
+        sendLog("WebVital: CLS", "INFO", {
+          vital_name: "CLS",
+          cls_score: Math.round(clsScore * 1000) / 1000
+        });
+        reportedCls = clsScore;
+      }
+    });
   }
 
   // --- Uncaught Errors ---
+  function scriptLocation(filename) {
+    try {
+      const url = new URL(filename, window.location.origin);
+      return url.protocol === "https:" || url.protocol === "http:" ? url.origin + url.pathname : "unknown";
+    } catch (_) {
+      return "unknown";
+    }
+  }
+
   window.addEventListener("error", function(evt) {
-    sendLog(evt.message || "Unhandled JavaScript Error", "ERROR", {
+    sendLog("Unhandled JavaScript error", "ERROR", {
       error_type: "uncaught_exception",
-      filename: evt.filename ? evt.filename.split("?")[0] : "unknown",
+      filename: evt.filename ? scriptLocation(evt.filename) : "unknown",
       lineno: evt.lineno || 0,
-      colno: evt.colno || 0,
-      stack: evt.error ? evt.error.stack || "" : ""
+      colno: evt.colno || 0
     });
   });
 
-  window.addEventListener("unhandledrejection", function(evt) {
-    const reason = evt.reason;
-    sendLog(reason && reason.message ? reason.message : String(reason), "ERROR", {
-      error_type: "unhandled_promise_rejection",
-      stack: reason && reason.stack ? reason.stack : ""
+  window.addEventListener("unhandledrejection", function() {
+    sendLog("Unhandled promise rejection", "ERROR", {
+      error_type: "unhandled_promise_rejection"
     });
   });
 })();

@@ -44,8 +44,8 @@ groups:
     folder: Stack alerts
     interval: 1m
     rules:
-      # Always firing. execErrState is Error so a broken query stops the
-      # heartbeat and the switch alarms.
+      # Stop on failed deliveries, lost Grafana scrapes, or query errors. A new
+      # counter may start at 1; retain that evidence even if it disappears.
       - uid: watchdog-heartbeat
         title: Watchdog
         !!merge <<: *rule_defaults
@@ -54,13 +54,19 @@ groups:
           - !!merge <<: *query_node
             model:
               !!merge <<: *query_model
-              expr: vector(1)
+              expr: >
+                (vector(1) and on() (min(up{job="grafana"}) == 1))
+                unless (sum(increase(grafana_alerting_notifications_failed_total{job="grafana"}[10m])) > 0
+                or sum(max_over_time(grafana_alerting_notifications_failed_total{job="grafana"}[10m])
+                unless grafana_alerting_notifications_failed_total{job="grafana"} offset 10m) > 0)
           - *firing
         labels:
           severity: none
         annotations:
-          summary: "Alerting-pipeline heartbeat (always firing)"
-          description: "Routed to a dead man's switch. Investigate if the pings stop."
+          summary: "Alerting-pipeline heartbeat"
+          description: >-
+            Routed to a dead man's switch. Pings stop when Grafana cannot be scraped
+            or recent notification failures appear in a 10-minute window. Investigate if the pings stop.
       # Cannot page when the webhook itself is broken; the heartbeat covers that.
       - uid: alert-delivery-failing
         title: AlertDeliveryFailing

@@ -106,15 +106,19 @@ Prometheus reloads `config/targets/probes.yaml` automatically without a restart.
 
 ## Template 4: Browser Real User Monitoring (RUM)
 
-For client-side performance and error tracking on web applications or static portals, include the lightweight snippet from [`templates/web/rum.html`](../templates/web/rum.html):
+For browser performance and error tracking, first ask the hub administrator for
+a restricted public ingestion proxy. It must keep the collector bearer private,
+fix the project's identity, and limit payload size and request rate. Leave RUM
+disabled until that ingress and the collection agreement are ready.
+
+Then configure the snippet from [`templates/web/rum.html`](../templates/web/rum.html):
 
 ```html
 <script>
-  window.__OTEL_ENDPOINT__ = "https://otel.example.org";
+  window.__OTEL_ENDPOINT__ = "https://rum.example.org";
   window.__OTEL_PROJECT__ = "my-project";
   window.__OTEL_SERVICE__ = "my-web";
   window.__OTEL_ENV__ = "prod";
-  window.__OTEL_TOKEN__ = "<otlp-auth-token>"; // Required if collector enforces bearer auth
 </script>
 <!-- Paste contents of templates/web/rum.html here -->
 ```
@@ -125,7 +129,8 @@ What it captures:
 - **Client Exceptions:** Unhandled `window.onerror` exceptions and unhandled promise rejections.
 - **Log Streams:** Emits structured OTLP/HTTP JSON (`/v1/logs`) indexed into Loki.
 
-The collector permits cross-origin requests from `https://cmlplatform.github.io` and Leiden University domains (`*.leidenuniv.nl`). See [`templates/web/README.md`](../templates/web/README.md) for details.
+Never put the shared collector token in public HTML. CORS does not protect that
+credential. See [`templates/web/README.md`](../templates/web/README.md) for the ingress requirements.
 
 ---
 

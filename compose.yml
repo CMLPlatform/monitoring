@@ -163,10 +163,35 @@ services:
       - /:/host:ro
     networks: [backend]
 
+  notification-relay:
+    image: python:3.15.0-slim@sha256:f5b92f2a669a4c347044f29367f31983280b648250ca94dea66f98c53bc87e58
+    restart: unless-stopped
+    user: "65534:65534"
+    read_only: true
+    command: ["python", "-B", "/app/relay.py"]
+    volumes:
+      - ./notification-relay/relay.py:/app/relay.py:ro
+    environment:
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      HEARTBEAT_URL: ${HEARTBEAT_URL:-}
+    healthcheck:
+      !!merge <<: *healthcheck
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2).close()"
+    mem_limit: 64m
+    !!merge <<: *hardened
+    pids_limit: 32
+    networks: [notification-egress, notifications]
+
   grafana:
     image: grafana/grafana:13.3.0@sha256:488984b716c0862639f91a698adbe2862677a5a07bad42da5f03f3030883b205
     restart: unless-stopped
     depends_on:
+      notification-relay:
+        condition: service_healthy
       loki:
         condition: service_started
       tempo:
@@ -183,9 +208,6 @@ services:
       - grafana_data:/var/lib/grafana
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
-      # Expanded by Grafana into the provisioned contact points.
-      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
-      HEARTBEAT_URL: ${HEARTBEAT_URL:-}
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/stack-health.json
       # Secure cookies break plain-http localhost logins, so opt-in. With the
@@ -209,7 +231,7 @@ services:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
     mem_limit: 1g
     !!merge <<: *hardened
-    networks: [default, backend]
+    networks: [default, backend, notifications]
 
   blackbox-exporter:
     image: prom/blackbox-exporter:v0.29.1@sha256:ea1c7aa3ef3f307cd03e85f34abb604478ccb90b567fc690da0cd9776da76b13
@@ -241,13 +263,16 @@ services:
     mem_limit: 128m
     pids_limit: 128
     !!merge <<: *hardened
-    networks: [default, backend]
+    networks: [default, backend, notifications]
 
 # Loki, Prometheus and Tempo have no authentication of their own, so only
 # Grafana and the collector can reach them. cloudflared stays on `default`: its
 # ingress list comes from Cloudflare at runtime, so an edited ingress cannot
 # publish a backend that skips the collector's token gate.
 networks:
+  notification-egress:
+  notifications:
+    internal: true
   backend:
     internal: true
 

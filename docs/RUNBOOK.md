@@ -45,10 +45,12 @@ count, not time, is what grows the TSDB.
 When one fires:
 
 1. Check the Filesystem panel on Stack Health.
-2. Free space, or shorten a retention window and restart the service:
+2. Free space, or shorten a retention window:
    `retention_period` in `config/loki.yaml`, `block_retention` in
    `config/tempo.yaml`, or the `--storage.tsdb.retention.*` flags in
-   `compose.yml`.
+   `compose.yml`. Restart Loki or Tempo after a config change. After changing
+   Prometheus command arguments, run `docker compose up -d prometheus` to
+   recreate its container with the new retention settings.
 3. If disk pressure keeps returning, move Loki and Tempo to object storage.
    The appendix of ADR 0001 describes the change.
 
@@ -106,12 +108,25 @@ on the host.
   That builds a new tunnel and repoints all three CNAMEs (grafana, otel, ntfy) at it, and ingestion and
   Grafana are unreachable for about a minute. Either way, put the new token
   in `CLOUDFLARE_TUNNEL_TOKEN` in `.env`, then `just up`.
-- **Grafana admin password:** change `GRAFANA_ADMIN_PASSWORD` in `.env`,
-  then `docker compose up -d grafana`.
+- **Grafana admin password:** changing `GRAFANA_ADMIN_PASSWORD` only initializes
+  a new database. To rotate an existing password, update its value in `.env`.
+  Enter the same value at the prompt below; it stays out of shell history and
+  process arguments:
+
+  ```bash
+  read -r -s -p 'New Grafana admin password: ' grafana_password
+  printf '\n'
+  printf '%s\n' "$grafana_password" | docker compose exec -T grafana grafana cli \
+    --homepath /usr/share/grafana admin reset-admin-password --password-from-stdin
+  unset grafana_password
+  docker compose up -d grafana
+  ```
+
+  Confirm that a fresh login accepts the new password and rejects the old one.
 - **Alert webhook and heartbeat URLs:** the URL is the credential. Mint a new
   topic or check at the provider, put it in `ALERT_WEBHOOK_URL` or
-  `HEARTBEAT_URL`, then `docker compose up -d grafana`. Grafana reads the
-  contact points only at startup.
+  `HEARTBEAT_URL`, then `docker compose up -d notification-relay`. Revoke the
+  old capability URL at the provider after confirming delivery.
 - **healthchecks.io API key:** regenerate it in the project's settings and
   set `HEALTHCHECKS_API_KEY` in `.env`. Only `bootstrap.sh` reads it, so
   nothing restarts.
@@ -122,9 +137,11 @@ on the host.
 ### Where every secret lives
 
 Three gitignored files hold everything. `just backup` archives none of them,
-but the tarball contains Grafana's database, and Grafana stores the expanded
-contact points there. So the webhook and heartbeat URLs are inside every
-backup. Copy `.env` and `infra/terraform.tfstate` off-host together with the
+but the tarball contains Grafana's database. New contact points contain only
+internal relay routes; destination credentials live in the relay environment.
+Backups made before the relay migration contain the old destination URLs.
+Rotate those URLs when migrating and protect old backups until the URLs are
+revoked. Copy `.env` and `infra/terraform.tfstate` off-host together with the
 backups and treat all three the same way.
 
 | Secret | Lives in | Comes from |
@@ -151,7 +168,7 @@ comparison stays true for the duration of `for`:
 
 | Rule | Group | Severity | For | Trigger & Intent |
 | --- | --- | --- | --- | --- |
-| `Watchdog` | meta | none | 0m | Heartbeat pinging dead man's switch (`vector(1)`); always firing. |
+| `Watchdog` | meta | none | 0m | Heartbeat while Grafana scrapes succeed and recent notification deliveries have not failed. |
 | `AlertDeliveryFailing` | meta | critical | 10m | Grafana failing to deliver webhook notifications. |
 | `TargetDown` | stack-health | critical | 2m | Prometheus cannot scrape an internal job target (`up == 0`). |
 | `OtelExportFailures` | stack-health | warning | 5m | OTel Collector failing to export spans, metrics, or logs. |
@@ -168,7 +185,7 @@ comparison stays true for the duration of `for`:
 | `ContainerRestarting` | container-lifecycle | warning | 10m | Container restarts >3 times within 1 hour. |
 | `ContainerOOMKilled` | container-lifecycle | warning | 0m | Container terminated by host kernel OOM killer. |
 | `ProjectTelemetrySilent` | spoke | critical | 15m | Spoke service stopped shipping OTel telemetry. |
-| `ProjectsUncovered` | _coverage | warning | 5m | Telemetry received from unlisted project; register in projects.yaml. |
+| `ProjectsUncovered` | _coverage | warning | 15m | Telemetry received from unlisted project; register in projects.yaml. |
 
 ## Alert delivery
 
@@ -177,16 +194,35 @@ routing tree are provisioned from `config/grafana/alerting/`, so the UI shows
 them read-only. Edit the YAML.
 
 - `ALERT_WEBHOOK_URL` receives all alerts.
-- `HEARTBEAT_URL` receives the always-firing `Watchdog` every five minutes.
+- `HEARTBEAT_URL` receives `Watchdog` every five minutes while delivery is healthy.
   Point it at a dead man's switch that raises the alarm when pings stop.
 
-Leaving either empty is not safe. Delivery fails silently while the heartbeat
-keeps pinging, so the switch reads healthy and every real alert is dropped.
-With the tunnel overlay active, `just up` refuses to start without
-`ALERT_WEBHOOK_URL`, and `AlertDeliveryFailing` fires on a failing notifier.
+The internal `notification-relay` owns both destination URLs. Grafana stores
+only `http://notification-relay:8080/alerts` and `/heartbeat`, so its Viewer
+contact point API cannot disclose destination credentials. The relay has no
+published port and its private network is separate from tunnel ingress. Only
+trusted stack services may call it; this does not isolate a compromised
+Grafana administrator or container. Keep the ntfy publisher account write-only.
+The relay forwards POST JSON with a 1 MiB body limit and a five-second socket
+timeout, refuses redirects, and reports delivery errors to Grafana without
+returning provider bodies or credentials. An empty destination returns 503.
+With the tunnel overlay active, `just up` refuses to start without both URLs.
+`AlertDeliveryFailing` fires if a configured notifier fails to deliver alerts.
+Watchdog stops after a notification failure or a failed Grafana scrape. It resumes
+when scraping is healthy and notification failures leave the ten-minute query
+window. A failed channel can therefore trigger the external check even when
+Grafana itself is running. Resolved Watchdog notifications are disabled so they
+cannot send a misleading recovery ping. Check the failed destination before
+trusting resumed heartbeats; a quiet channel has no new delivery attempts to prove
+its recovery.
 
-After changing either variable, run `docker compose up -d grafana`. A plain
-`restart` keeps the old environment. Compose rebuilds a container's
+When migrating from direct delivery, run
+`docker compose up -d notification-relay grafana` to replace Grafana's old
+environment and provision the internal routes. Rotate the old destination URLs
+after the new routes deliver successfully.
+
+After changing either variable, run
+`docker compose up -d notification-relay`. A plain `restart` keeps the old environment. Compose rebuilds a container's
 environment only on `up`.
 
 ### Self-hosted alert delivery with ntfy
@@ -203,8 +239,8 @@ Cloudflare Tunnel with strict zero-trust authentication (`auth-default-access: "
 +------------------------------------------------------------------+
 | Monitoring Host                                                  |
 |                                                                  |
-|   Grafana ------(http://ntfy:80/alerts?tpl=1...)------> ntfy     |
-|   (publisher)                                            |       |
+|   Grafana --> notification-relay --> ntfy                         |
+|              (publisher credentials)       |                     |
 |                                                     [auth.db]    |
 |                                                          ^       |
 |                                                          |       |
@@ -224,7 +260,7 @@ docker compose exec -e NTFY_PASSWORD="<grafana-secret>" ntfy ntfy user add grafa
 docker compose exec ntfy ntfy access grafana alerts write-only
 ```
 
-#### 2. Configure Grafana contact point
+#### 2. Configure the notification relay
 
 Point `ALERT_WEBHOOK_URL` in `.env` to the local ntfy instance using native
 message templating (`?tpl=1`):
@@ -233,10 +269,10 @@ message templating (`?tpl=1`):
 ALERT_WEBHOOK_URL=http://grafana:<grafana-secret>@ntfy:80/alerts?tpl=1&title={{or .commonAnnotations.summary .groupLabels.alertname}}&message={{or .commonAnnotations.description .commonAnnotations.summary "Alert firing"}}
 ```
 
-Apply the change to Grafana:
+Apply the change to the relay:
 
 ```sh
-docker compose up -d grafana
+docker compose up -d notification-relay
 ```
 
 #### 3. Create subscriber users for operators
@@ -264,8 +300,9 @@ Zero Trust dashboard. The next apply reverts anything clicked in by hand.
 
 ```sh
 just infra-validate                 # tofu init + validate, in a container
-cd infra && tofu plan               # needs CLOUDFLARE_API_TOKEN exported
-cd infra && tofu apply
+cd infra                           # needs CLOUDFLARE_API_TOKEN exported
+tofu plan
+tofu apply
 ```
 
 - **Granting or revoking Grafana access:** edit `grafana_allowed_emails` in
@@ -314,17 +351,17 @@ When the tunnel overlay is active, `just up` validates critical security setting
 - **`GRAFANA_ADMIN_PASSWORD`**: Refuses `change-me`. Set a strong password.
 - **`GRAFANA_ROOT_URL`**: Must match the `https://` tunnel hostname for Grafana.
 - **`GRAFANA_COOKIE_SECURE=true`**: Required when Grafana runs behind an HTTPS tunnel.
-- **`ALERT_WEBHOOK_URL`**: Cannot be empty; empty URLs drop all fired alerts.
+- **`ALERT_WEBHOOK_URL`**: Cannot be empty when exposing the stack; the relay needs an alert destination.
 - **`NTFY_BASE_URL`**: Must be an https:// URL when exposing ntfy via tunnel.
 - **`GRAFANA_JWT_AUTH=true`**: Requires both `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` set.
 - **File permissions**: Refuses to start if `.env`, `infra/terraform.tfvars`, or Terraform state files are readable by other users (mode must be `0600`).
-- **`HEARTBEAT_URL`**: Emits a warning if unset (the stack runs without a dead-man's switch).
+- **`HEARTBEAT_URL`**: Cannot be empty when exposing the stack; the relay needs a heartbeat destination.
 
 ### Verification commands
 
 | Command | Action |
 | --- | --- |
-| `just lint` | Runs static checks (compose, alert templates, YAML, workflows, shell, Python, JSON). |
+| `just lint` | Runs static checks (Compose, alert templates, YAML, workflows, shell, Python, JSON), plus secret-scan and browser RUM regression tests. |
 | `just validate` | Validates each service config with its respective tool container. |
 | `just check` | Runs `just lint` and `just validate`. |
 | `just smoke` | Boots an isolated copy of the stack and asserts ingestion, storage, and query APIs end-to-end. |
@@ -391,8 +428,10 @@ one manual step: it bumps the constraint in `main.tf` but not the hashes in
 account. Only a plan proves the provider still maps the config to the same
 resources.
 
-Nothing watches the tool images pinned in the `justfile` (yamllint,
-actionlint, shellcheck, ruff, gitleaks, OpenTofu, jq). Bump those by hand.
+Nothing watches the tool images pinned in the `justfile` (yamllint, yamlfmt,
+actionlint, shellcheck, ruff, gitleaks, OpenTofu, jq, Node). Bump those by hand.
+Node runs the browser RUM regression tests inside a container; contributors
+do not need a local Node installation.
 The backup recipes reuse the alpine image of `otel-queue-init` in
 `compose.yml`.
 

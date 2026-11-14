@@ -1,0 +1,128 @@
+{
+  "evaluation_interval": "1m",
+  "tests": [
+    {
+      "name": "healthy Grafana with no failures",
+      "interval": "1m",
+      "input_series": [
+        {"series":"up{job=\"grafana\"}","values":"1+0x20"},
+        {"series":"grafana_alerting_notifications_failed_total{job=\"grafana\"}","values":"0+0x20"}
+      ],
+      "promql_expr_test": [
+        {"expr":"WATCHDOG_EXPR","eval_time":"2m","exp_samples":[{"labels":"{}","value":1}]}
+      ]
+    },
+    {
+      "name": "failure stops heartbeat and expires after ten minutes",
+      "interval": "1m",
+      "input_series": [
+        {"series":"up{job=\"grafana\"}","values":"1+0x30"},
+        {"series":"grafana_alerting_notifications_failed_total{job=\"grafana\"}","values":"0+0x4 1+0x25"}
+      ],
+      "promql_expr_test": [
+        {"expr":"WATCHDOG_EXPR","eval_time":"5m","exp_samples":[]},
+        {"expr":"WATCHDOG_EXPR","eval_time":"13m","exp_samples":[]},
+        {"expr":"WATCHDOG_EXPR","eval_time":"15m","exp_samples":[{"labels":"{}","value":1}]}
+      ]
+    },
+    {
+      "name": "first counter sample already records a failed delivery",
+      "interval": "1m",
+      "input_series": [
+        {"series":"up{job=\"grafana\"}","values":"1+0x20"},
+        {"series":"grafana_alerting_notifications_failed_total{job=\"grafana\",integration=\"webhook\"}","values":"_ _ 1+0x18"}
+      ],
+      "promql_expr_test": [
+        {"expr":"WATCHDOG_EXPR","eval_time":"2m","exp_samples":[]},
+        {"expr":"WATCHDOG_EXPR","eval_time":"11m","exp_samples":[]},
+        {"expr":"WATCHDOG_EXPR","eval_time":"12m","exp_samples":[{"labels":"{}","value":1}]}
+      ]
+    },
+    {
+      "name": "counter reset followed by another failed delivery",
+      "interval": "1m",
+      "input_series": [
+        {"series":"up{job=\"grafana\"}","values":"1+0x30"},
+        {"series":"grafana_alerting_notifications_failed_total{job=\"grafana\"}","values":"4+0x10 0 1+0x18"}
+      ],
+      "promql_expr_test": [
+        {"expr":"WATCHDOG_EXPR","eval_time":"10m","exp_samples":[{"labels":"{}","value":1}]},
+        {"expr":"WATCHDOG_EXPR","eval_time":"12m","exp_samples":[]},
+        {"expr":"WATCHDOG_EXPR","eval_time":"22m","exp_samples":[{"labels":"{}","value":1}]}
+      ]
+    },
+    {
+      "name": "no counters before the first notification",
+      "interval": "1m",
+      "input_series": [
+        {"series":"up{job=\"grafana\"}","values":"1+0x20"}
+      ],
+      "promql_expr_test": [
+        {"expr":"WATCHDOG_EXPR","eval_time":"2m","exp_samples":[{"labels":"{}","value":1}]}
+      ]
+    },
+    {
+      "name": "Grafana scrape fails",
+      "interval": "1m",
+      "input_series": [
+        {"series":"up{job=\"grafana\"}","values":"1 0+0x20"}
+      ],
+      "promql_expr_test": [
+        {"expr":"WATCHDOG_EXPR","eval_time":"2m","exp_samples":[]}
+      ]
+    },
+    {
+      "name": "Grafana scrape disappears",
+      "interval": "1m",
+      "input_series": [
+        {"series":"up{job=\"grafana\"}","values":"1 stale"}
+      ],
+      "promql_expr_test": [
+        {"expr":"WATCHDOG_EXPR","eval_time":"2m","exp_samples":[]}
+      ]
+    },
+    {
+      "name": "Grafana has never been scraped",
+      "interval": "1m",
+      "input_series": [
+      ],
+      "promql_expr_test": [
+        {"expr":"WATCHDOG_EXPR","eval_time":"2m","exp_samples":[]}
+      ]
+    },
+    {
+      "name": "failure counters from another job do not suppress Grafana",
+      "interval": "1m",
+      "input_series": [
+        {"series":"up{job=\"grafana\"}","values":"1+0x20"},
+        {"series":"grafana_alerting_notifications_failed_total{job=\"unrelated\"}","values":"1+1x20"}
+      ],
+      "promql_expr_test": [
+        {"expr":"WATCHDOG_EXPR","eval_time":"2m","exp_samples":[{"labels":"{}","value":1}]}
+      ]
+    },
+    {
+      "name": "one failed Grafana scrape suppresses heartbeat",
+      "interval": "1m",
+      "input_series": [
+        {"series":"up{job=\"grafana\",instance=\"healthy\"}","values":"1+0x20"},
+        {"series":"up{job=\"grafana\",instance=\"failed\"}","values":"0+0x20"}
+      ],
+      "promql_expr_test": [
+        {"expr":"WATCHDOG_EXPR","eval_time":"2m","exp_samples":[]}
+      ]
+    },
+    {
+      "name": "new failure counter disappears before its failure ages out",
+      "interval": "1m",
+      "input_series": [
+        {"series":"up{job=\"grafana\"}","values":"1+0x20"},
+        {"series":"grafana_alerting_notifications_failed_total{job=\"grafana\"}","values":"_ _ 1 1 stale"}
+      ],
+      "promql_expr_test": [
+        {"expr":"WATCHDOG_EXPR","eval_time":"5m","exp_samples":[]},
+        {"expr":"WATCHDOG_EXPR","eval_time":"14m","exp_samples":[{"labels":"{}","value":1}]}
+      ]
+    }
+  ]
+}

@@ -12,7 +12,8 @@ shellcheck := "koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f
 ruff := "ghcr.io/astral-sh/ruff:0.14.2@sha256:636e27f3feb43800e44b0ad48c72811b500a2c6309d094b641a9bf2247f4dbff"
 tofu := "ghcr.io/opentofu/opentofu:1.12.3@sha256:a0766d12f07b43e66f2ed40d7a8babe97d581d20339c68ad0ab561737af9a5b3"
 gitleaks := "zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"
-lint_images := jq + " " + yamllint + " " + yamlfmt + " " + actionlint + " " + shellcheck + " " + ruff + " " + tofu + " " + gitleaks
+node := "node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5"
+lint_images := jq + " " + yamllint + " " + yamlfmt + " " + actionlint + " " + shellcheck + " " + ruff + " " + tofu + " " + gitleaks + " " + node
 
 # `demo` and `smoke` each run a throwaway copy of the core stack under their own
 # compose project and Grafana port (compose.sandbox.yml), so neither can touch a
@@ -64,9 +65,9 @@ _expose-guards:
     @case "${GRAFANA_ROOT_URL:-}" in https://*) ;; *) echo "error: GRAFANA_ROOT_URL must be the https:// tunnel hostname (got '${GRAFANA_ROOT_URL:-}'); every absolute URL Grafana generates comes from it" >&2; exit 1;; esac
     @[ "${GRAFANA_COOKIE_SECURE:-false}" = "true" ] || { echo "error: GRAFANA_COOKIE_SECURE must be true when Grafana is served over HTTPS; set it in .env" >&2; exit 1; }
     @[ "${GRAFANA_JWT_AUTH:-false}" != "true" ] || { [ -n "${CF_ACCESS_TEAM_DOMAIN:-}" ] && [ -n "${CF_ACCESS_AUD:-}" ]; } || { echo "error: GRAFANA_JWT_AUTH=true needs CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD in .env (cd infra && tofu output -raw grafana_access_team_domain grafana_access_aud)" >&2; exit 1; }
-    @[ -n "${HEARTBEAT_URL:-}" ] || echo "WARNING: HEARTBEAT_URL is empty; the stack goes live without a dead-man's switch" >&2
+    @[ -n "${HEARTBEAT_URL:-}" ] || { echo "error: HEARTBEAT_URL is empty; the notification relay needs the dead man's switch URL in .env" >&2; exit 1; }
     @for f in .env infra/terraform.tfvars infra/terraform.tfstate infra/terraform.tfstate.backup; do [ ! -e "$f" ] || case "$(stat -c %a "$f")" in *00) ;; *) echo "error: $f is readable by other users (mode $(stat -c %a "$f")); it holds live secrets, run: chmod 600 $f" >&2; exit 1;; esac; done
-    @[ -n "${ALERT_WEBHOOK_URL:-}" ] || { echo "error: ALERT_WEBHOOK_URL is empty; every alert would fire into an empty webhook URL and be dropped. The heartbeat keeps pinging either way, so this failure looks healthy from the outside. Set it, or comment out this guard" >&2; exit 1; }
+    @[ -n "${ALERT_WEBHOOK_URL:-}" ] || { echo "error: ALERT_WEBHOOK_URL is empty; the notification relay needs the alert destination in .env" >&2; exit 1; }
     @case "${NTFY_BASE_URL:-}" in ""|https://*) ;; *) echo "error: NTFY_BASE_URL must be an https:// URL when exposing via tunnel (got '${NTFY_BASE_URL:-}')" >&2; exit 1;; esac
 
 # Core stack plus a demo telemetry source, isolated from any running stack (:3002).
@@ -89,7 +90,7 @@ restart service: _guard-if-exposed
 # Validate every config in the repo.
 check: lint validate
 
-# Static checks in tool images (~280 MB cold, seconds warm).
+# Static checks and regression tests in tool images.
 lint:
     # Digest-pinned, so anything already local is current; only fetch what is missing.
     @printf '%s\n' {{lint_images}} | xargs -P 8 -I{} sh -c 'docker image inspect {} >/dev/null 2>&1 || docker pull -q {} >/dev/null'
@@ -108,7 +109,7 @@ lint:
     # documented default is refused on its own.
     @good="OTLP_AUTH_TOKEN=t GRAFANA_ADMIN_PASSWORD=p GRAFANA_ROOT_URL=https://g.example GRAFANA_COOKIE_SECURE=true GRAFANA_JWT_AUTH=true CF_ACCESS_TEAM_DOMAIN=d CF_ACCESS_AUD=a HEARTBEAT_URL=https://h ALERT_WEBHOOK_URL=https://w"; \
       env $good just _expose-guards || { echo "error: exposure guards rejected a fully set environment" >&2; exit 1; }; \
-      for bad in OTLP_AUTH_TOKEN=local-dev-token GRAFANA_ADMIN_PASSWORD=change-me GRAFANA_ROOT_URL=http://g.example GRAFANA_COOKIE_SECURE=false CF_ACCESS_AUD= ALERT_WEBHOOK_URL= NTFY_BASE_URL=http://insecure; do \
+      for bad in OTLP_AUTH_TOKEN=local-dev-token GRAFANA_ADMIN_PASSWORD=change-me GRAFANA_ROOT_URL=http://g.example GRAFANA_COOKIE_SECURE=false CF_ACCESS_AUD= HEARTBEAT_URL= ALERT_WEBHOOK_URL= NTFY_BASE_URL=http://insecure; do \
         ! env $good $bad just _expose-guards 2>/dev/null || { echo "error: exposure guards accepted $bad" >&2; exit 1; }; \
       done
     # run_scheduled.sh, interrupted mid-job, must take the job down with it,
@@ -133,9 +134,18 @@ lint:
     docker run --rm --network none -v .:/code:ro {{yamllint}} yamllint -d '{extends: relaxed, rules: {line-length: {max: 120, allow-non-breakable-inline-mappings: true}}, ignore: [.git/, backups/, infra/.terraform/, config/grafana/alerting/projects.yaml]}' .
     @d=$(mktemp -d) && BOOTSTRAP_OUT_DIR="$d" ./bootstrap.sh dummy dummy >/dev/null && docker run --rm --network none -v "$d":/code:ro {{yamllint}} yamllint -d '{extends: relaxed, rules: {line-length: disable}}' .; rc=$?; rm -rf "$d"; exit $rc
     docker run --rm --network none -v .:/repo:ro -w /repo {{actionlint}} -color
-    docker run --rm --network none -v .:/mnt:ro {{shellcheck}} bootstrap.sh scripts/smoke.sh templates/run_scheduled.sh infra/generate-imports.sh
+    docker run --rm --network none -v .:/mnt:ro {{shellcheck}} bootstrap.sh scripts/smoke.sh scripts/restore-check.sh scripts/test_backup.sh scripts/test_gitleaks.sh scripts/test_imports.sh templates/run_scheduled.sh infra/generate-imports.sh
+    sh scripts/test_gitleaks.sh
+    bash scripts/test_imports.sh
+    sh scripts/test_backup.sh
+    # Exercise the provisioned expression, including counters first seen after a failure.
+    @d=$(mktemp -d) && expr=$(awk '/uid: watchdog-heartbeat/{watchdog=1} watchdog && /expr: >/{expr=1;next} expr && /^                /{sub(/^                /, "");printf "%s ",$0;next} expr{exit}' config/grafana/alerting/rules.yaml) && test -n "$expr" && jq --arg expr "$expr" '.tests[].promql_expr_test[].expr = $expr' tests/watchdog.json >"$d/watchdog.json" && chmod 755 "$d" && chmod 644 "$d/watchdog.json" && docker run --rm --network none --entrypoint /bin/promtool -v "$d":/tests:ro $(just _image compose.yml prometheus) test rules /tests/watchdog.json; rc=$?; rm -rf "$d"; exit $rc
     docker run --rm --network none -v ./demo:/demo:ro {{ruff}} check --no-cache /demo
     docker run --rm --network none -v ./demo:/demo:ro {{ruff}} format --check --no-cache /demo
+    docker run --rm --network none -v ./notification-relay:/relay:ro {{ruff}} check --no-cache /relay
+    docker run --rm --network none -v ./notification-relay:/relay:ro {{ruff}} format --check --no-cache /relay
+    docker run --rm --network none -v ./notification-relay:/relay:ro -w /relay $(just _image compose.yml notification-relay) python -B -m unittest discover
+    docker run --rm --network none -v ./templates/web:/rum:ro {{node}} node --test --test-isolation=none /rum/rum.test.mjs
     # `just fmt` is the fix.
     docker run --rm --network none -v .:/code:ro -w /code {{yamlfmt}} -lint .
     docker run --rm --network none -v ./infra:/infra:ro -w /infra {{tofu}} fmt -check
@@ -146,7 +156,7 @@ lint:
       [ -z "$bad" ] || { echo "error: dashboards reference datasource uids that are not provisioned:" $bad >&2; exit 1; }
     # Secrets in git history. Scans commits, not the working tree, so the
     # gitignored .env never trips it. Needs full history (see ci.yml).
-    docker run --rm --network none -v .:/repo:ro {{gitleaks}} git --redact --no-banner /repo
+    just _gitleaks
     # The agent config every project host vendors, checked by the Alloy build
     # the template actually pins.
     docker run --rm --network none -v ./templates/alloy/config.alloy:/etc/alloy/config.alloy:ro -e COMPOSE_PROJECT_NAME=dummy -e ENVIRONMENT=dummy -e PROJECT=dummy -e OTEL_EXPORTER_OTLP_ENDPOINT=https://dummy -e OTLP_AUTH_TOKEN=dummy -e TELEMETRY_EDGE_KEY= $({{spoke_env}} just _image templates/compose.telemetry.yml alloy) validate /etc/alloy/config.alloy
@@ -184,7 +194,11 @@ infra-validate:
 
 # gitleaks over the staged diff (the pre-commit hook; see .pre-commit-config.yaml).
 _gitleaks-staged:
-    @docker run --rm --network none -v .:/repo:ro {{gitleaks}} git --pre-commit --staged --redact --no-banner /repo
+    @just _gitleaks --pre-commit --staged
+
+_gitleaks *args:
+    # Linked worktrees point outside /repo at their shared Git metadata.
+    @gitdir=$(git rev-parse --path-format=absolute --git-common-dir) && docker run --rm --network none -v .:/repo:ro -v "$gitdir:$gitdir:ro" -e GIT_WORK_TREE=/repo --entrypoint sh {{gitleaks}} -c 'git -C /repo rev-parse --verify HEAD >/dev/null && exec gitleaks git --redact --no-banner "$@" /repo' -- {{args}}
 
 # Format YAML in place (--user so the rewritten files stay yours).
 fmt:
@@ -206,7 +220,7 @@ _mounts project:
 _backup project dir:
     mkdir -p {{dir}}
     @-docker compose -p {{project}} unpause {{stateful}} >/dev/null 2>&1
-    @rc=0; img=$(just _image compose.yml otel-queue-init); m=$(just _mounts {{project}}); docker compose -p {{project}} pause {{stateful}} && docker run --rm --network none $m -v {{absolute_path(dir)}}:/backups "$img" sh -c 'set -o pipefail; umask 077 && tar cf - -C /data . | gzip -1 > /backups/monitoring-$(date +%Y%m%d-%H%M%S).tar.gz' || rc=$?; docker compose -p {{project}} unpause {{stateful}} || { echo "error: unpause failed; the stack is still paused" >&2; rc=1; }; exit $rc
+    @trap 'rc=$?; trap - EXIT INT TERM; docker compose -p {{project}} unpause {{stateful}} || { echo "error: unpause failed; the stack may still be paused" >&2; [ "$rc" -ne 0 ] || rc=1; }; exit "$rc"' EXIT; trap 'exit 130' INT; trap 'exit 143' TERM; img=$(just _image compose.yml otel-queue-init) && m=$(just _mounts {{project}}) && docker compose -p {{project}} pause {{stateful}} && docker run --rm --network none $m -v {{absolute_path(dir)}}:/backups "$img" sh -c 'set -o pipefail; umask 077 && tar cf - -C /data . | gzip -1 > /backups/monitoring-$(date +%Y%m%d-%H%M%S).tar.gz'
     @just _newest-backup {{dir}}
 
 # pre-restore-* snapshots share the dir and sort after monitoring-* by name.
@@ -231,8 +245,8 @@ _restore project file dir:
 # Needs a booted smoke stack (`just smoke`). Run it after touching _backup/_restore.
 # COMPOSE_FILE is pinned so the host's overlay list stays out, as for `smoke`.
 # Round-trip backup and restore on the smoke stack.
-restore-check:
-    @export COMPOSE_FILE=compose.yml:compose.sandbox.yml; d=$(mktemp -d) && just _backup {{smoke_project}} "$d" && f=$(ls "$d"/monitoring-*.tar.gz) && just _restore {{smoke_project}} "$f" "$d" && docker run --rm --network none -v {{smoke_project}}_grafana_data:/g:ro $(just _image compose.yml otel-queue-init) test -s /g/grafana.db && echo "Backup round-trip ok"; rc=$?; rm -rf "$d"; exit $rc
+restore-check project=smoke_project port=smoke_port:
+    @{{smoke_env}} SANDBOX_PORT={{port}} scripts/restore-check.sh {{project}} {{stateful}}
 
 # `--wait` blocks on the healthchecks and fails if any container exits, so a
 # crash-looping service is caught (after the full timeout). scripts/smoke.sh

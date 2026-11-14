@@ -79,7 +79,10 @@ otel_record="$(lookup_dns_record "otel.$domain")" || {
     die "no CNAME found for otel.$domain"
 }
 
-ntfy_record="$(lookup_dns_record "ntfy.$domain" || true)"
+ntfy_record="$(lookup_dns_record "ntfy.$domain")" || {
+    [[ $? -ne 2 ]] || die "DNS lookup for ntfy.$domain failed (token lacks DNS:Read?)"
+    ntfy_record=""
+}
 
 # The Access app may legitimately not exist; then the apply should create it.
 access_apps="$(api "accounts/$account/access/apps?per_page=100")"

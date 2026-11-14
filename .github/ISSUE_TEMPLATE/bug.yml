@@ -31,4 +31,4 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Host operating system, and the Docker and Compose versions (`docker version`, `docker compose version`).
+      description: Operating system and Docker and Compose versions (`docker version`, `docker compose version`).

@@ -12,6 +12,12 @@ x-demo-logging: &demo-logging
     max-file: "3"
 
 services:
+  notification-relay:
+    # Demo notifications must not reach a production webhook or dead man's switch.
+    environment:
+      ALERT_WEBHOOK_URL: https://demo.invalid/alerts
+      HEARTBEAT_URL: https://demo.invalid/heartbeat
+
   demo-api:
     build: ./demo
     restart: on-failure

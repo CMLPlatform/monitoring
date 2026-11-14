@@ -22,13 +22,19 @@ request outside what the stack sets out to do is closed with a link to this sect
 
 ## Set up and check
 
-You need Docker with the Compose plugin and [`just`](https://github.com/casey/just).
+You need Docker with the Compose plugin, [`just`](https://github.com/casey/just),
+and `jq` for the local regression checks.
 `just hooks` installs the git hooks (with [prek](https://prek.j178.dev), which sets up the
 Python environment for the citation hooks itself). `just check` runs the static checks and
 validates every config, `just smoke` starts a throwaway copy of the stack and sends it
 telemetry, and `just fmt` formats the YAML. CI runs `just lint`, `just validate` and
 `just smoke`, plus `just infra-validate` when `infra/` changes. The
 [Verification commands](../docs/RUNBOOK.md#verification-commands) table in the runbook lists every recipe.
+CI also checks the README demo on a fresh runner and checks the demo dependency licences.
+
+Add or update tests for each behaviour change, including bug fixes. Extend the assertions
+in `just lint` or `scripts/smoke.sh` for the affected path. Follow the coding standards
+checked by Ruff for Python, ShellCheck for shell scripts, and yamllint and yamlfmt for YAML.
 
 ## Write commits and pull requests
 

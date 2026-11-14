@@ -90,7 +90,7 @@ processors:
   # service.instance.id on each restart adds one every time. The default is
   # unbounded. This cap is a runaway guard, not a budget: 28 streams cost ~51 MiB
   # heap against the 400 MiB limiter (measured before `interval` was added).
-  deltatocumulative:
+  delta_to_cumulative:
     max_streams: 5000
 
   # The count connector emits one datapoint per incoming batch, so 50 log batches
@@ -109,7 +109,7 @@ processors:
     metric_statements:
       - context: datapoint
         statements:
-          - set(time, Now())
+          - set(datapoint.time, Now())
 
   # Sized to the container's mem_limit (512m in compose.yml); keep the two in step.
   memory_limiter:
@@ -170,10 +170,10 @@ service:
       processors: [memory_limiter, resource/department, batch]
       exporters: [otlp_http/prometheus, count]
     # The counters themselves. No batcher: it reordered timestamps ~1/min, which
-    # deltatocumulative refused as out of order. `interval` does the collapsing.
+    # delta_to_cumulative refused as out of order. `interval` does the collapsing.
     metrics/count:
       receivers: [count]
-      processors: [memory_limiter, deltatocumulative, interval, transform/count_ingest_time]
+      processors: [memory_limiter, delta_to_cumulative, interval, transform/count_ingest_time]
       exporters: [otlp_http/prometheus_count]
   telemetry:
     metrics:

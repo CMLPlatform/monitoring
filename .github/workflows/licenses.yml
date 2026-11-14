@@ -1,0 +1,42 @@
+name: demo dependency licenses
+
+on:
+  pull_request:
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  licenses:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: false
+      - id: python
+        name: Read the demo runtime
+        run: |
+          version=$(sed -n 's/^FROM python:\([0-9]*\.[0-9]*\).*/\1/p' demo/Dockerfile)
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      # Resolve the same manifest as the demo image, including transitive packages.
+      - run: >-
+          uv pip compile --python-version "${{ steps.python.outputs.version }}"
+          demo/pyproject.toml -o "$RUNNER_TEMP/requirements.txt"
+      - name: List licenses and reject incompatibility with the repository's MIT license
+        run: >-
+          uv run --no-project --python "${{ steps.python.outputs.version }}"
+          --with-requirements "$RUNNER_TEMP/requirements.txt"
+          --with licensecheck==2026.0.8 licensecheck --license MIT -r "$RUNNER_TEMP/requirements.txt" --zero
