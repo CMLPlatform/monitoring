@@ -1,8 +1,4 @@
-# Notification targets. Grafana expands $VAR from the environment.
-#
-# Each receiver needs a URL or Grafana rejects contact point provisioning.
-# The demo and smoke stacks supply isolated placeholders. The exposure guard
-# in `just up` requires a production alert destination.
+# Destination credentials live only in notification-relay, outside Grafana.
 
 apiVersion: 1
 
@@ -13,7 +9,7 @@ contactPoints:
       - uid: cp-webhook-default
         type: webhook
         settings:
-          url: $ALERT_WEBHOOK_URL
+          url: http://notification-relay:8080/alerts
 
   - orgId: 1
     name: heartbeat
@@ -21,6 +17,6 @@ contactPoints:
       - uid: cp-heartbeat-dms
         type: webhook
         settings:
-          url: $HEARTBEAT_URL
+          url: http://notification-relay:8080/heartbeat
         # A resolved-notification would ping the switch and mask an outage.
         disableResolveMessage: true

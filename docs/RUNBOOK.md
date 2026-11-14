@@ -125,8 +125,8 @@ on the host.
   Confirm that a fresh login accepts the new password and rejects the old one.
 - **Alert webhook and heartbeat URLs:** the URL is the credential. Mint a new
   topic or check at the provider, put it in `ALERT_WEBHOOK_URL` or
-  `HEARTBEAT_URL`, then `docker compose up -d grafana`. Grafana reads the
-  contact points only at startup.
+  `HEARTBEAT_URL`, then `docker compose up -d notification-relay`. Revoke the
+  old capability URL at the provider after confirming delivery.
 - **healthchecks.io API key:** regenerate it in the project's settings and
   set `HEALTHCHECKS_API_KEY` in `.env`. Only `bootstrap.sh` reads it, so
   nothing restarts.
@@ -137,9 +137,11 @@ on the host.
 ### Where every secret lives
 
 Three gitignored files hold everything. `just backup` archives none of them,
-but the tarball contains Grafana's database, and Grafana stores the expanded
-contact points there. So the webhook and heartbeat URLs are inside every
-backup. Copy `.env` and `infra/terraform.tfstate` off-host together with the
+but the tarball contains Grafana's database. New contact points contain only
+internal relay routes; destination credentials live in the relay environment.
+Backups made before the relay migration contain the old destination URLs.
+Rotate those URLs when migrating and protect old backups until the URLs are
+revoked. Copy `.env` and `infra/terraform.tfstate` off-host together with the
 backups and treat all three the same way.
 
 | Secret | Lives in | Comes from |
@@ -195,12 +197,25 @@ them read-only. Edit the YAML.
 - `HEARTBEAT_URL` receives the always-firing `Watchdog` every five minutes.
   Point it at a dead man's switch that raises the alarm when pings stop.
 
-Grafana rejects contact point provisioning if either URL is empty.
+The internal `notification-relay` owns both destination URLs. Grafana stores
+only `http://notification-relay:8080/alerts` and `/heartbeat`, so its Viewer
+contact point API cannot disclose destination credentials. The relay has no
+published port and its private network is separate from tunnel ingress. Only
+trusted stack services may call it; this does not isolate a compromised
+Grafana administrator or container. Keep the ntfy publisher account write-only.
+The relay forwards POST JSON with a 1 MiB body limit and a five-second socket
+timeout, refuses redirects, and reports delivery errors to Grafana without
+returning provider bodies or credentials. An empty destination returns 503.
 With the tunnel overlay active, `just up` refuses to start without both URLs.
 `AlertDeliveryFailing` fires if a configured notifier fails to deliver alerts.
 
-After changing either variable, run `docker compose up -d grafana`. A plain
-`restart` keeps the old environment. Compose rebuilds a container's
+When migrating from direct delivery, run
+`docker compose up -d notification-relay grafana` to replace Grafana's old
+environment and provision the internal routes. Rotate the old destination URLs
+after the new routes deliver successfully.
+
+After changing either variable, run
+`docker compose up -d notification-relay`. A plain `restart` keeps the old environment. Compose rebuilds a container's
 environment only on `up`.
 
 ### Self-hosted alert delivery with ntfy
@@ -238,7 +253,7 @@ docker compose exec -e NTFY_PASSWORD="<grafana-secret>" ntfy ntfy user add grafa
 docker compose exec ntfy ntfy access grafana alerts write-only
 ```
 
-#### 2. Configure Grafana contact point
+#### 2. Configure the notification relay
 
 Point `ALERT_WEBHOOK_URL` in `.env` to the local ntfy instance using native
 message templating (`?tpl=1`):
@@ -247,10 +262,10 @@ message templating (`?tpl=1`):
 ALERT_WEBHOOK_URL=http://grafana:<grafana-secret>@ntfy:80/alerts?tpl=1&title={{or .commonAnnotations.summary .groupLabels.alertname}}&message={{or .commonAnnotations.description .commonAnnotations.summary "Alert firing"}}
 ```
 
-Apply the change to Grafana:
+Apply the change to the relay:
 
 ```sh
-docker compose up -d grafana
+docker compose up -d notification-relay
 ```
 
 #### 3. Create subscriber users for operators
@@ -329,11 +344,11 @@ When the tunnel overlay is active, `just up` validates critical security setting
 - **`GRAFANA_ADMIN_PASSWORD`**: Refuses `change-me`. Set a strong password.
 - **`GRAFANA_ROOT_URL`**: Must match the `https://` tunnel hostname for Grafana.
 - **`GRAFANA_COOKIE_SECURE=true`**: Required when Grafana runs behind an HTTPS tunnel.
-- **`ALERT_WEBHOOK_URL`**: Cannot be empty; Grafana requires an alert destination to provision its contact points.
+- **`ALERT_WEBHOOK_URL`**: Cannot be empty when exposing the stack; the relay needs an alert destination.
 - **`NTFY_BASE_URL`**: Must be an https:// URL when exposing ntfy via tunnel.
 - **`GRAFANA_JWT_AUTH=true`**: Requires both `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` set.
 - **File permissions**: Refuses to start if `.env`, `infra/terraform.tfvars`, or Terraform state files are readable by other users (mode must be `0600`).
-- **`HEARTBEAT_URL`**: Cannot be empty; Grafana also requires the heartbeat destination to provision its contact points.
+- **`HEARTBEAT_URL`**: Cannot be empty when exposing the stack; the relay needs a heartbeat destination.
 
 ### Verification commands
 

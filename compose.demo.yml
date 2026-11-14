@@ -12,7 +12,7 @@ x-demo-logging: &demo-logging
     max-file: "3"
 
 services:
-  grafana:
+  notification-relay:
     # Demo notifications must not reach a production webhook or dead man's switch.
     environment:
       ALERT_WEBHOOK_URL: https://demo.invalid/alerts
