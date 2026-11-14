@@ -5,7 +5,7 @@ import { runInNewContext } from 'node:vm';
 
 const source = readFileSync(new URL('./rum.html', import.meta.url), 'utf8').split('<script>')[1].split('</script>')[0];
 
-function browser(initialVisibility = 'visible') {
+function browser(initialVisibility = 'visible', unsupportedCls = false) {
   const logs = [];
   const listeners = {};
   const observers = {};
@@ -20,7 +20,10 @@ function browser(initialVisibility = 'visible') {
     pending = [];
     disconnected = false;
     constructor(callback) { this.callback = callback; }
-    observe({ type }) { observers[type] = this; }
+    observe({ type }) {
+      if (unsupportedCls && type === 'layout-shift') throw new Error('unsupported');
+      observers[type] = this;
+    }
     takeRecords() { return this.pending.splice(0); }
     disconnect() { this.disconnected = true; }
   }
@@ -118,4 +121,14 @@ test('LCP excludes pages loaded hidden and candidates painted after first hide',
   page.observers['largest-contentful-paint'].pending.push({ startTime: 3000 });
   page.hide(2000);
   assert.deepEqual(page.values('LCP', 'duration_ms'), []);
+});
+
+test('CLS reports a supported zero once and emits no score for unsupported observation', () => {
+  const supported = browser();
+  supported.hide();
+  supported.hide();
+  assert.deepEqual(supported.values('CLS', 'cls_score'), [0]);
+  const unsupported = browser('visible', true);
+  unsupported.hide();
+  assert.deepEqual(unsupported.values('CLS', 'cls_score'), []);
 });

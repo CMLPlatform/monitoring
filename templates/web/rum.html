@@ -85,7 +85,7 @@
     let lastShiftTime = 0;
     let sessionScore = 0;
     let clsScore = 0;
-    let reportedCls = 0;
+    let reportedCls = -1;
 
     function updateLcp(entries) {
       if (lcpFinalized) return;
@@ -137,6 +137,7 @@
       clsObserver = new PerformanceObserver((list) => updateCls(list.getEntries()));
       clsObserver.observe({ type: "layout-shift", buffered: true });
     } catch {
+      clsObserver = undefined;
       // Some browsers do not support this performance entry type.
     }
 
@@ -148,7 +149,7 @@
       firstHiddenTime = Math.min(firstHiddenTime, event.timeStamp);
       finalizeLcp();
       if (clsObserver) updateCls(clsObserver.takeRecords());
-      if (clsScore > reportedCls) {
+      if (clsObserver && clsScore > reportedCls) {
         sendLog("WebVital: CLS", "INFO", {
           vital_name: "CLS",
           cls_score: Math.round(clsScore * 1000) / 1000
