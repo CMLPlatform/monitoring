@@ -90,8 +90,14 @@ restart service: _guard-if-exposed
 # Validate every config in the repo.
 check: lint validate
 
+# Independent uptime evidence: same pinned Python as the notification relay.
+uptime-test:
+    docker run --rm --network none -v .:/repo:ro -w /repo {{ruff}} check --no-cache scripts/uptime_evidence.py tests/test_uptime_evidence.py
+    docker run --rm --network none -v .:/repo:ro -w /repo {{ruff}} format --check --no-cache scripts/uptime_evidence.py tests/test_uptime_evidence.py
+    docker run --rm --network none -v .:/repo:ro -w /repo $(just _image compose.yml notification-relay) python -B -m unittest discover -s tests -p test_uptime_evidence.py
+
 # Static checks and regression tests in tool images.
-lint:
+lint: uptime-test
     # Digest-pinned, so anything already local is current; only fetch what is missing.
     @printf '%s\n' {{lint_images}} | xargs -P 8 -I{} sh -c 'docker image inspect {} >/dev/null 2>&1 || docker pull -q {} >/dev/null'
     # Explicit -f, not the host's COMPOSE_FILE, so lint means the same here as in CI.

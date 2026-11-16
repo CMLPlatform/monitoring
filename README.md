@@ -22,6 +22,9 @@ displays them side by side.
 The alert marker in `config/grafana/alerting/projects.yaml` guards active reporting.
 The `ProjectsUncovered` rule fires if an unlisted spoke begins transmitting.
 
+For uptime evidence beyond Prometheus's 30-day retention, run the
+[independent probe and daily JSON reports](docs/UPTIME-EVIDENCE.md) on a second host.
+
 ## Connect your project
 
 Connecting a service takes about five minutes without application code changes.
