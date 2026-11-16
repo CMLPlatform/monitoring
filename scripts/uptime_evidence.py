@@ -184,13 +184,13 @@ def request_status(url):
         )
         try:
             with opener.open(request, timeout=TIMEOUT_SECONDS) as response:
-                return response.status
+                status = response.status
         except urllib.error.HTTPError as error:
             status = error.code
             error.close()
-            return status
-        except (OSError, urllib.error.URLError, http.client.HTTPException, ValueError):
+        except OSError, urllib.error.URLError, http.client.HTTPException, ValueError:
             return None
+        return status if type(status) is int and 100 <= status <= 599 else None
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous)

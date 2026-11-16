@@ -34,9 +34,8 @@ class HTTPHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/slow":
             time.sleep(0.3)
-        self.send_response(
-            302 if self.path == "/redirect" else 503 if self.path == "/fail" else 204
-        )
+        statuses = {"/redirect": 302, "/fail": 503, "/unsupported": 600}
+        self.send_response(statuses.get(self.path, 204))
         if self.path == "/redirect":
             self.send_header("Location", "/")
         self.end_headers()
@@ -242,6 +241,37 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(evidence.request_status(base + "/redirect"), 302)
         with patch.object(evidence, "TIMEOUT_SECONDS", 0.05):
             self.assertIsNone(evidence.request_status(base + "/slow"))
+
+    def test_unsupported_http_status_remains_readable_failed_evidence(self):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), HTTPHandler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        tomorrow = START + timedelta(days=1)
+        target = {
+            **TARGET,
+            "url": f"http://127.0.0.1:{server.server_port}/unsupported",
+        }
+        evidence.register(self.store, [target], "outside", tomorrow.date(), START)
+        with patch.object(evidence, "utc_now", return_value=tomorrow):
+            first = evidence.probe(self.store)
+            again = evidence.probe(self.store)
+        self.assertEqual(first, again)
+        self.assertIsNone(first["observations"][0]["status"])
+        self.assertEqual(first["observations"][0]["outcome"], "failure")
+        report = evidence.daily_report(
+            self.store, tomorrow.date(), tomorrow + timedelta(days=1)
+        )
+        item = report["targets"][0]
+        self.assertEqual(
+            (item["success"], item["failure"], item["unknown"]), (0, 1, 287)
+        )
+        evidence.validate_daily(report, tomorrow.date())
+
+    def test_unsupported_normal_response_status_is_not_persistable(self):
+        with patch.object(evidence.urllib.request, "build_opener") as opener:
+            opener.return_value.open.return_value.__enter__.return_value.status = 600
+            self.assertIsNone(evidence.request_status(TARGET["url"]))
 
     def test_malformed_http_is_failed_observation_and_collection_continues(self):
         class BrokenOpener:
