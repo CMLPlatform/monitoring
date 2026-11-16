@@ -27,9 +27,161 @@
       "tooltip": "Switch to another dashboard in the CML monitoring stack",
       "type": "dashboards",
       "url": ""
+    },
+    {
+      "title": "Incident runbook",
+      "type": "link",
+      "icon": "book",
+      "url": "https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#incident-workflow",
+      "targetBlank": true
     }
   ],
   "panels": [
+    {
+      "id": 100,
+      "type": "text",
+      "title": "Incident workflow",
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Check scrape status and alerts. Open a project below. Confirm fresh telemetry and resolved alerts; missing data means unknown."
+      }
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Scrape Status",
+      "description": "Current Prometheus scrape results, not application availability. A disappeared target has no value; consult Active Alerts and the runbook before declaring recovery.",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "up",
+          "instant": true,
+          "legendFormat": "{{job}} / {{instance}}",
+          "refId": "A",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Unknown",
+          "min": 0,
+          "max": 1,
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Down",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "Up",
+                  "color": "green"
+                }
+              }
+            },
+            {
+              "type": "special",
+              "options": {
+                "match": "null",
+                "result": {
+                  "text": "Unknown",
+                  "color": "text"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 85
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Job"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 130
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Job",
+            "desc": false
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "env": true,
+              "project": true,
+              "tier": true
+            },
+            "indexByName": {
+              "Value": 0,
+              "job": 1,
+              "instance": 2
+            },
+            "renameByName": {
+              "job": "Job",
+              "instance": "Target",
+              "Value": "Status"
+            }
+          }
+        }
+      ]
+    },
     {
       "type": "timeseries",
       "title": "Filesystem Used",
@@ -38,7 +190,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 0
+        "y": 12
       },
       "id": 1,
       "datasource": {
@@ -76,7 +228,14 @@
           }
         },
         "overrides": []
-      }
+      },
+      "links": [
+        {
+          "title": "Runbook",
+          "url": "https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#incident-workflow",
+          "targetBlank": true
+        }
+      ]
     },
     {
       "type": "timeseries",
@@ -85,7 +244,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 0
+        "y": 12
       },
       "id": 2,
       "datasource": {
@@ -110,7 +269,14 @@
           }
         },
         "overrides": []
-      }
+      },
+      "links": [
+        {
+          "title": "Runbook",
+          "url": "https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#incident-workflow",
+          "targetBlank": true
+        }
+      ]
     },
     {
       "type": "timeseries",
@@ -119,7 +285,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 0
+        "y": 12
       },
       "id": 3,
       "datasource": {
@@ -144,7 +310,14 @@
           }
         },
         "overrides": []
-      }
+      },
+      "links": [
+        {
+          "title": "Runbook",
+          "url": "https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#incident-workflow",
+          "targetBlank": true
+        }
+      ]
     },
     {
       "type": "timeseries",
@@ -154,7 +327,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 8
+        "y": 20
       },
       "id": 4,
       "datasource": {
@@ -187,7 +360,14 @@
           }
         },
         "overrides": []
-      }
+      },
+      "links": [
+        {
+          "title": "Runbook",
+          "url": "https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#incident-workflow",
+          "targetBlank": true
+        }
+      ]
     },
     {
       "type": "timeseries",
@@ -197,7 +377,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 8
+        "y": 20
       },
       "id": 5,
       "datasource": {
@@ -245,7 +425,10 @@
                 "id": "custom.lineStyle",
                 "value": {
                   "fill": "dash",
-                  "dash": [10, 10]
+                  "dash": [
+                    10,
+                    10
+                  ]
                 }
               }
             ]
@@ -260,23 +443,33 @@
                 "id": "custom.lineStyle",
                 "value": {
                   "fill": "dot",
-                  "dash": [0, 10]
+                  "dash": [
+                    0,
+                    10
+                  ]
                 }
               }
             ]
           }
         ]
-      }
+      },
+      "links": [
+        {
+          "title": "Runbook",
+          "url": "https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#incident-workflow",
+          "targetBlank": true
+        }
+      ]
     },
     {
       "type": "timeseries",
       "title": "Ingest by Project",
-      "description": "Telemetry accepted per project and environment, from the gateway's count connector. A project missing here is sending nothing, whichever signal it uses.",
+      "description": "Accepted telemetry by project and environment. Click a series to open its metrics or logs with the same time range. Missing or zero ingest does not prove a project is healthy.",
       "gridPos": {
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 16
+        "y": 28
       },
       "id": 7,
       "datasource": {
@@ -306,21 +499,40 @@
           "custom": {
             "lineWidth": 2,
             "fillOpacity": 10
-          }
+          },
+          "links": [
+            {
+              "title": "Service metrics",
+              "url": "/d/service-health/service-health?var-project=${__field.labels.project:percentencode}&var-env=${__field.labels.env:percentencode}&${__url_time_range}",
+              "targetBlank": false
+            },
+            {
+              "title": "Service logs",
+              "url": "/d/logs/logs?var-project=${__field.labels.project:percentencode}&var-env=${__field.labels.env:percentencode}&${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
         },
         "overrides": []
-      }
+      },
+      "links": [
+        {
+          "title": "Runbook",
+          "url": "https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#incident-workflow",
+          "targetBlank": true
+        }
+      ]
     },
     {
       "type": "alertlist",
       "title": "Active Alerts",
       "id": 6,
-      "description": "Grafana-managed alerts. The old panel queried Prometheus's ALERTS series, which only exists while Prometheus evaluates rules \u2014 it stopped existing when alerting moved to Grafana (ADR 0002).",
+      "description": "Firing, pending, no-data and query-error states. An empty list alone does not prove the stack is healthy; check scrape status and data freshness.",
       "gridPos": {
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 24
+        "y": 36
       },
       "options": {
         "viewMode": "list",
@@ -331,11 +543,18 @@
         "stateFilter": {
           "firing": true,
           "pending": true,
-          "noData": false,
+          "noData": true,
           "normal": false,
           "error": true
         }
-      }
+      },
+      "links": [
+        {
+          "title": "Runbook",
+          "url": "https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#incident-workflow",
+          "targetBlank": true
+        }
+      ]
     }
   ]
 }

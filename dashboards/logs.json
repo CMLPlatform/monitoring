@@ -8,6 +8,15 @@
   ],
   "links": [
     {
+      "title": "Service metrics",
+      "type": "link",
+      "icon": "dashboard",
+      "url": "/d/service-health/service-health",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
       "asDropdown": false,
       "icon": "dashboard",
       "includeVars": true,
@@ -20,6 +29,13 @@
       "tooltip": "Switch to another dashboard in the CML monitoring stack",
       "type": "dashboards",
       "url": ""
+    },
+    {
+      "title": "Incident runbook",
+      "type": "link",
+      "icon": "book",
+      "url": "https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#incident-workflow",
+      "targetBlank": true
     }
   ],
   "time": {
@@ -42,7 +58,7 @@
         },
         "definition": "label_values(project)",
         "query": "label_values(project)",
-        "refresh": 1,
+        "refresh": 2,
         "sort": 1,
         "current": {},
         "options": [],
@@ -58,7 +74,7 @@
         },
         "definition": "label_values({project=\"$project\"}, env)",
         "query": "label_values({project=\"$project\"}, env)",
-        "refresh": 1,
+        "refresh": 2,
         "sort": 1,
         "current": {},
         "options": [],
@@ -74,7 +90,7 @@
         },
         "definition": "label_values({project=\"$project\", env=\"$env\"}, service_name)",
         "query": "label_values({project=\"$project\", env=\"$env\"}, service_name)",
-        "refresh": 1,
+        "refresh": 2,
         "sort": 1,
         "current": {
           "text": "All",
@@ -89,6 +105,21 @@
   },
   "panels": [
     {
+      "id": 100,
+      "type": "text",
+      "title": "Incident workflow",
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Compare errors with All Logs. Follow trace IDs into Tempo. Confirm recovery with fresh Service metrics; missing logs do not prove health."
+      }
+    },
+    {
       "type": "timeseries",
       "title": "Log Rate by Service",
       "description": "Which services are talking, and how much.",
@@ -96,7 +127,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 0
+        "y": 4
       },
       "id": 1,
       "datasource": {
@@ -105,7 +136,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (service_name) (rate({project=\"$project\", env=\"$env\", service_name=~\"$service\"}[$__auto]))",
+          "expr": "sum by (service_name) (rate({project=\"$project\", env=\"$env\", service_name=~\"${service:regex}\"}[$__auto]))",
           "legendFormat": "{{service_name}}",
           "refId": "A"
         }
@@ -124,12 +155,12 @@
     {
       "type": "timeseries",
       "title": "Log Rate by Level",
-      "description": "A rising error line is the cheapest early warning here.",
+      "description": "Rate by Loki-detected level. Missing levels or an empty result are not proof that errors stopped; compare All Logs and service metrics.",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 0
+        "y": 4
       },
       "id": 2,
       "datasource": {
@@ -138,7 +169,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (detected_level) (rate({project=\"$project\", env=\"$env\", service_name=~\"$service\"}[$__auto]))",
+          "expr": "sum by (detected_level) (rate({project=\"$project\", env=\"$env\", service_name=~\"${service:regex}\"}[$__auto]))",
           "legendFormat": "{{detected_level}}",
           "refId": "A"
         }
@@ -162,7 +193,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 8
+        "y": 12
       },
       "id": 3,
       "datasource": {
@@ -171,7 +202,7 @@
       },
       "targets": [
         {
-          "expr": "{project=\"$project\", env=\"$env\", service_name=~\"$service\"} | detected_level=~\"(?i)(error|critical|fatal|warn)\"",
+          "expr": "{project=\"$project\", env=\"$env\", service_name=~\"${service:regex}\"} | detected_level=~\"(?i)(error|critical|fatal|warn)\"",
           "refId": "A"
         }
       ],
@@ -190,7 +221,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 18
+        "y": 22
       },
       "id": 4,
       "datasource": {
@@ -199,7 +230,7 @@
       },
       "targets": [
         {
-          "expr": "{project=\"$project\", env=\"$env\", service_name=~\"$service\"}",
+          "expr": "{project=\"$project\", env=\"$env\", service_name=~\"${service:regex}\"}",
           "refId": "A"
         }
       ],

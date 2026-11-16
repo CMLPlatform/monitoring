@@ -63,6 +63,7 @@ groups:
         labels:
           severity: none
         annotations:
+          runbook_url: https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#alert-delivery
           summary: "Alerting-pipeline heartbeat"
           description: >-
             Routed to a dead man's switch. Pings stop when Grafana cannot be scraped
@@ -81,6 +82,7 @@ groups:
         labels:
           severity: critical
         annotations:
+          runbook_url: https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#alert-delivery
           summary: "Grafana cannot deliver {{ $labels.integration }} notifications"
           description: >-
             Alerts are firing and going nowhere. Most likely an unset ALERT_WEBHOOK_URL,
@@ -103,6 +105,7 @@ groups:
         labels:
           severity: critical
         annotations:
+          runbook_url: https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#alert-catalog
           summary: "Scrape target {{ $labels.job }} is down"
           description: "Prometheus cannot scrape {{ $labels.instance }} (job {{ $labels.job }}) for 2 minutes."
       - uid: otel-export-failures
@@ -121,6 +124,7 @@ groups:
         labels:
           severity: warning
         annotations:
+          runbook_url: https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#alert-catalog
           summary: "OTel Collector failing to export via {{ $labels.exporter }}"
           description: >-
             The collector has been failing to deliver telemetry to a backend for
@@ -148,6 +152,7 @@ groups:
         labels:
           severity: warning
         annotations:
+          runbook_url: https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#alert-catalog
           # Spoke series carry host_name; the central node-exporter only instance.
           summary: "Filesystem {{ $labels.mountpoint }} on {{ or $labels.host_name $labels.instance }} is over 80% full"
           description: >-
@@ -170,6 +175,7 @@ groups:
         labels:
           severity: warning
         annotations:
+          runbook_url: https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#alert-catalog
           summary: >-
             Filesystem {{ $labels.mountpoint }} on {{ or $labels.host_name $labels.instance }}
             fills up within 3 days at the current rate
@@ -193,6 +199,7 @@ groups:
         labels:
           severity: warning
         annotations:
+          runbook_url: https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#alert-catalog
           summary: "Memory on {{ or $labels.host_name $labels.instance }} is over 90% used"
           description: >-
             Sustained for 15 minutes. The OOM killer picks by RSS, so the next
@@ -216,6 +223,7 @@ groups:
         labels:
           severity: warning
         annotations:
+          runbook_url: https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#alert-catalog
           summary: "Prometheus holds {{ $values.QUERY }} active series, over the 30k ceiling"
           description: >-
             Find the label that exploded with
@@ -241,6 +249,7 @@ groups:
         labels:
           severity: warning
         annotations:
+          runbook_url: https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#alert-catalog
           summary: "Prometheus gained {{ $values.QUERY }} active series in 30 minutes"
           description: >-
             Far faster than onboarding a spoke explains, so a label has most
@@ -267,6 +276,7 @@ groups:
         labels:
           severity: warning
         annotations:
+          runbook_url: https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#alert-catalog
           summary: "Container {{ $labels.name }} is crash-looping"
           description: "{{ $labels.name }} on {{ $labels.host_name }} has restarted more than 3 times in the last hour."
       - uid: container-oom-killed
@@ -282,6 +292,7 @@ groups:
         labels:
           severity: warning
         annotations:
+          runbook_url: https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#alert-catalog
           summary: "Container {{ $labels.name }} was OOM-killed"
           description: "{{ $labels.name }} on {{ $labels.host_name }} hit an OOM kill in the last 5 minutes."
   - orgId: 1
@@ -307,6 +318,7 @@ groups:
         labels:
           severity: warning
         annotations:
+          runbook_url: https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#alert-catalog
           summary: "{{ $labels.project }}/{{ $labels.env }} {{ $labels.job }} error rate above 5%"
           description: >-
             More than 5% of requests to {{ $labels.job }}
@@ -329,6 +341,7 @@ groups:
         labels:
           severity: warning
         annotations:
+          runbook_url: https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#alert-catalog
           summary: "{{ $labels.project }}/{{ $labels.env }} {{ $labels.job }} p99 latency above 2s"
           description: >-
             The slowest 1% of requests to {{ $labels.job }}
@@ -347,6 +360,7 @@ groups:
         labels:
           severity: critical
         annotations:
+          runbook_url: https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#alert-catalog
           summary: "Outside-in HTTP probe failed for {{ $labels.instance }}"
           description: "Blackbox prober failed to reach {{ $labels.instance }} for 2 minutes."
       # Google SRE multi-window burn rate alerts for a 99.5% availability SLO
@@ -373,6 +387,7 @@ groups:
         labels:
           severity: critical
         annotations:
+          runbook_url: https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#alert-catalog
           summary: "{{ $labels.project }}/{{ $labels.env }} {{ $labels.job }} 14.4x error budget burn (fast burn)"
           description: >-
             Consuming 2% of the 30-day 99.5% error budget within 1 hour.
@@ -400,6 +415,7 @@ groups:
         labels:
           severity: warning
         annotations:
+          runbook_url: https://github.com/CMLPlatform/monitoring/blob/main/docs/RUNBOOK.md#alert-catalog
           summary: "{{ $labels.project }}/{{ $labels.env }} {{ $labels.job }} 6x error budget burn (slow burn)"
           description: >-
             Consuming 5% of the 30-day 99.5% error budget within 6 hours.
