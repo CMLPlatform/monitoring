@@ -30,6 +30,11 @@ class IncidentContracts(unittest.TestCase):
         links = panel("stack-health", "Ingest by Project")["fieldConfig"]["defaults"][
             "links"
         ]
+        for destination in ("service-health", "logs"):
+            self.assertTrue(
+                any(f"/d/{destination}/" in link.get("url", "") for link in links),
+                f"missing Ingest by Project link to {destination}",
+            )
         for link in links:
             self.assertIn("${__field.labels.project:percentencode}", link["url"])
             self.assertIn("${__field.labels.env:percentencode}", link["url"])
