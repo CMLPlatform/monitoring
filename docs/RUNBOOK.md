@@ -33,6 +33,10 @@ Retention is only partially size-bounded:
 | Loki chunks | 30d | none |
 | Tempo blocks | 7d | none |
 
+For evidence beyond raw metric retention, use the
+[independent uptime reports](UPTIME-EVIDENCE.md). Their evidence directory lives
+on a second host and needs its own backup; `just backup` does not include it.
+
 Loki and Tempo cannot cap their total size, so the disk alert at 80% is the
 backstop. Two warnings fire earlier. `HostDiskFilling` means a 6-hour linear
 fit says a filesystem is full within 3 days. `PrometheusCardinalityHigh`
