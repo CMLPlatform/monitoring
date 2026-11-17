@@ -43,7 +43,7 @@ repos:
         entry: just overlay-check
         language: system
         pass_filenames: false
-        files: ^(copier\.yml|templates/spoke/|scripts/check-overlay\.sh)
+        files: ^(justfile$|tests/overlay-sdk\.compose\.yml$|copier\.yml|templates/spoke/|scripts/check-overlay\.sh)
         stages: [pre-push]
 
   # GitHub's "Cite this repository" silently drops a CITATION.cff that fails its schema.
