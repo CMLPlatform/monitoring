@@ -108,6 +108,39 @@ itself. For applications outside Compose, export the resolved header value
 explicitly. See [application onboarding](../docs/ONBOARDING.md) for SDK installation
 and instrumentation, including Python logging.
 
+## Migrate hand-vendored agents
+
+Apply the project layer in each application repo and the host layer once in the
+repo that owns the machine. Register every retained application stack in the
+host layer's `stacks` answer. Deploy the shared agent using the checklist above.
+
+In each **non-owner repo**, retire the old telemetry deployment permanently:
+
+1. Remove its telemetry overlays from `COMPOSE_FILE`, deployment scripts, service
+   units and CI deployment commands. Keep its application Compose files and the
+   new project layer. Commit these deployment changes so future releases use them.
+2. Before deleting the obsolete files, stop and remove only the old telemetry
+   services using the old explicit file list:
+
+   ```sh
+   docker compose -f compose.yml -f compose.telemetry.yml stop alloy docker-socket-proxy
+   docker compose -f compose.yml -f compose.telemetry.yml rm -f alloy docker-socket-proxy
+   ```
+
+   If that repo ran a GPU exporter, add `-f compose.telemetry.gpu.yml` and include
+   `nvidia-gpu-exporter` in both service lists. Keep application services running;
+   do not use `down` or broad orphan removal.
+3. Remove the obsolete vendored telemetry files from that repo and commit their
+   removal. Keep its old Alloy data volume until the shared agent is verified.
+4. Run its normal application deployment again. Confirm the retired telemetry
+   services stay absent and fresh logs/container metrics still arrive through
+   the shared agent for every retained stack. Check that only one host agent
+   and, where enabled, one GPU exporter remain on the machine.
+
+The host-owning repo keeps the host layer and its deployment references. Merely
+stopping an old agent is temporary: an application deployment that still includes
+its old overlay starts it again.
+
 ## Upgrading a spoke
 
 Start with a clean Git checkout. A new monitoring tag reaches each layer as a
@@ -208,15 +241,69 @@ from [14574](https://grafana.com/grafana/dashboards/14574)) and
 
 ## Removing a project
 
-Delete its pair from the `# COVERS:` line in
-`config/grafana/alerting/projects.yaml`, re-run `bootstrap.sh` for any project
-that remains, and commit the result. The one ProjectTelemetrySilent rule then
-no longer checks it, and the coverage rule no longer counts it as covered.
-On its machine, drop its entry from the host layer's `stacks` with
-`copier update --answers-file .copier-answers.cml-host.yml --data stacks='...'`,
-or the agent keeps shipping its containers. Commit the update, then
-[apply it on the host](#apply-an-update-on-the-host). Confirm that new logs and
-container samples stop for the removed mapping; retained historical data remains.
+Retire application telemetry first, then remove its hub coverage. Stop or
+reconfigure the application's SDK exports; removing a stack mapping alone stops
+only the host agent's container collection. Before retiring scheduled jobs and
+removing their `PING_*` settings, pause or delete their healthchecks.io checks
+using the operator account. Keep checks and pings for jobs that continue running,
+or transfer their ownership, so they retain an independent failure alarm.
+Choose the host action that matches the project's role:
+
+- **An ordinary stack, with others remaining:** remove only its entry from the
+  host's `stacks` answer, commit the update, then
+  [apply it on the host](#apply-an-update-on-the-host). Keep the host owner's
+  project/environment unchanged.
+- **The host-owning project, with other stacks remaining:** choose a retained
+  project/environment to own host metrics. Run `bootstrap.sh <new-owner> <env>`
+  on the hub before switching identity. Update all three host answers together:
+
+  ```sh
+  copier update --answers-file .copier-answers.cml-host.yml \
+      --data project=<new-owner> --data env=<env> --data stacks='<retained mappings>'
+  ```
+
+  Copy the new `PROJECT` and `ENVIRONMENT` from `telemetry-host.env.example` into
+  the host's private `.env`, then [apply the update on the host](#apply-an-update-on-the-host),
+  including `up -d` before restarting Alloy. A restart alone retains the old
+  container environment. Keep the existing Compose project name unchanged. Set
+  `COMPOSE_PROJECT_NAME` explicitly if the base Compose file derives its name
+  from `PROJECT`. Copier updates the example,
+  not the live environment. Verify fresh host/self/GPU metrics use the
+  new identity before removing the old owner's coverage.
+- **The final stack and host agent:** an empty `stacks` answer is rejected. Retire
+  the host agent using the targeted stop/removal commands in
+  [the migration procedure](#migrate-hand-vendored-agents), including the GPU
+  exporter when present. Permanently remove its deployment references and then
+  its host-layer files and answers file. Keep the application's unrelated
+  services running. If host monitoring must continue, provision a replacement
+  owner and at least one retained stack instead of retiring the agent.
+
+For a retained host, change mappings from a clean checkout with
+`copier update --answers-file .copier-answers.cml-host.yml --data stacks='<retained mappings>'`.
+Commit each update before another one. Confirm new samples and logs no longer
+carry the retired identity; historical data remains queryable.
+
+Finally, delete the retired project's pair from the `# COVERS:` line in
+`config/grafana/alerting/projects.yaml`, re-run `bootstrap.sh` for a remaining
+covered project, and commit the result. If no covered projects remain, replace
+`projects.yaml` with an explicit deletion file rather than bootstrapping the
+retired identity again:
+
+```yaml
+apiVersion: 1
+deleteRules:
+  - orgId: 1
+    uid: projects-silent
+  - orgId: 1
+    uid: projects-uncovered
+```
+
+Deploy this provisioning change and restart Grafana. Verify both rules are absent
+before claiming that final coverage is retired. Deleting a file alone does not
+delete stored alert rules; see
+[Grafana's file provisioning documentation](https://grafana.com/docs/grafana/latest/alerting/set-up/provision-alerting-resources/file-provisioning/).
+Do not remove coverage while the old identity still reports,
+or `ProjectsUncovered` will fire.
 
 ## Limits
 
