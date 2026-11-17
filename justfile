@@ -13,8 +13,8 @@ ruff := "ghcr.io/astral-sh/ruff:0.14.2@sha256:636e27f3feb43800e44b0ad48c72811b50
 tofu := "ghcr.io/opentofu/opentofu:1.12.3@sha256:a0766d12f07b43e66f2ed40d7a8babe97d581d20339c68ad0ab561737af9a5b3"
 gitleaks := "zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"
 node := "node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5"
-# Runs copier for overlay-check; not a lint image, since that check needs PyPI.
-uv := "ghcr.io/astral-sh/uv:0.13.7-python3.13-trixie-slim@sha256:6ff812e34a0e14b4b8bc9ddf25e77b3e16bac6e0c4d9b67641f40366fa382d4c"
+# Runs Copier and Git for tagged updates; this check needs PyPI.
+uv := "ghcr.io/astral-sh/uv:0.13.7-python3.13-trixie@sha256:6299696d13e91e9d58e910fca4e503e89f217229a2c4c840a11b367dc24816f4"
 lint_images := jq + " " + yamllint + " " + yamlfmt + " " + actionlint + " " + shellcheck + " " + ruff + " " + tofu + " " + gitleaks + " " + node
 
 # `demo` and `smoke` each run a throwaway copy of the core stack under their own
@@ -206,6 +206,8 @@ overlay-check:
     d=$(mktemp -d)
     trap 'rm -rf "$d"' EXIT
     docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e UV_CACHE_DIR=/tmp/uv -e OVERLAY_OUT=/out -v .:/repo:ro -v "$d":/out {{uv}} /repo/scripts/check-overlay.sh uvx -q copier==9.19.1
+    # Exercise Compose's .env expansion; a custom token variable alone cannot authenticate an SDK.
+    OTLP_AUTH_TOKEN=overlay-test-token docker compose --env-file "$d/project/telemetry.env.example" -f tests/overlay-sdk.compose.yml config --format json | docker run --rm -i {{jq}} -e '.services.app.environment | .OTEL_EXPORTER_OTLP_HEADERS == "Authorization=Bearer overlay-test-token" and .OTEL_EXPORTER_OTLP_PROTOCOL == "http/protobuf" and .OTEL_RESOURCE_ATTRIBUTES == "project=demo-app,env=staging" and .OTEL_SEMCONV_STABILITY_OPT_IN == "http"' >/dev/null
     alloy=$({{spoke_env}} just _image templates/spoke/host/compose.telemetry.yml alloy)
     for gpu in true false; do
         docker run --rm --network none -v "$d/host-$gpu/deploy/alloy":/etc/alloy:ro -e COMPOSE_PROJECT_NAME=dummy -e ENVIRONMENT=dummy -e PROJECT=dummy -e OTEL_EXPORTER_OTLP_ENDPOINT=https://dummy -e OTLP_AUTH_TOKEN=dummy -e TELEMETRY_EDGE_KEY= "$alloy" validate /etc/alloy && echo "alloy ok: host config, gpu=$gpu"

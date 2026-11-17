@@ -395,7 +395,7 @@ When the tunnel overlay is active, `just up` validates critical security setting
 | `just check` | Runs `just lint` and `just validate`. |
 | `just smoke` | Boots an isolated copy of the stack and asserts ingestion, storage, and query APIs end-to-end. |
 | `just restore-check` | Verifies backup snapshot creation and restoration against the smoke stack. |
-| `just overlay-check` | Renders both CML overlay layers, compares the vendored files with `templates/spoke/` and validates the rendered agent config. |
+| `just overlay-check` | Checks both CML overlay renders, tagged updates, SDK environment expansion, and rendered Alloy configs. |
 | `just probe-add` | Registers an outside-in HTTP/S probe target in `config/targets/probes.yaml`. |
 | `just hooks` | Installs git pre-commit and pre-push hooks (gitleaks, citation checks, check). |
 

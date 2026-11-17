@@ -14,6 +14,10 @@ Notable changes to this stack. Format follows
   - Once per machine, in the repo that owns it, the host layer, listing every Compose project on
     the machine in `stacks`:
     `copier copy --vcs-ref=<tag> --data layer=host --answers-file .copier-answers.cml-host.yml --data project=<owner> --data env=<env> --data stacks='<compose-project>=<project>/<env> ...' gh:CMLPlatform/monitoring .`
+  - Before opting out of GPU monitoring, stop and remove its exporter using the old Compose file;
+    see `templates/README.md`. Removing the file alone does not stop an existing container.
+  - On NVIDIA hosts, set `gpu=true` and include `-f compose.telemetry.gpu.yml` when starting the host agent.
+  - Start from a clean checkout; review and commit each layer update before updating another.
   - Stop the per-project agents the host layer replaces. Later tags arrive with `copier update`
     and each layer's answers file.
 
@@ -28,6 +32,15 @@ Notable changes to this stack. Format follows
 - `just overlay-check`, run in CI, renders both layers (the host one with and without GPU),
   checks that every vendored file matches its source byte for byte, refuses bad answers, and
   validates each rendered agent config with the pinned Alloy.
+
+### Fixed
+
+- Keep spoke image updates configured after moving the Compose files into `templates/spoke/host`.
+- Supply SDK HTTP transport and authentication settings in the project example, with explicit
+  application-container wiring instructions.
+- Reject duplicate Compose project mappings, which otherwise assign ambiguous telemetry identities.
+- Verify tagged updates preserve application files and base-template answers, including GPU removal
+  and repeat updates.
 
 ### Changed
 

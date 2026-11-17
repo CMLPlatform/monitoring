@@ -70,4 +70,7 @@ stacks:
     {%- set pair = '[a-z0-9][a-z0-9_-]*=[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*' -%}
     {%- if not (stacks | regex_search('^' ~ pair ~ '( ' ~ pair ~ ')*$')) -%}
     must be compose-project=project/env pairs separated by spaces
+    {%- elif (stacks.split() | map('regex_replace', '=.*$', '') | unique | list | length)
+        != (stacks.split() | length) -%}
+    each Compose project must appear only once
     {%- endif %}

@@ -13,7 +13,7 @@ updates:
 
   # The spoke images every project host runs.
   - package-ecosystem: "docker-compose"
-    directory: "/templates"
+    directory: "/templates/spoke/host"
     schedule:
       interval: "weekly"
     groups:

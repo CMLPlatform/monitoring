@@ -159,7 +159,8 @@ On a machine that already has the host layer, add this project to its stacks:
   copier update --answers-file .copier-answers.cml-host.yml \\
       --data stacks='<STACKS> <compose-project>=${project}/${env_name}'
 
-Commit what each writes. A later tag reaches either layer as
+Start from a clean checkout. Review and commit each layer before updating another.
+A later tag reaches either layer as
   copier update --answers-file <its answers file>
 
 Add the lines of telemetry.env.example (project) and telemetry-host.env.example
@@ -168,6 +169,9 @@ OTLP_AUTH_TOKEN=<the stack's shared ingest token>
 
 Then, where the host layer lives, include the overlay and bring it up:
   docker compose -f compose.yml -f compose.telemetry.yml up -d
+For an NVIDIA host, answer gpu=true when copying the host layer, then run:
+  docker compose -f compose.yml -f compose.telemetry.yml -f compose.telemetry.gpu.yml up -d
+GPU_METRICS=1 alone does not include the GPU file.
 
 Verify from the monitoring host, within ~2 minutes:
   count(telemetry_datapoints_total{project="${project}",env="${env_name}"})  -> non-zero

@@ -27,12 +27,15 @@ of them.
   | `compose.telemetry.gpu.yml` | Opt-in overlay: `nvidia_gpu_exporter`, discovered automatically (only with `gpu=true`) |
   | `telemetry-host.env.example` | The agent's non-secret `.env` variables |
 
+Use Copier 9.19.1 (the version checked in CI) on the machine where you edit
+repos. The deployed host needs only Docker with Compose.
+
 Both layers ask for `project` and `env` (the labels `bootstrap.sh` takes, so
 the same `[a-z0-9][a-z0-9-]*`) and the hub's OTLP endpoint. The project layer
 adds an optional contact address. For the host layer, `project` and `env` name
 the machine's owner, whose labels host-level series carry, and it adds `gpu`
 and `stacks`: every Compose project on the machine as
-`compose-project=project/env`, space separated. The agent ships no container of
+`compose-project=project/env`, space separated. Each Compose project must appear only once. The agent ships no container of
 a Compose project `stacks` does not name. `just overlay-check` renders both
 layers and compares each vendored file with its source here.
 
@@ -71,25 +74,89 @@ stack's own alert rules. `web/` is a snippet pasted into a page, not vendored.
    docker compose -f compose.yml -f compose.telemetry.yml up -d
    ```
 
+   On an NVIDIA host, answer `gpu=true` when copying the host layer and include
+   the generated GPU file explicitly:
+
+   ```sh
+   docker compose -f compose.yml -f compose.telemetry.yml -f compose.telemetry.gpu.yml up -d
+   ```
+
+   `GPU_METRICS=1` alone does not include that file. Check that the exporter is
+   running with `docker compose -f compose.yml -f compose.telemetry.yml -f compose.telemetry.gpu.yml ps`.
+
 5. Verify from the monitoring host (see below).
+
+## Pass settings to the application
+
+Compose's `.env` supplies interpolation values; it does not automatically put
+those values in an application container. Add these to each instrumented service's
+`environment` mapping, with a distinct `OTEL_SERVICE_NAME` per service:
+
+```yaml
+environment:
+  OTEL_SERVICE_NAME: my-service
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:?required}
+  OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:?required}
+  OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:?required}
+  OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:?required}
+  OTEL_SEMCONV_STABILITY_OPT_IN: ${OTEL_SEMCONV_STABILITY_OPT_IN:-http}
+```
+
+The project example expands `OTLP_AUTH_TOKEN` into the SDK's standard header
+setting. Keep both in the private `.env`; the SDK does not read `OTLP_AUTH_TOKEN`
+itself. For applications outside Compose, export the resolved header value
+explicitly. See [application onboarding](../docs/ONBOARDING.md) for SDK installation
+and instrumentation, including Python logging.
 
 ## Upgrading a spoke
 
-A new monitoring tag reaches each layer as a diff to review:
+Start with a clean Git checkout. A new monitoring tag reaches each layer as a
+separate diff to review. Run one update, review and commit its changes, then run
+the other. Copier refuses an update while the previous changes are uncommitted:
 
 ```sh
 copier update --answers-file .copier-answers.cml.yml --vcs-ref=<tag>
+```
+
+After committing the project update, update the host layer if this repo owns one:
+
+```sh
 copier update --answers-file .copier-answers.cml-host.yml --vcs-ref=<tag>
 ```
+
+Before changing a host from `gpu=true` to `gpu=false`, stop and remove only its
+GPU exporter while the old Compose file still exists:
+
+```sh
+docker compose -f compose.yml -f compose.telemetry.yml -f compose.telemetry.gpu.yml stop nvidia-gpu-exporter
+docker compose -f compose.yml -f compose.telemetry.yml -f compose.telemetry.gpu.yml rm -f nvidia-gpu-exporter
+copier update --answers-file .copier-answers.cml-host.yml --vcs-ref=<tag> --data gpu=false
+```
+
+Review and commit that update. Removing the file alone does not stop a running
+exporter. Avoid removing unrelated services from the application's other overlays.
 
 Without `--vcs-ref` it takes the latest tag. The diff touches only the files
 above; `CHANGELOG.md` says under `Upgrade` what a spoke must do beyond that.
 
-Skipping `bootstrap.sh` leaves a project unmonitored with no error anywhere.
-The rule that notices a host's *silence* lives on this stack, not on the
-host. The backstop is `ProjectsUncovered`, regenerated on every bootstrap
-run: it fires on any project the gateway counts telemetry for that is not
+Run `bootstrap.sh` before enabling a spoke. Its silence rule lives on the hub,
+so installing an agent alone does not provision that project's silence alert.
+The backstop is `ProjectsUncovered`, regenerated on every bootstrap run: it fires on any project the gateway counts telemetry for that is not
 covered in `projects.yaml`, whichever signal that project sends.
+
+### Apply an update on the host
+
+Deploy the reviewed commit to the host and run the startup command from the
+checklist above, including the GPU file when enabled. This reconciles changed
+images and Compose settings. Then restart Alloy to load the mounted configuration:
+
+```sh
+docker compose -f compose.yml -f compose.telemetry.yml restart alloy
+```
+
+The restart targets only Alloy; its service is defined in the CPU file even on a
+GPU host. Changed files on disk do not reload a running agent automatically.
+Verify the intended project labels and GPU metrics using the queries below.
 
 ## Two settings that silently produce nothing
 
@@ -147,7 +214,9 @@ that remains, and commit the result. The one ProjectTelemetrySilent rule then
 no longer checks it, and the coverage rule no longer counts it as covered.
 On its machine, drop its entry from the host layer's `stacks` with
 `copier update --answers-file .copier-answers.cml-host.yml --data stacks='...'`,
-or the agent keeps shipping its containers.
+or the agent keeps shipping its containers. Commit the update, then
+[apply it on the host](#apply-an-update-on-the-host). Confirm that new logs and
+container samples stop for the removed mapping; retained historical data remains.
 
 ## Limits
 
@@ -162,6 +231,10 @@ count(telemetry_datapoints_total{project="<project>",env="<env>"})  # non-zero w
 count(container_start_time_seconds{project="<project>",name!=""})  # one per container
 count({job="<service.name>"})                                      # app's own SDK metrics
 ```
+
+For an NVIDIA host, also query `count({__name__=~"nvidia_smi_.+",project="<owner>",env="<env>"})`.
+Expect non-zero after the first scrape. A running Alloy agent alone does not prove
+that the GPU exporter is running.
 
 If the first is still zero after five minutes, `ProjectTelemetrySilent`
 will say so: it fires after 15 minutes without data, or about 20 minutes

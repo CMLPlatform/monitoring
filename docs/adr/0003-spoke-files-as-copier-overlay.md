@@ -48,7 +48,9 @@ render holds one layer's files and nothing else from this repo.
 - `just overlay-check` renders both layers, the host one with both `gpu`
   answers, checks the file lists and byte-identity, refuses bad names and a
   mismatched answers file, and validates each rendered agent config with the
-  pinned Alloy. CI runs it.
+  pinned Alloy. Tagged update tests preserve both layers and base-template answers,
+  remove the GPU file on opt-out, and leave repeat updates unchanged. Compose
+  validation checks the SDK header and transport settings. CI runs these checks.
 
 ### Which project a container belongs to
 
@@ -97,12 +99,13 @@ On project and env, not the machine. `bootstrap.sh <project> <env>` and the
   its app's own telemetry carries them through the SDK, so the gateway counts
   it per project as before.
 - Host-level series (node metrics, the GPU, the agent's own health) carry
-  the owner's project and env, so the owner's keystone also covers the agent.
+  the owner's project and env, so they contribute to the owner's keystone.
   `host_name` stays a label for the dashboards, never an alert key.
 - If the agent dies, every project on that machine whose only telemetry is
   the agent goes silent and fires on its own. A project with an instrumented
-  app keeps counting through the gateway, so the agent's loss shows on the
-  owner's rule and on the dashboards' host panels.
+  app keeps counting through the gateway. The host panels show missing agent
+  data, but the owner's silence rule stays healthy while any of its telemetry
+  keeps arriving. There is no separate agent-loss alert.
 - A `stacks` entry for a project nobody bootstrapped fires
   `ProjectsUncovered`, the same as before.
 
