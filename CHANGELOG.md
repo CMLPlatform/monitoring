@@ -6,6 +6,54 @@ Notable changes to this stack. Format follows
 
 ## [Unreleased]
 
+### Upgrade
+
+- Spokes that vendored the templates by `curl` move to the CML overlay, one layer at a time:
+  - In each project repo, the project layer:
+    `copier copy --vcs-ref=<tag> --data project=<project> --data env=<env> gh:CMLPlatform/monitoring .`
+  - Once per machine, in the repo that owns it, the host layer, listing every Compose project on
+    the machine in `stacks`:
+    `copier copy --vcs-ref=<tag> --data layer=host --answers-file .copier-answers.cml-host.yml --data project=<owner> --data env=<env> --data stacks='<compose-project>=<project>/<env> ...' gh:CMLPlatform/monitoring .`
+  - Before opting out of GPU monitoring, stop and remove its exporter using the old Compose file;
+    see `templates/README.md`. Removing the file alone does not stop an existing container.
+  - On NVIDIA hosts, set `gpu=true` and include `-f compose.telemetry.gpu.yml` when starting the host agent.
+  - Start from a clean checkout; review and commit each layer update before updating another.
+  - Stop the per-project agents the host layer replaces. Later tags arrive with `copier update`
+    and each layer's answers file.
+
+### Added
+
+- The CML overlay: two Copier templates in `copier.yml`, picked by `layer`, each with its own
+  answers file. The project layer (`.copier-answers.cml.yml`) vendors `run_scheduled.sh` and
+  renders the project's non-secret `.env` variables into `telemetry.env.example`. The host layer
+  (`.copier-answers.cml-host.yml`), once per machine, vendors the Alloy agent and the GPU overlay
+  and renders `telemetry-host.env.example`. See
+  [ADR 0003](docs/adr/0003-spoke-files-as-copier-overlay.md).
+- `just overlay-check`, run in CI, renders both layers (the host one with and without GPU),
+  checks that every vendored file matches its source byte for byte, refuses bad answers, and
+  validates each rendered agent config with the pinned Alloy.
+
+### Fixed
+
+- Keep spoke image updates configured after moving the Compose files into `templates/spoke/host`.
+- Supply SDK HTTP transport and authentication settings in the project example, with explicit
+  application-container wiring instructions.
+- Reject duplicate Compose project mappings, which otherwise assign ambiguous telemetry identities.
+- Verify tagged updates preserve application files and base-template answers, including GPU removal
+  and repeat updates.
+
+### Changed
+
+- **Breaking:** one agent per machine. `config.alloy` ships the containers of every Compose project
+  the host layer's `stacks` answer names, each with its own project and env, from the
+  `projects.alloy` the host layer renders next to it. The agent loads the `deploy/alloy/`
+  directory, so a hand-vendored `config.alloy` no longer runs alone. Host-level series carry the
+  machine owner's project and env.
+- **Breaking:** the spoke files moved to `templates/spoke/project/` and `templates/spoke/host/`,
+  at the paths they take in a repo, so their raw URLs at new tags differ.
+- `bootstrap.sh` prints the `copier copy` commands for both layers, pinned at the latest tag,
+  instead of `curl` commands and checksums, and refuses a tag without `copier.yml`.
+
 ## [0.5.0] - 2026-11-01
 
 ### Upgrade

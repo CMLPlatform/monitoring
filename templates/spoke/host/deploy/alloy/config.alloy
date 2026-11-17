@@ -1,12 +1,15 @@
 // SHARED AGENT CONFIG, vendored from the CML monitoring repository at a pinned tag.
-// Do not edit it per project: every deployment-specific value arrives as an environment
+// Do not edit it per host: every deployment-specific value arrives as an environment
 // variable (PROJECT, ENVIRONMENT, COMPOSE_PROJECT_NAME, OTEL_EXPORTER_OTLP_ENDPOINT,
-// OTLP_AUTH_TOKEN, TELEMETRY_EDGE_KEY). If onboarding needs an edit here, that is a
-// bug in the template. Report it upstream.
+// OTLP_AUTH_TOKEN, TELEMETRY_EDGE_KEY) or from projects.alloy next to it, which the
+// CML host overlay renders from the host's answers. If onboarding needs an edit here,
+// that is a bug in the template. Report it upstream.
 //
-// Ships what the application cannot report about itself: other containers' stdout as
-// logs, host resource metrics, and per-container lifecycle from cAdvisor, all over the
-// same OTLP endpoint and token the application uses.
+// One agent per machine. It ships what the applications cannot report about
+// themselves: their containers' stdout as logs, host resource metrics, and
+// per-container lifecycle from cAdvisor, all to the hub's OTLP endpoint. Containers
+// carry the project/env that projects.alloy maps their Compose project to; host-level
+// series carry PROJECT/ENVIRONMENT, the project that owns the machine.
 
 // The host's name from its own /etc/hostname; the container's hostname is a docker id.
 local.file "hostname" {
@@ -26,13 +29,6 @@ discovery.docker "containers" {
 
 discovery.relabel "containers" {
 	targets = discovery.docker.containers.targets
-
-	// Only this Compose project; other projects on the host ship their own telemetry.
-	rule {
-		source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
-		regex         = sys.env("COMPOSE_PROJECT_NAME")
-		action        = "keep"
-	}
 
 	// Never tail this pipeline's own containers: a broken export path would log an
 	// error per failed batch, queue it, fail again, with no exit.
@@ -54,13 +50,12 @@ discovery.relabel "containers" {
 	}
 }
 
+// project and env come from discovery.relabel.projects (projects.alloy), which also
+// drops every container whose Compose project the host's answers do not name.
 loki.source.docker "containers" {
 	host       = "tcp://docker-socket-proxy:2375"
-	targets    = discovery.relabel.containers.output
+	targets    = discovery.relabel.projects.output
 	labels     = {
-		env     = sys.env("ENVIRONMENT"),
-		project = sys.env("PROJECT"),
-
 		// `instance` is identical on every host (Alloy scrapes its own in-container
 		// exporter), so this is the host identity. The coalesce handles a blank
 		// /etc/hostname.
@@ -157,16 +152,11 @@ prometheus.scrape "cadvisor" {
 }
 
 // cAdvisor sees every container on the box, and the discovery.docker filter above does
-// not reach it. Keep only this project's, or other stacks' containers arrive stamped
-// with this project's labels. The unlabelled root-cgroup series drops out too.
+// not reach it. prometheus.relabel.cadvisor_projects (projects.alloy) stamps each
+// container with its project and env and drops the ones no answer names, and with them
+// the unlabelled root-cgroup series.
 prometheus.relabel "cadvisor_scope" {
-	forward_to = [prometheus.relabel.host.receiver]
-
-	rule {
-		source_labels = ["container_label_com_docker_compose_project"]
-		regex         = sys.env("COMPOSE_PROJECT_NAME")
-		action        = "keep"
-	}
+	forward_to = [prometheus.relabel.cadvisor_projects.receiver]
 
 	// The enabled kinds still emit ~40 families per container; Host & Containers and
 	// the alerts read these, one per USE question (usage, saturation as PSI wait time,
@@ -218,18 +208,23 @@ prometheus.scrape "host" {
 	job_name        = "host"
 }
 
-// The same identity labels the logs carry.
+// The same identity labels the logs carry. A container series already has its
+// project's; a host-level one gets the machine owner's (regex "" matches only unset).
 prometheus.relabel "host" {
 	forward_to = [otelcol.receiver.prometheus.host.receiver]
 
 	rule {
-		target_label = "env"
-		replacement  = sys.env("ENVIRONMENT")
+		source_labels = ["env"]
+		regex         = ""
+		target_label  = "env"
+		replacement   = sys.env("ENVIRONMENT")
 	}
 
 	rule {
-		target_label = "project"
-		replacement  = sys.env("PROJECT")
+		source_labels = ["project"]
+		regex         = ""
+		target_label  = "project"
+		replacement   = sys.env("PROJECT")
 	}
 
 	// See the note on the log labels.
@@ -267,13 +262,15 @@ prometheus.relabel "alloy_self" {
 // ---------------------------------------------------------------------------
 // GPU metrics, present only on hosts that run compose.telemetry.gpu.yml. Without the
 // exporter container this finds no targets and costs nothing.
+// A host-level signal like node metrics, so it carries the machine owner's labels.
 discovery.relabel "gpu_exporter" {
-	// Already scoped to this Compose project, with service_name set.
-	targets = discovery.relabel.containers.output
+	targets = discovery.docker.containers.targets
 
+	// The exporter of this agent's own Compose project.
 	rule {
-		source_labels = ["service_name"]
-		regex         = "nvidia-gpu-exporter"
+		source_labels = ["__meta_docker_container_label_com_docker_compose_project", "__meta_docker_container_label_com_docker_compose_service"]
+		separator     = ";"
+		regex         = sys.env("COMPOSE_PROJECT_NAME") + ";nvidia-gpu-exporter"
 		action        = "keep"
 	}
 

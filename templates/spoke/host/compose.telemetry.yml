@@ -2,9 +2,9 @@
 # Vendor it as-is; everything that differs between projects arrives as an environment
 # variable. See templates/README.md.
 #
-# One Grafana Alloy agent per host, shipping what the application cannot report on
-# itself to the same OTLP endpoint with the same token: other containers' stdout as
-# logs, host resource metrics, and per-container lifecycle from cAdvisor.
+# One Grafana Alloy agent per machine, shipping what the applications cannot report on
+# themselves to the hub's OTLP endpoint: their containers' stdout as logs, host
+# resource metrics, and per-container lifecycle from cAdvisor.
 
 x-logging: &default-logging
   driver: json-file
@@ -45,17 +45,18 @@ services:
     user: root
     command:
       - run
-      - /etc/alloy/config.alloy
+      # The directory: config.alloy and the host's rendered projects.alloy load as one.
+      - /etc/alloy
       - --storage.path=/var/lib/alloy/data
       # The diagnostics UI has no auth; keep it on loopback.
       - --server.http.listen-addr=127.0.0.1:12345
     environment:
+      # The project that owns this machine: host-level series carry its labels. Must
+      # match the values bootstrap.sh was run with on the monitoring host.
       ENVIRONMENT: ${ENVIRONMENT:?telemetry overlay requires ENVIRONMENT}
-      # Must match the value bootstrap.sh was run with on the monitoring host.
       PROJECT: ${PROJECT:?telemetry overlay requires PROJECT}
-      # The Compose project (docker's -p), not PROJECT above. Compose always injects
-      # it into interpolation, so Alloy's container filter follows the sibling
-      # containers' label.
+      # This agent's own Compose project (docker's -p), not PROJECT above, so Alloy
+      # finds its GPU exporter. Compose always injects it into interpolation.
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:?required by the telemetry overlay}
       OTLP_AUTH_TOKEN: ${OTLP_AUTH_TOKEN:?telemetry overlay requires OTLP_AUTH_TOKEN}
@@ -63,7 +64,7 @@ services:
       # WAF-skip rule matches this header instead of the bearer token.
       TELEMETRY_EDGE_KEY: ${TELEMETRY_EDGE_KEY:-}
     volumes:
-      - ./deploy/alloy/config.alloy:/etc/alloy/config.alloy:ro # vendored, never edited
+      - ./deploy/alloy:/etc/alloy:ro # rendered by the CML host overlay, never edited
       # node_exporter reads the host's /proc, /sys and filesystems. /rootfs gives
       # the container read access to the whole host filesystem, the price of host
       # disk-usage metrics from a container.

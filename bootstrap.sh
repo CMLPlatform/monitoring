@@ -7,8 +7,9 @@
 #   2. renders the coverage rule that catches projects never bootstrapped, and
 #      reloads Grafana;
 #   3. creates the project's healthchecks.io watchdog check (if an API key is present);
-#   4. prints the `.env` block for the project host and the curls that vendor the
-#      templates at a pinned tag.
+#   4. prints the copier commands that apply the CML overlay's two layers (copier.yml)
+#      at a pinned tag: the project layer in the project's repo, and the host layer
+#      once per machine.
 #
 # Idempotent.
 set -euo pipefail
@@ -42,21 +43,14 @@ fi
 # skips a nested directory with only a warning. BOOTSTRAP_OUT_DIR is for `just
 # lint`; with it set, nothing past the rendering runs.
 out_dir="${BOOTSTRAP_OUT_DIR:-config/grafana/alerting}"
-# The vendored templates and the paths they are printed under.
-templates="alloy/config.alloy:deploy/alloy/config.alloy compose.telemetry.yml:compose.telemetry.yml compose.telemetry.gpu.yml:compose.telemetry.gpu.yml run_scheduled.sh:scripts/run_scheduled.sh"
 
 if [[ -z "${BOOTSTRAP_OUT_DIR:-}" ]]; then
     # Pinned tag, no fallback to a branch: two projects must never vendor two
     # different configs under the same name.
     tag="$(git -C "$root" describe --tags --abbrev=0 2>/dev/null)" \
-        || { echo "error: no release tag to pin the vendoring curls to; tag a release first" >&2; exit 1; }
-    # The tag must contain every template, or a curl 404s and the hash printed
-    # for it below is the hash of nothing.
-    for pair in $templates; do
-        git -C "$root" rev-parse -q --verify "${tag}:templates/${pair%%:*}" >/dev/null \
-            || { echo "error: tag ${tag} predates templates/${pair%%:*}; tag a new release before onboarding" >&2; exit 1; }
-    done
-    repo_raw="https://raw.githubusercontent.com/CMLPlatform/monitoring/${tag}/templates"
+        || { echo "error: no release tag to pin the overlay to; tag a release first" >&2; exit 1; }
+    git -C "$root" rev-parse -q --verify "${tag}:copier.yml" >/dev/null \
+        || { echo "error: tag ${tag} predates the CML overlay (copier.yml); tag a new release before onboarding" >&2; exit 1; }
 fi
 
 # ------------------------------------------------------- 1-2. keystone rule and backstop
@@ -146,45 +140,38 @@ else
     echo "note      HEALTHCHECKS_API_KEY unset; create these by hand at https://healthchecks.io and note their ping URLs"
 fi
 
-# Computed before the heredoc: a substitution inside `cat <<EOF` cannot fail
-# the script, and a missing template would print sha256("") as authoritative.
-hashes=""
-curls=""
-for pair in $templates; do
-    sum="$(git -C "$root" show "${tag}:templates/${pair%%:*}" | sha256sum | cut -d' ' -f1)"
-    hashes="${hashes}${sum}  ${pair#*:}"$'\n'
-    curls+="$(printf 'curl -fsSL -o %-24s %s/%s' "${pair#*:}" "$repo_raw" "${pair%%:*}")"$'\n'
-done
-hashes="${hashes%$'\n'}"
-curls="${curls%$'\n'}"
-
 cat <<SUMMARY
 
 ────────────────────────────────────────────────────────────────────────────
-Paste this into the project host's root .env
+Apply the CML overlay (pinned at ${tag})
 ────────────────────────────────────────────────────────────────────────────
-PROJECT=${project}
-ENVIRONMENT=${env_name}
-OTEL_EXPORTER_OTLP_ENDPOINT=https://<otlp-hostname>
+In the project's repo, the project layer (run_scheduled.sh, telemetry.env.example):
+  copier copy --vcs-ref=${tag} --data project=${project} --data env=${env_name} \\
+      gh:CMLPlatform/monitoring .
+
+Once per machine, in the repo that owns it, the host layer (the Alloy agent).
+STACKS names every Compose project on the machine as compose-project=project/env:
+  copier copy --vcs-ref=${tag} --data layer=host \\
+      --answers-file .copier-answers.cml-host.yml \\
+      --data project=<owner> --data env=<owner env> --data stacks='<STACKS>' \\
+      gh:CMLPlatform/monitoring .
+On a machine that already has the host layer, add this project to its stacks:
+  copier update --answers-file .copier-answers.cml-host.yml \\
+      --data stacks='<STACKS> <compose-project>=${project}/${env_name}'
+
+Start from a clean checkout. Review and commit each layer before updating another.
+A later tag reaches either layer as
+  copier update --answers-file <its answers file>
+
+Add the lines of telemetry.env.example (project) and telemetry-host.env.example
+(host) to that repo's .env, with:
 OTLP_AUTH_TOKEN=<the stack's shared ingest token>
-TELEMETRY_EDGE_KEY=            # only if the project's egress crosses a WAF
-GPU_METRICS=                   # 1 on a host with an NVIDIA card, read by your deploy
-                               # tooling to include compose.telemetry.gpu.yml
 
-────────────────────────────────────────────────────────────────────────────
-Vendor the templates on the project host (pinned at ${tag})
-────────────────────────────────────────────────────────────────────────────
-mkdir -p deploy/alloy scripts
-${curls}
-
-Verify before executing anything (the hashes come from the ${tag} tag):
-sha256sum -c <<'SUM'
-${hashes}
-SUM
-chmod +x scripts/run_scheduled.sh
-
-Then include the overlay and bring it up:
+Then, where the host layer lives, include the overlay and bring it up:
   docker compose -f compose.yml -f compose.telemetry.yml up -d
+For an NVIDIA host, answer gpu=true when copying the host layer, then run:
+  docker compose -f compose.yml -f compose.telemetry.yml -f compose.telemetry.gpu.yml up -d
+GPU_METRICS=1 alone does not include the GPU file.
 
 Verify from the monitoring host, within ~2 minutes:
   count(telemetry_datapoints_total{project="${project}",env="${env_name}"})  -> non-zero

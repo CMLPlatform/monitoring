@@ -13,6 +13,8 @@ ruff := "ghcr.io/astral-sh/ruff:0.14.2@sha256:636e27f3feb43800e44b0ad48c72811b50
 tofu := "ghcr.io/opentofu/opentofu:1.12.3@sha256:a0766d12f07b43e66f2ed40d7a8babe97d581d20339c68ad0ab561737af9a5b3"
 gitleaks := "zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"
 node := "node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5"
+# Runs Copier and Git for tagged updates; this check needs PyPI.
+uv := "ghcr.io/astral-sh/uv:0.13.7-python3.13-trixie@sha256:6299696d13e91e9d58e910fca4e503e89f217229a2c4c840a11b367dc24816f4"
 lint_images := jq + " " + yamllint + " " + yamlfmt + " " + actionlint + " " + shellcheck + " " + ruff + " " + tofu + " " + gitleaks + " " + node
 
 # `demo` and `smoke` each run a throwaway copy of the core stack under their own
@@ -107,10 +109,10 @@ lint: uptime-test
     # compose_smoke turns the JWT interpolation on.
     {{compose_smoke}} config -q
     # The spoke overlays, which otherwise first fail on a project host after vendoring.
-    {{spoke_env}} docker compose -f templates/compose.telemetry.yml -f templates/compose.telemetry.gpu.yml config -q
+    {{spoke_env}} docker compose -f templates/spoke/host/compose.telemetry.yml -f templates/spoke/host/compose.telemetry.gpu.yml config -q
     # Image tags must name the multi-arch manifest. Dependabot sometimes proposes a
     # single-platform tag such as `-386`, which an amd64 host still runs, so smoke passes.
-    @! grep -nE 'image: [^ ]+:[^@ ]*-(386|amd64|arm64|armv[5-7]|ppc64le|s390x|riscv64)(@|$)' compose*.yml templates/*.yml || { echo "error: single-platform image tag above; use the plain tag" >&2; exit 1; }
+    @! grep -nE 'image: [^ ]+:[^@ ]*-(386|amd64|arm64|armv[5-7]|ppc64le|s390x|riscv64)(@|$)' compose*.yml templates/spoke/host/*.yml || { echo "error: single-platform image tag above; use the plain tag" >&2; exit 1; }
     # The exposure guards, both ways: a fully set .env passes, and each
     # documented default is refused on its own.
     @good="OTLP_AUTH_TOKEN=t GRAFANA_ADMIN_PASSWORD=p GRAFANA_ROOT_URL=https://g.example GRAFANA_COOKIE_SECURE=true GRAFANA_JWT_AUTH=true CF_ACCESS_TEAM_DOMAIN=d CF_ACCESS_AUD=a HEARTBEAT_URL=https://h ALERT_WEBHOOK_URL=https://w"; \
@@ -121,14 +123,14 @@ lint: uptime-test
     # run_scheduled.sh, interrupted mid-job, must take the job down with it,
     # including what the job started (the stub's sleep stands in for a recipe's
     # command under `just`). env resets INT, which bash ignores in a background job.
-    @d=$(mktemp -d) && mkdir "$d/templates" && cp templates/run_scheduled.sh "$d/templates/" && printf '#!/bin/sh\nsleep 30 & echo $! >"%s/pid"; wait\n' "$d" >"$d/job" && chmod +x "$d/job" || exit 1; \
+    @d=$(mktemp -d) && mkdir "$d/templates" && cp templates/spoke/project/scripts/run_scheduled.sh "$d/templates/" && printf '#!/bin/sh\nsleep 30 & echo $! >"%s/pid"; wait\n' "$d" >"$d/job" && chmod +x "$d/job" || exit 1; \
       JUST_BIN="$d/job" env --default-signal=INT "$d/templates/run_scheduled.sh" job env >/dev/null 2>&1 & rs=$!; \
       for _ in $(seq 50); do [ -s "$d/pid" ] && break; sleep 0.1; done; kill -INT $rs; wait $rs; sleep 0.5; \
       p=$(cat "$d/pid" 2>/dev/null); rm -rf "$d"; [ -n "$p" ] || { echo "error: run_scheduled.sh never started its job" >&2; exit 1; }; \
       ! kill -0 "$p" 2>/dev/null || { kill "$p"; echo "error: run_scheduled.sh left its job running after SIGINT" >&2; exit 1; }
     # The job reads /dev/null, not the caller's stdin: a job run by hand from a
     # terminal would otherwise stop on its first read.
-    @d=$(mktemp -d) && mkdir "$d/templates" && cp templates/run_scheduled.sh "$d/templates/" && printf '#!/bin/sh\nread x && echo "read: $x"\n' >"$d/job" && chmod +x "$d/job" || exit 1; \
+    @d=$(mktemp -d) && mkdir "$d/templates" && cp templates/spoke/project/scripts/run_scheduled.sh "$d/templates/" && printf '#!/bin/sh\nread x && echo "read: $x"\n' >"$d/job" && chmod +x "$d/job" || exit 1; \
       out=$(echo caller-input | JUST_BIN="$d/job" "$d/templates/run_scheduled.sh" job env 2>&1); rm -rf "$d"; \
       case "$out" in *caller-input*) echo "error: run_scheduled.sh passed its stdin to the job" >&2; exit 1 ;; esac
     # smoke.sh's cfg_quote must escape \ and " for curl's config parser.
@@ -140,7 +142,7 @@ lint: uptime-test
     docker run --rm --network none -v .:/code:ro {{yamllint}} yamllint -d '{extends: relaxed, rules: {line-length: {max: 120, allow-non-breakable-inline-mappings: true}}, ignore: [.git/, backups/, infra/.terraform/, config/grafana/alerting/projects.yaml]}' .
     @d=$(mktemp -d) && BOOTSTRAP_OUT_DIR="$d" ./bootstrap.sh dummy dummy >/dev/null && docker run --rm --network none -v "$d":/code:ro {{yamllint}} yamllint -d '{extends: relaxed, rules: {line-length: disable}}' .; rc=$?; rm -rf "$d"; exit $rc
     docker run --rm --network none -v .:/repo:ro -w /repo {{actionlint}} -color
-    docker run --rm --network none -v .:/mnt:ro {{shellcheck}} bootstrap.sh scripts/smoke.sh scripts/restore-check.sh scripts/test_backup.sh scripts/test_gitleaks.sh scripts/test_imports.sh templates/run_scheduled.sh infra/generate-imports.sh
+    docker run --rm --network none -v .:/mnt:ro {{shellcheck}} bootstrap.sh scripts/smoke.sh scripts/restore-check.sh scripts/test_backup.sh scripts/test_gitleaks.sh scripts/test_imports.sh templates/spoke/project/scripts/run_scheduled.sh scripts/check-overlay.sh infra/generate-imports.sh
     sh scripts/test_gitleaks.sh
     bash scripts/test_imports.sh
     sh scripts/test_backup.sh
@@ -167,9 +169,6 @@ lint: uptime-test
     # Secrets in git history. Scans commits, not the working tree, so the
     # gitignored .env never trips it. Needs full history (see ci.yml).
     just _gitleaks
-    # The agent config every project host vendors, checked by the Alloy build
-    # the template actually pins.
-    docker run --rm --network none -v ./templates/alloy/config.alloy:/etc/alloy/config.alloy:ro -e COMPOSE_PROJECT_NAME=dummy -e ENVIRONMENT=dummy -e PROJECT=dummy -e OTEL_EXPORTER_OTLP_ENDPOINT=https://dummy -e OTLP_AUTH_TOKEN=dummy -e TELEMETRY_EDGE_KEY= $({{spoke_env}} just _image templates/compose.telemetry.yml alloy) validate /etc/alloy/config.alloy
 
 # Image ref of one service in a compose file. (`config --images <svc>` also
 # lists the service's dependencies, hence the json route.)
@@ -195,6 +194,24 @@ probe-add project env url tier="edge":
     fi; \
     printf '\n- targets:\n    - %s\n  labels:\n    project: %s\n    env: %s\n    tier: %s\n' "{{url}}" "{{project}}" "{{env}}" "{{tier}}" >> config/targets/probes.yaml; \
     echo "added probe target {{url}} (project: {{project}}, env: {{env}}, tier: {{tier}})"
+
+# Renders both layers of copier.yml and compares the result with templates/spoke/
+# (scripts/check-overlay.sh), then validates each rendered host agent config, with its
+# projects.alloy, using the Alloy build the template pins. Fetches copier from PyPI, so
+# not part of `check`.
+# Check the CML overlay a repo receives through copier.
+overlay-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    d=$(mktemp -d)
+    trap 'rm -rf "$d"' EXIT
+    docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e UV_CACHE_DIR=/tmp/uv -e OVERLAY_OUT=/out -v .:/repo:ro -v "$d":/out {{uv}} /repo/scripts/check-overlay.sh uvx -q copier==9.19.1
+    # Exercise Compose's .env expansion; a custom token variable alone cannot authenticate an SDK.
+    OTLP_AUTH_TOKEN=overlay-test-token docker compose --env-file "$d/project/telemetry.env.example" -f tests/overlay-sdk.compose.yml config --format json | docker run --rm -i {{jq}} -e '.services.app.environment | .OTEL_EXPORTER_OTLP_HEADERS == "Authorization=Bearer overlay-test-token" and .OTEL_EXPORTER_OTLP_PROTOCOL == "http/protobuf" and .OTEL_RESOURCE_ATTRIBUTES == "project=demo-app,env=staging" and .OTEL_SEMCONV_STABILITY_OPT_IN == "http"' >/dev/null
+    alloy=$({{spoke_env}} just _image templates/spoke/host/compose.telemetry.yml alloy)
+    for gpu in true false; do
+        docker run --rm --network none -v "$d/host-$gpu/deploy/alloy":/etc/alloy:ro -e COMPOSE_PROJECT_NAME=dummy -e ENVIRONMENT=dummy -e PROJECT=dummy -e OTEL_EXPORTER_OTLP_ENDPOINT=https://dummy -e OTLP_AUTH_TOKEN=dummy -e TELEMETRY_EDGE_KEY= "$alloy" validate /etc/alloy && echo "alloy ok: host config, gpu=$gpu"
+    done
 
 # Runs against a copy of the sources: state and tfvars never enter the
 # container, which has network access to fetch the provider.
