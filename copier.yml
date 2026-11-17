@@ -5,7 +5,7 @@
 #   host     the Alloy agent and the GPU exporter, once per machine, in the repo that
 #            owns the machine (.copier-answers.cml-host.yml, so pass --answers-file)
 # Each renders templates/spoke/<layer>/ only. templates/README.md has the steps.
-_min_copier_version: "9.4"
+_min_copier_version: "9.19.1"
 _subdirectory: "templates/spoke/{{ layer }}"
 _answers_file: .copier-answers.cml.yml
 # Only *.jinja files render; the vendored files are copied byte for byte.
@@ -31,14 +31,14 @@ project:
     Project name, the `project` label (as passed to bootstrap.sh). For a host, the project
     that owns the machine, whose labels the host-level series carry.
   validator: >-
-    {% if not (project | regex_search('^[a-z0-9][a-z0-9-]*$')) %}must match [a-z0-9][a-z0-9-]*{% endif %}
+    {% if not (project | regex_search('^[a-z0-9][a-z0-9-]*\\Z')) %}must match [a-z0-9][a-z0-9-]*{% endif %}
 
 env:
   type: str
   help: Environment, the `env` label (as passed to bootstrap.sh)
   default: prod
   validator: >-
-    {% if not (env | regex_search('^[a-z0-9][a-z0-9-]*$')) %}must match [a-z0-9][a-z0-9-]*{% endif %}
+    {% if not (env | regex_search('^[a-z0-9][a-z0-9-]*\\Z')) %}must match [a-z0-9][a-z0-9-]*{% endif %}
 
 otlp_endpoint:
   type: str
@@ -68,7 +68,7 @@ stacks:
   when: "{{ layer == 'host' }}"
   validator: >-
     {%- set pair = '[a-z0-9][a-z0-9_-]*=[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*' -%}
-    {%- if not (stacks | regex_search('^' ~ pair ~ '( ' ~ pair ~ ')*$')) -%}
+    {%- if not (stacks | regex_search('^' ~ pair ~ '( ' ~ pair ~ ')*\\Z')) -%}
     must be compose-project=project/env pairs separated by spaces
     {%- elif (stacks.split() | map('regex_replace', '=.*$', '') | unique | list | length)
         != (stacks.split() | length) -%}

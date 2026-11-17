@@ -96,11 +96,12 @@ refuse() {
     rm -rf "$work/bad"
 }
 # bootstrap.sh refuses these names; the overlay must too.
-for bad in Demo -demo "demo app"; do
+for bad in Demo -demo "demo app" $'demo\n' $'demo\r\n'; do
     refuse "project='$bad'" --data project="$bad"
     refuse "env='$bad'" --data project=demo --data env="$bad"
 done
 refuse "stacks='Bad=x/y'" "${host_answers[@]}" --data project=demo --data stacks=Bad=x/y
+refuse "stacks with a trailing newline" "${host_answers[@]}" --data project=demo --data $'stacks=demo=demo/prod\n'
 refuse "duplicate Compose projects" "${host_answers[@]}" --data project=demo --data "stacks=app=one/prod app=two/prod"
 refuse "stacks='demo=demo'" "${host_answers[@]}" --data project=demo --data stacks=demo=demo
 # One answers file per layer, or the two overwrite each other's answers.
@@ -124,13 +125,16 @@ out="$work/update"
 mkdir -p "$out"
 printf 'project_name: demo-app\n' >"$out/.copier-answers.yml"
 printf 'Application-owned content\n' >"$out/README.md"
+printf '.env\n' >"$out/.gitignore"
+printf 'PROJECT=demo-app\nENVIRONMENT=prod\n' >"$out/.env"
+cp "$out/.env" "$work/live-env"
 cp "$out/.copier-answers.yml" "$work/base-answers"
 fixture_git "$out" init --quiet --initial-branch=main
 "${copier[@]}" copy --quiet --defaults --vcs-ref=v0.0.1 --data project=demo-app \
     --data env=staging "$work/src" "$out"
 "${copier[@]}" copy --quiet --defaults --vcs-ref=v0.0.1 "${host_answers[@]}" \
     --data project=demo-app --data gpu=true "$work/src" "$out"
-fixture_git "$out" add -- .copier-answers.yml README.md .copier-answers.cml.yml \
+fixture_git "$out" add -- .gitignore .copier-answers.yml README.md .copier-answers.cml.yml \
     .copier-answers.cml-host.yml scripts/run_scheduled.sh telemetry.env.example \
     telemetry-host.env.example compose.telemetry.yml compose.telemetry.gpu.yml \
     deploy/alloy/config.alloy deploy/alloy/projects.alloy
@@ -152,9 +156,12 @@ fixture_git "$out" add -- .copier-answers.cml.yml telemetry.env.example
 fixture_git "$out" commit --quiet -m 'test: update project layer'
 "${copier[@]}" update --quiet --defaults --vcs-ref=v0.0.2 \
     --answers-file .copier-answers.cml-host.yml --data gpu=false \
+    --data project=next-owner --data env=staging \
     --data 'stacks=demo-app=demo-app/prod other_stack=other/staging' "$out"
 has_lines "$out/deploy/alloy/config.alloy" '// Updated host template'
-has_lines "$out/telemetry-host.env.example" GPU_METRICS=
+has_lines "$out/telemetry-host.env.example" GPU_METRICS= PROJECT=next-owner ENVIRONMENT=staging
+has_lines "$out/telemetry.env.example" 'OTEL_RESOURCE_ATTRIBUTES=project=demo-app,env=staging'
+cmp -s "$work/live-env" "$out/.env" || fail 'owner update changed the private live environment'
 [[ ! -e "$out/compose.telemetry.gpu.yml" ]] || fail 'GPU opt-out left its Compose file behind'
 [[ ! -e "$out/telemetry.env.example.rej" ]] || fail 'project update conflicted'
 cmp -s "$work/base-answers" "$out/.copier-answers.yml" || fail 'overlay update changed base answers'

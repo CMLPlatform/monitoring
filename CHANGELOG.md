@@ -18,8 +18,10 @@ Notable changes to this stack. Format follows
     see `templates/README.md`. Removing the file alone does not stop an existing container.
   - On NVIDIA hosts, set `gpu=true` and include `-f compose.telemetry.gpu.yml` when starting the host agent.
   - Start from a clean checkout; review and commit each layer update before updating another.
-  - Stop the per-project agents the host layer replaces. Later tags arrive with `copier update`
-    and each layer's answers file.
+  - Permanently retire obsolete telemetry overlay references in non-owner repos, then stop/remove
+    only their old telemetry services before deleting the files. Verify a normal app redeploy
+    cannot restart them; see [migration steps](templates/README.md#migrate-hand-vendored-agents).
+    Later tags arrive with `copier update` and each layer's answers file.
 
 ### Added
 
@@ -34,6 +36,10 @@ Notable changes to this stack. Format follows
   validates each rendered agent config with the pinned Alloy.
 
 ### Fixed
+
+- Require Copier 9.19.1, matching the version used to validate both layers and tagged updates.
+- Reject newline-bearing project, environment and stack answers before rendering environment files.
+- Document host-owner reassignment and final-agent retirement when removing a project.
 
 - Keep spoke image updates configured after moving the Compose files into `templates/spoke/host`.
 - Supply SDK HTTP transport and authentication settings in the project example, with explicit
