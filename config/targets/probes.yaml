@@ -9,7 +9,7 @@
     tier: app
 
 - targets:
-    - https://api.r9lab.io/health
+    - https://api.r9lab.io/readyz
   labels:
     project: r9lab
     env: prod
