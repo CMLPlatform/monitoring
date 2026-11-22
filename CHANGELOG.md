@@ -57,6 +57,8 @@ Notable changes to this stack. Format follows
   machine owner's project and env.
 - **Breaking:** the spoke files moved to `templates/spoke/project/` and `templates/spoke/host/`,
   at the paths they take in a repo, so their raw URLs at new tags differ.
+- The R9lab API probe and uptime target check `/readyz`, which also checks the database and Redis,
+  in place of `/health`, which the API no longer serves.
 - `bootstrap.sh` prints the `copier copy` commands for both layers, pinned at the latest tag,
   instead of `curl` commands and checksums, and refuses a tag without `copier.yml`.
 

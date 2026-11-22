@@ -1,6 +1,6 @@
 [
   {"id": "r9lab-app", "url": "https://app.r9lab.io", "project": "r9lab", "env": "prod"},
   {"id": "r9lab-docs", "url": "https://docs.r9lab.io", "project": "r9lab", "env": "prod"},
-  {"id": "r9lab-api", "url": "https://api.r9lab.io/health", "project": "r9lab", "env": "prod"},
+  {"id": "r9lab-api", "url": "https://api.r9lab.io/readyz", "project": "r9lab", "env": "prod"},
   {"id": "cml-gallery", "url": "https://cmlplatform.github.io/cml-gallery/", "project": "cml-gallery", "env": "prod"}
 ]
