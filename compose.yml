@@ -87,7 +87,7 @@ services:
     networks: [default, backend]
 
   loki:
-    image: grafana/loki:3.7.9@sha256:0db216b630ae1f348a1584c67f3cead8b4c1fc839169a39501db664744158e28
+    image: grafana/loki:3.7.10@sha256:b43c257ccfc925d4a50b8717cac61a3b51df8c48d01847936057e5c4075a24a7
     restart: unless-stopped
     volumes:
       - ./config/loki.yaml:/etc/loki/loki.yaml:ro
@@ -164,7 +164,7 @@ services:
     networks: [backend]
 
   notification-relay:
-    image: python:3.15.0-slim@sha256:f5b92f2a669a4c347044f29367f31983280b648250ca94dea66f98c53bc87e58
+    image: python:3.15.2-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928
     restart: unless-stopped
     user: "65534:65534"
     read_only: true
@@ -187,7 +187,7 @@ services:
     networks: [notification-egress, notifications]
 
   grafana:
-    image: grafana/grafana:13.3.0@sha256:488984b716c0862639f91a698adbe2862677a5a07bad42da5f03f3030883b205
+    image: grafana/grafana:13.3.1@sha256:0615ec4fbd4072004b7d86b46ded63013a74b7d6eb1119273dd89e8fa25c13cf
     restart: unless-stopped
     depends_on:
       notification-relay:
@@ -249,7 +249,7 @@ services:
     networks: [default, backend]
 
   ntfy:
-    image: binwiederhier/ntfy:v2.37.2@sha256:1875ddcf815c8a3c981d6d78c67a93452d0abba79b1ab9520b1f5f5238902bd7
+    image: binwiederhier/ntfy:v2.38.0@sha256:771309aecfce18d8fe2bfb8069994ddd6be6ca6ccdd7badace3d791a0045ff0d
     restart: unless-stopped
     volumes:
       - ./config/ntfy/server.yml:/etc/ntfy/server.yml:ro
